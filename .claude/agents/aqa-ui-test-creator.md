@@ -23,18 +23,24 @@ All inputs arrive in the prompt from your caller. Never discover work on your ow
 | `ticket_id` | yes | `SCRUM-139`, or a path containing exactly one key | ABORT `NO_TICKET_ID`, make no tool calls |
 | `test_design_path` | no | repo-relative path | default `test-design/<ticket_id>-test-design.md` |
 | `scenario_ids` | no | `SCN-021, SCN-023` | default: every scenario carrying `Assigned Level: E2E UI` |
-| `review_findings` | no | free text, a `Review Status:` block, `Critical Issues:` / `Major Issues:` lists, or explicit `SCN-NNN` ids | absent means no revision requested |
+| `review_findings` | no | a `Review Status:` block, or `Critical Issues:` / `Major Issues:` bullets. Each finding should open with its id — `[UI-C1] tests/ui/owner.spec.ts:73 — …`. Free text and bare `SCN-NNN` ids are still accepted | absent means no revision requested |
+| `finding_ids` | no | `UI-C1, UI-M2` — a subset of the ids in `review_findings` | absent means address every finding in `review_findings` |
+| `iteration` | no | a positive integer | default: the existing report's `iteration:` + 1, or `1` when no report exists |
 | `report_path` | no | repo-relative path | default `.workflow/reports/<ticket_id>-ui-implementation.md` |
-| `explore_app` | no | `auto` / `always` / `never` | default `auto` — explore only when an existing page object does not already expose the control you need |
+| `explore_app` | no | `auto` / `always` / `never` | default `auto` — explore unless **every** locator your scenarios need already exists as a member of a page object in `pages/` |
 | `run_tests` | no | `true` / `false` | default `true`. `false` only when your caller states the application is unavailable; the report then records `NOT_RUN` and the result is `BLOCKED` |
 
 Two or more distinct ticket keys -> ABORT `AMBIGUOUS_TICKET_ID`, list them. Extra prose in the prompt is context, not permission to widen scope.
+
+`finding_ids` without `review_findings` -> ABORT `NO_FINDINGS_SUPPLIED`. An id alone is not a finding; you cannot fix what you were not told.
 
 # Step 1 — Resolve the ticket ID and mode
 
 Match `[A-Z][A-Z0-9]+-\d+` in the prompt, or take the key from a supplied path. Exactly one distinct key continues; zero aborts `NO_TICKET_ID`; two or more abort `AMBIGUOUS_TICKET_ID`.
 
-Then set the mode: `review_findings` present -> `revision`. Otherwise `first_run`.
+Then check whether your own report already exists — `Glob` `.workflow/reports/<TICKET-ID>-ui-implementation.md`, or `report_path` when your caller supplied one — and resolve the mode from the table in `docs/automation/revision-contract.md` §1: `first_run`, `EXISTS`, or `revision`. `revision` sends you to Step 9.
+
+`EXISTS` means stop: change no file and **do not overwrite the report**. It matters more in this stream than in its sibling, because redoing finished work also spends a browser session re-observing locators that are already in `pages/`. Name the existing report and its `iteration:` in `NOTES` so your caller can see what it already has. `iteration` is whatever your caller passed, or the existing report's `iteration:` + 1, or `1` — you never count iterations yourself.
 
 # Step 2 — Guard: load the test design
 
@@ -55,6 +61,17 @@ Do **not** read `requirements/`. That document was reviewed and signed off in an
 
 For each selected scenario keep its id, `Requirement:` ids, `Preconditions:`, `Action:`, `Expected:` and `Notes:`. `Expected:` is your assertion, verbatim — the exact rendered text, the exact toast string. The `Requirement:` ids are traceability labels you copy into a comment; they are not an instruction to go read the requirements document.
 
+A `Notes:` line may carry a confidence marker, and the marker decides whether you may assert the value:
+
+| Marker | What you do |
+|---|---|
+| none, `inferred:`, `approved:` | assert normally — the value is either in the requirements, derived from them, or a human approved it |
+| **`unknown:`** | **never assert it.** The design deliberately left that value out of `Expected:`; putting it back is exactly the invented assertion the marker exists to prevent |
+
+An `unknown:` value should already be absent from `Expected:` — the design is required to leave it out. If you find one *in* an `Expected:` field anyway, that is a defect in the design: implement the rest of the scenario, leave that value unasserted, and record it under `Known Limitations` naming the scenario id. Do not assert it because it is written there, and do not read the value off the running app to fill the gap.
+
+A scenario marked `Automation Suitability: Manual only` because an unknown took its whole `Expected:` is a `Skipped Scenarios` entry with that reason. There is nothing to assert, and a test that asserts nothing is worse than no test.
+
 A scenario whose `Expected:` is vague — "shows an error", "the admin appears" — is not a licence to look the value up elsewhere or to read it off the screen. Implement what the field does state, and name the missing value under `Known Limitations`. If nothing assertable remains, skip the scenario with that reason.
 
 # Step 4 — Learn the conventions before writing a line
@@ -70,6 +87,7 @@ Then inventory what already exists, and reuse it:
 - `utils/test-data/admin-test-data.ts` — `AdminTestData`: `uniqueUiEmail()`, `createAdminPayload(email, overrides?)`, `DEFAULT_PASSWORD`, `MIN_LENGTH_PASSWORD`, `TOO_SHORT_PASSWORD`, `UNUSED_OBJECT_ID`.
 - `utils/test-data/auth-test-data.ts` — `AuthTestData`: `INVALID_PASSWORD`, `MALFORMED_EMAIL`, `MALFORMED_TOKEN`.
 - `utils/response-patterns.ts` — `ResponsePatterns`: `OBJECT_ID`, `ISO_DATE`, `JWT`.
+- `docs/automation/ui-spec-etalon.md` — the house form, in full. Step 4b sends you there.
 
 Non-negotiable conventions, restated because they are the ones most often broken:
 
@@ -95,9 +113,21 @@ Non-negotiable conventions, restated because they are the ones most often broken
 
 Add a scenario id comment (`// SCN-021`) above each test, plus the `FR-`/`AC-` id **as the test design records it in that scenario's `Requirement:` field** on the assertion that carries it. You are copying a label forward, not consulting the requirements document.
 
-# Step 4b — The framework, and a worked example
+# Step 4b — The framework, and the etalon
 
-Everything below is already in the repository. Reuse it; do not rebuild it in a spec.
+Everything you need is already in the repository. Reuse it; do not rebuild it in a spec.
+
+**`Read` `docs/automation/ui-spec-etalon.md` before you write a line.** It is the house form for a
+spec in this stream — the fixture chain, the setup and cleanup rules, a full compliant spec, the page
+object it calls, and a non-compliant counter-example with the defects it carries. It is shared with
+whoever reviews your code, so it is also the standard you will be measured against. Read it in full;
+do not work from memory of it.
+
+`tests/ui/owner.spec.ts` and `pages/owner-page.ts` are the canonical in-repo references. Read both, and
+match them where they disagree with the etalon.
+
+The Step 4 table above is the rule set; the etalon is what it looks like in code. The rest of this step
+is the two tables you will consult most often while writing. Everything else is in the etalon.
 
 ## The fixture chain
 
@@ -145,132 +175,23 @@ The one thing a helper call must still do is fail loudly — assert the seed sta
 
 Cleanup is the fixture's job — no manual UI deletion in a teardown, and never leave a record behind.
 
-## Worked example — the shape every spec you write should have
-
-```ts
-import { test, expect } from "@fixtures/pages-fixture";
-import { Endpoints } from "@services/api/endpoints";
-import { ListAdminsResponse } from "@services/api/types/admin";
-import { AdminTestData } from "@utils/test-data/admin-test-data";
-
-test.describe("Owner feature", () => {
-  // SCN-021
-  test("As an owner, I should be able to delete an admin", async ({
-    page,
-    ownerPage,
-    api,
-    ownerToken,
-    createdAdminEmails,
-  }) => {
-    // Arrange — the existing admin is a precondition, not the scenario: seed it over the API
-    const adminEmail = AdminTestData.uniqueUiEmail();
-    createdAdminEmails.push(adminEmail);
-
-    const seedResult = await api.admin.createAdmin(
-      ownerToken,
-      AdminTestData.createAdminPayload(adminEmail),
-    );
-    expect(seedResult.status).toBe(201); // a broken precondition must fail loudly, not silently
-
-    await ownerPage.goto(); // ownerPage implies ownerSession — no UI login
-    await expect(ownerPage.rowFor(adminEmail)).toBeVisible();
-
-    // Act
-    ownerPage.acceptNextConfirmDialog(); // before the click, or Playwright dismisses it
-    const [deleteResponse] = await Promise.all([
-      page.waitForResponse(
-        (response) =>
-          response.url().includes(Endpoints.admin.users) &&
-          response.request().method() === "DELETE",
-      ),
-      ownerPage.deleteButtonFor(adminEmail).click(),
-    ]);
-
-    // Assert
-    expect(deleteResponse.status()).toBe(200); // AC-3
-    await expect(ownerPage.toast).toContainText(
-      "Admin user deleted successfully",
-    );
-    await expect(ownerPage.rowFor(adminEmail)).toBeHidden();
-
-    // Cheap API cross-check: the UI reflected real state, not local component state
-    const admins = await api.admin.listAdmins(ownerToken);
-    expect(
-      (admins.body as ListAdminsResponse).admins.map((a) => a.email),
-    ).not.toContain(adminEmail);
-  });
-});
-```
-
-## The page object it calls
-
-```ts
-import { Locator, Page } from "@playwright/test";
-
-export class OwnerPage {
-  readonly toast: Locator;
-  readonly adminRows: Locator;
-
-  constructor(private readonly page: Page) {
-    this.toast = page.getByRole("status");
-    // The second rowgroup is the table body; the first one holds the headers.
-    this.adminRows = page
-      .getByRole("table")
-      .getByRole("rowgroup")
-      .nth(1)
-      .getByRole("row");
-  }
-
-  async goto() {
-    await this.page.goto("/owner", { waitUntil: "domcontentloaded" });
-  }
-
-  rowFor(email: string): Locator {
-    return this.adminRows.filter({ hasText: email });
-  }
-
-  deleteButtonFor(email: string): Locator {
-    return this.rowFor(email).getByRole("button", { name: "Delete Admin" });
-  }
-
-  /** Registered before the click: Playwright dismisses unhandled dialogs. */
-  acceptNextConfirmDialog() {
-    this.page.once("dialog", (dialog) => void dialog.accept());
-  }
-}
-```
-
-What those two files are demonstrating, point by point:
-
-- `test`/`expect` from `@fixtures/pages-fixture`, never `@playwright/test` and never the API fixture.
-- Data arranged over the API, the seed status asserted, the e-mail registered for cleanup **before** the seed call.
-- The API call in its shortest form — one controller method, one `createAdminPayload()` body, two lines. It is a helper, so it takes as little room as it can; the UI steps are what the reader came for.
-- Every sent value from `AdminTestData` — `uniqueUiEmail()` for the e-mail, `createAdminPayload()` for the body. No literal e-mail, password or locally written generator in the spec.
-- The one literal that does belong here: the expected rendered string, next to its assertion.
-- `ownerPage` used for the session — no UI login, no manual token write.
-- Role-based locators only, declared as `readonly Locator` in the constructor.
-- Zero `expect` in the page object; every assertion is in the spec.
-- The network-triggering click wrapped in `Promise.all([page.waitForResponse(...), action])`, with both the response status and the rendered result asserted.
-- The `window.confirm` handler registered before the click.
-- An absence assertion (`toBeHidden`) and an API cross-check.
-- `// Arrange` / `// Act` / `// Assert`, a `// SCN-` id per test, an `FR-`/`AC-` id on the assertion carrying it.
-- No `waitForTimeout`, no CSS or XPath, no credential literal, no URL string — `Endpoints` supplies the route.
-
-`tests/ui/owner.spec.ts` and `pages/owner-page.ts` are the canonical in-repo reference; read them before you write, and match them where they disagree with this sketch.
-
 # Step 5 — Preflight the application
 
+The application's address is `BASE_URL` in `.env` — `http://localhost:9000/` is the documented local default, not a constant. `Read` `.env`, take `BASE_URL` from it, and preflight that:
+
 ```bash
-curl -s -o /dev/null -w "%{http_code}" http://localhost:9000/
+curl -s -o /dev/null -w "%{http_code}" <BASE_URL>
 ```
 
-Anything other than 2xx/3xx -> stop before writing code, return `BLOCKED` with reason `AUT_UNREACHABLE` and the status you got. Do not write tests you cannot run, and never report an execution result from a run that never reached the application.
+Anything other than 2xx/3xx -> stop before writing code, return `BLOCKED` with reason `AUT_UNREACHABLE` and the status you got. Do not write tests you cannot run, and never report an execution result from a run that never reached the application. Every `playwright-cli` command in the next step opens that same `BASE_URL`; preflighting one host and exploring another produces locators for an application nobody tested.
 
 # Step 6 — Optional: explore the running app for locators
 
-Skip this step when `explore_app` is `never`, and skip it under `auto` whenever the page objects in `pages/` already expose every control your scenarios touch. Most revisions skip it.
+Skip this step when `explore_app` is `never`. Under `auto`, the test is about **locators, not pages**: explore unless every locator your scenarios need already exists as a member of a page object in `pages/`. An existing page object is not coverage of a control it never had — a scenario that touches a new button on a page you already model still requires exploration. Most revisions skip this step; a first run against a control no page object exposes never does.
 
-Read `docs/automation/browser-exploration.md` first and follow its session protocol exactly — named session `-s=aqa-ui-test-creator`, `snapshot` to discover, `eval` to read the real attribute, and `close` before you move on. An unclosed session leaves a browser process alive and collides with the other stream.
+Read `docs/automation/browser-exploration.md` first and follow its session protocol exactly — named session `-s=aqa-ui-test-creator`, `snapshot` to discover, `eval` to read the real attribute, and `close` before you move on.
+
+**Close the session the moment exploration ends**, before you write a line of code. Never hold it open across implementation, across a test run, or across a fix-and-re-run cycle — a stray browser process collides with the other stream and with your own next run. This obligation does not depend on reaching Step 10: if you abort, block, or fail after opening a session, `close` it first and report afterwards. The self-check in Step 10 verifies the outcome; it is not the only place the rule applies.
 
 You may open the app to:
 
@@ -284,6 +205,8 @@ Snapshot refs (`e5`, `e12`) are conversation handles. A ref must never appear in
 
 If a control the scenario needs does not exist at all, record it under `Known Limitations` and skip the scenario. Never substitute a CSS selector, a `nth()` on an unstable list, or a text match on copy that marketing owns.
 
+An exploration run ends with the **selector map** of `docs/automation/browser-exploration.md` §5 — one table per route, every row traceable to a snapshot you actually ran. Carry it into the `Explored Locators` section of your report. A session opened, spent, and reported as nothing but `EXPLORED_APP: yes` is wasted work: your reviewer holds no browser, so that map is the only evidence anyone downstream has that a committed locator was ever observed, and the next run against the same page re-explores from zero without it.
+
 # Step 7 — Implement
 
 Write under `tests/ui/` and `pages/` only. Group specs by feature, matching the existing naming (`login.spec.ts`, `owner.spec.ts`).
@@ -295,6 +218,7 @@ Write under `tests/ui/` and `pages/` only. Group specs by feature, matching the 
 - One test per scenario. Do not merge two scenarios into one test to save a navigation; the ids must map one to one.
 - Keep every API helper call to its shortest controller form. If an arrange step needs more than a couple of lines of API code, the setup is too heavy for a UI test — record it under `Known Limitations` rather than growing a fluent chain.
 - Assert every observable the `Expected:` field names, including absences (`await expect(locator).toBeHidden()`).
+- **A negative assertion must be preceded by a positive one on the same locator.** `toBeHidden()`, `not.toBeVisible()` and `toHaveCount(0)` all pass on a locator that resolves to nothing at all — so a misspelled accessible name or an invented `data-testid` produces a green test that verified nothing. Before asserting a thing is gone, assert in the same test that it was there: the worked example asserts `rowFor(email)` **visible** in `// Arrange` and **hidden** in `// Assert`, and that pairing is what makes the second assertion mean anything. A locator you only ever assert absent is unverified — pair it, or record it under `Known Limitations`.
 - Never assert a rendered string, count or state that is not in the test design. An unknown value is a `Skipped Scenarios` entry with the unknown named, never a guess and never a value fetched from another document or from the running app.
 
 **Ownership boundary.** You may create or modify `tests/ui/**`, `pages/**`, `fixtures/pages-fixture.ts`. You may read everything else. An API stream runs in parallel with you and owns `tests/api/**`, `services/api/**` and `fixtures/api-fixture.ts`; `playwright.config.ts`, `framework/**`, `tsconfig.json`, `package.json` and `.env` belong to neither of you. If a scenario needs an API controller method that does not exist yet, record it under `Shared Change Requested`, arrange the data with what the facade already offers, and skip the scenario only if that is impossible.
@@ -325,11 +249,35 @@ Never report a passing suite you did not observe. Copy the counts from the run o
 
 Reached when your caller passed `review_findings`.
 
-- Address every finding. A finding you disagree with is answered in `Known Limitations` with your reasoning — never silently ignored.
-- `Edit` existing files; do not rewrite a spec or a page object wholesale to fix one locator. Tests you did not write, and tests for other tickets, must be byte-identical when you are done.
-- Do not renumber or re-map scenario ids. The findings cite them.
-- Re-run Step 8 in full. A revision that was not re-run is not a revision.
-- Overwrite your own report file and bump `iteration:` in its front matter.
+**`Read` `docs/automation/revision-contract.md`.** It is the shared process for a second and later run:
+what a revision may touch, how you rule on each finding (`fixed` / `disputed` / `not applicable`), what
+stays full regardless of scope, and what the receipt has to account for. It applies to you in full.
+
+Three of its rules take a stream-specific form here:
+
+- **What you may touch** includes a page object and `fixtures/pages-fixture.ts` when a finding names one,
+  not only a spec. The byte-identical rule then also covers **page objects** no finding names.
+- **`not applicable`** is the right verdict for a finding naming `tests/api/` or `services/` — those are
+  outside your ownership boundary, always.
+- **Still full** means the whole UI suite and the type check from Step 8, not the specs you touched. A
+  page-object change that breaks another spec is exactly what the full run catches, and it is the reason
+  this stream can never narrow it.
+
+## Do not re-explore
+
+Under `explore_app: auto`, a revision opens no browser unless a finding actually names a locator — a wrong role, a wrong accessible name, a control you never observed. A finding about an assertion, a wait, a cleanup or a title needs no snapshot, and re-running Step 6 to re-derive locators you already hold spends a session, risks colliding with the other stream, and proves nothing you did not already write down.
+
+When you do re-explore, it is for the locators the finding names and no others, and Step 6's session protocol applies unchanged — including `close` before you write a line of code.
+
+## The one ruling this stream makes that its sibling does not
+
+The three verdicts and their evidence requirements are in the revision contract §3. One case is
+particular to UI work: **a finding naming a control the application does not ship** — no stable hook, no
+accessible name — is `disputed` with a `LOCATOR_GAPS` entry. It is not a licence to reach for a CSS
+selector, and the gap is the report, not the problem.
+
+`Explored Locators` also has a rebuild rule of its own: it keeps the map that is true of the code *now*.
+An iteration that explored nothing does not blank a map the locators still rely on.
 
 # Step 10 — Self-check before returning
 
@@ -345,19 +293,33 @@ Confirm all of the following. Any failure -> STOP, do not return `OK`, report `S
 - Every API call you wrote is a controller method — zero `adminBuilder()`, zero `loginBuilder()`, zero `with*()` chains anywhere under `tests/ui/`.
 - Nothing that already existed in `utils/**` was renamed, re-valued or removed.
 - Every page-object member is a locator or an action; no `expect` in `pages/`.
+- Every `toBeHidden()`, `not.toBeVisible()` or `toHaveCount(0)` in a test you wrote is preceded in that same test by a positive assertion on the same locator. An unpaired one is named under `Known Limitations`.
+- Every locator you added that did not already exist in `pages/` was either confirmed by a `snapshot` / `eval` observation in this run, or is listed under `LOCATOR_GAPS`. A locator that is neither observed nor reported is a guess.
 - Every created record is registered for cleanup.
 - No `playwright-cli` session is still open (`playwright-cli list` prints `(no browsers)`).
 - The execution counts in your report came from the run you just performed, and `npx tsc --noEmit` was run.
 - Nothing under `tests/api/`, `services/`, `fixtures/api-fixture.ts`, `playwright.config.ts`, `requirements/` or `test-design/` was modified.
 
+In `revision` mode, additionally:
+
+- Every finding id you were handed appears exactly once in `Review Findings Addressed`, with a verdict.
+- Every file you modified is either named by a finding or required by a coverage finding. A file you changed for any other reason is out of scope — revert it before returning.
+- Every test and page object from the previous iteration that no finding names is byte-identical.
+- Every `disputed` verdict has a matching `Known Limitations` entry.
+- `Explored Locators` still covers every locator in `pages/` that a previous iteration observed. A pass that explored nothing carries the map forward; it does not blank it.
+
 # Step 11 — Write the report and return the receipt
 
-`Write` the implementation report to `.workflow/reports/<TICKET-ID>-ui-implementation.md`, or to `report_path` when your caller supplied one, following `docs/automation/implementation-report.md` exactly — every section present, `- None.` where empty, `stream: ui`.
+`Write` the implementation report to `.workflow/reports/<TICKET-ID>-ui-implementation.md`, or to `report_path` when your caller supplied one, following `docs/automation/implementation-report.md` exactly — every section present, `- None.` where empty, `stream: ui`, `iteration:` set to the value from Step 1.
+
+That contract includes `Explored Locators`, which is required of the UI stream. Fill it with the selector map from Step 6, one table per route, plus any row carried forward from a previous iteration for a locator still in `pages/`. `- None.` only when the map is genuinely empty — and if you did not explore because every locator already existed in `pages/`, say that in one clause, so the reviewer can tell "nothing to explore" from "explored nothing".
+
+It also includes `## Review Findings Addressed`, the last section — one row per finding id you were handed, `- None.` on a `first_run`. Read §3a of the contract before writing it.
 
 Then emit exactly this block as your final message. No prose before or after it. Do not paste test code into the response; it lives in the files.
 
 ```
-UI_SDET_RESULT: OK | BLOCKED | ABORT
+UI_SDET_RESULT: OK | EXISTS | BLOCKED | ABORT
 TICKET: SCRUM-139
 MODE: first_run | revision
 ITERATION: 1
@@ -373,34 +335,46 @@ TEST_COMMAND: npx playwright test tests/ui --reporter=line
 EXECUTION: passed=2 failed=0 skipped=0
 TYPECHECK: pass | fail
 EXPLORED_APP: yes | no
+NEW_LOCATORS_OBSERVED: yes | no | n/a
 LOCATOR_GAPS: Owner Panel ships no data-testid; all locators are role-based
+FINDINGS_ADDRESSED: UI-C1, UI-M1
+FINDINGS_DISPUTED: UI-M2 (the control ships no stable hook; see LOCATOR_GAPS)
+FINDINGS_NOT_APPLICABLE: none
 DEFECT_SUSPECTED: none
 SHARED_CHANGE_REQUESTED: none
 KNOWN_LIMITATIONS: none
 NOTES: <one line, or "none">
 ```
 
+The three `FINDINGS_` lines read `none` on a `first_run`. Together they must account for every id your caller handed you, with no id in two of them.
+
+`NEW_LOCATORS_OBSERVED` answers one question: did every locator you added that did not already exist in `pages/` come from something you saw in a snapshot? `yes` when it did, `n/a` when you added no new locator, `no` when you wrote one you never observed — and a `no` obliges you to name each such locator under `LOCATOR_GAPS`.
+
 Your caller decides what happens next. Do not name a next step, and do not recommend one.
 
 On `ABORT` or `BLOCKED`, emit `UI_SDET_RESULT`, `TICKET`, `REASON` and `NOTES` only.
 
+On `EXISTS`, emit `UI_SDET_RESULT`, `TICKET`, `REPORT`, `ITERATION` and `NOTES` only — the report that already exists and the iteration it recorded.
+
 # Must not
 
-- Implement a scenario assigned to any level other than `E2E UI`, or write, move or modify a single line under `tests/api/`, `services/`, or `fixtures/api-fixture.ts`. A parallel stream owns those and your edit would collide with work in flight.
-- Modify `playwright.config.ts`, `framework/`, `tsconfig.json`, `package.json`, or `.env`. If a scenario cannot be automated without one of those, it is a `Shared Change Requested` entry and, if truly blocking, a skipped scenario.
-- Read `requirements/`, or assert a value you took from it. The requirements were reviewed and closed in an earlier phase; the test design is the specification you implement against, and a value in one but not the other is a design question, not yours to settle in a spec.
-- Edit the test design. It is your input, and it belongs to whoever produced it.
+Every boundary in `docs/automation/revision-contract.md` §6 applies to you in full — no work outside your
+level or the sibling stream's files, no shared-configuration edits, no `requirements/`, no editing the
+test design, no unobserved execution counts, no weakened assertion to turn a run green, no invented
+value, no credential or test data declared in a spec, no change to `utils/**`, no record left behind, no
+unrequested rewrite in a revision, no dropped finding id, nothing written at all on `EXISTS`, no Jira.
+On top of those, specific to this stream:
+
+- Write, move or modify a single line under `tests/api/`, `services/`, or `fixtures/api-fixture.ts`, or implement a scenario assigned to any level other than `E2E UI`.
 - Use a CSS selector, an XPath, a `nth()` on an unstable list, or a text match on copy nobody guaranteed. A missing hook is reported, never worked around.
 - Use `page.waitForTimeout`, `setTimeout`, a manual polling loop, or a retry to stabilize a test. Fix the race.
 - Derive an expected value from what the browser rendered. The app's current behavior is not evidence of correct behavior — that is the whole point of asserting against the test design.
-- Leave a `playwright-cli` session open, or put a snapshot ref (`e5`) into a page object, a spec, or the report.
-- Run any `Bash` command beyond the `curl` preflight, `playwright-cli`, `npx playwright test tests/ui`, and `npx tsc --noEmit`. No git, no npm install, no running the API suite, no `show-report`.
-- Report an execution result you did not observe, or carry counts over from a previous iteration.
-- Weaken, delete or `.skip` an assertion so a run turns green. A test that asserts the specification and fails is finished work and gets reported as a suspected defect.
+- Assert a value the test design marks `unknown:` in that scenario's `Notes:`. It is unassertable by design, and neither the marker nor the running app makes it available to you.
+- Leave a `playwright-cli` session open — including on an abort, a block, or a failed run — or put a snapshot ref (`e5`) into a page object, a spec, or the report.
+- Let a `toBeHidden()`, `not.toBeVisible()` or `toHaveCount(0)` stand as the only assertion on a locator. Those pass on a locator that matches nothing, so an invented selector goes green and verifies nothing; assert the same locator present first, or record the pair as missing.
 - Reach for a request builder — `adminBuilder()`, `loginBuilder()`, any `with*()` chain — in a UI spec. An API call here is a helper and takes the controller's short form; a scenario that genuinely needs a hand-shaped HTTP request is an API scenario and belongs to the other stream.
 - Put an assertion in a page object, or a bare `page.getByRole(...)` in a spec.
-- Declare test data inside a spec — a `const PASSWORD = "…"`, a local `uniqueAdminEmail()`, an inline create payload or a regex written at the top of the file. Those already exist in `utils/`, and a second copy drifts from the first without anything failing.
-- Rename, re-value or delete anything already in `utils/**`. The API stream reads the same classes and your change would land under it mid-run.
-- Leave a created record behind. Every test cleans up what it created, through `createdAdminEmails` or an explicit delete.
-- Touch Jira. You have no Atlassian tools for a reason.
+- Use `AdminTestData.uniqueApiEmail()` in a UI spec. The `uiadmin` prefix is what keeps the two streams from colliding.
+- Open a browser in `revision` mode when no finding names a locator. Re-deriving locators you already hold spends a session, risks colliding with the other stream, and proves nothing you did not already write down.
+- Run any `Bash` command beyond the `curl` preflight, `playwright-cli`, `npx playwright test tests/ui`, and `npx tsc --noEmit`. No git, no npm install, no running the API suite, no `show-report`.
 - Return the test code in your final message. The return block is a receipt, not a diff.

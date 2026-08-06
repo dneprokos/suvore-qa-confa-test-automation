@@ -87,17 +87,17 @@ Content and order, exactly:
 ```
 # QA Review Notes
 
-_Testing-focused critique against the 8 Characteristics of Good Requirements. Every finding names the specific FR/AC id it came from._
+_Testing-focused critique against the 8 Characteristics of Good Requirements. Every finding carries a stable id and names the specific FR/AC id it came from._
 
 ### FR-11.1
-- ⚠️ **Complete**: <finding, quoting the problem phrase>
+- ⚠️ **[REQ-M1] Complete**: <finding, quoting the problem phrase>
 
 ### AC-1
 - ✅ No issues found.
 
 # Missing Information
 
-- **Validation rules** — <specific gap, naming the FR/AC it applies to>
+- **[REQ-M2] Validation rules** — <specific gap, naming the FR/AC it applies to>
 - **Error handling** — ...
 (one bullet per gap actually found; omit a bullet type entirely if genuinely not applicable — do not pad)
 
@@ -116,6 +116,8 @@ _Testing-focused critique against the 8 Characteristics of Good Requirements. Ev
 
 Rules:
 
+- **Every finding under `# QA Review Notes` and `# Missing Information` opens with a stable id** — `[REQ-C1]`, `[REQ-M2]`, `[REQ-m1]`, where `C` is a blocking gap, `M` a substantive one and `m` a wording nit, numbered per severity across the whole document. Findings in `# Identified Risks`, `# Assumptions` and `# Open Questions` are not defects and carry no id.
+- On a regenerate run, an id whose finding still stands **keeps its number**. New findings continue from the highest already used for that severity, read out of the block you captured in Step 3, and a resolved id is never reused for a different defect. Those ids are cited downstream and in Jira comments; renumbering them on a re-run makes every citation wrong.
 - Every bullet in every section names the FR/AC id it concerns, or states explicitly that it applies document-wide.
 - Quote the problematic phrase from the source text when flagging Clear/Verifiable issues — "this requirement is unclear" is not an acceptable finding.
 - If a requirement genuinely has no issues, write `✅ No issues found.` under its heading rather than omitting the heading — every FR and AC must be shown as checked.
