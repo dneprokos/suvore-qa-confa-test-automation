@@ -144,12 +144,27 @@ Wait policy: web-first assertions and Playwright auto-waiting only. No `waitForT
 
 ## Agent workflow
 
-`docs/conference/agentic_workflow.txt` is the spec; `docs/conference/agent_build_plan.md` is the build
-order and current status. Rules that matter when touching `.claude/agents/`:
+Three documents, one canonical each — do not treat any of them as a second opinion on the others:
+
+- `.claude/skills/qa-workflow/SKILL.md` — **canonical for routing, state and iteration control.** A
+  change to who runs when belongs here and nowhere else.
+- `docs/conference/agent_build_plan.md` — **canonical for the artifact and receipt contracts**: the
+  requirements and test-design section shapes, the re-run and revision contract, the build order.
+- `docs/conference/agentic_workflow.txt` — **non-canonical.** Conference background: the original role
+  sketch the agents grew out of. Where it disagrees with either document above, it is out of date.
+
+Rules that matter when touching `.claude/agents/`:
 
 - **No agent may name another agent** — not in its description, body, receipt, or `Must not` list. Each is
   a pure function of its parameters and the files on disk, so routing stays in one place (the orchestrator).
   Self-reference (`generated_by:`) is fine.
+- **The orchestrator is `.claude/skills/qa-workflow/SKILL.md`**, invoked as `/qa-workflow SCRUM-139
+  [--auto]`. It is the one file that names agents next to each other, and the only place a routing change
+  belongs. It runs on the main thread — subagents cannot spawn subagents or see skills — owns
+  `.workflow/<TICKET-ID>.yaml`, the per-stream iteration counters and the `max_review_iterations` cap
+  (default 2, auto mode only), and always ends by delegating the ship phase to `qa-ship-tests`, which in
+  turn drives `git-workflow-orchestrator`. Manual mode asks for every transition; auto mode routes on the
+  verdict but keeps the git confirmations.
 - Every agent body carries an `# Inputs` table and writes path templates out in full
   (`requirements/<TICKET-ID>-requirements.md`), with the parameter as an override.
 - **Reviewers get no `Edit`/`Write`.** A reviewer that can fix what it finds returns `Pass` and the
@@ -168,6 +183,25 @@ order and current status. Rules that matter when touching `.claude/agents/`:
   `.workflow/reports/<TICKET-ID>-{api,ui}-implementation.md` in the shape of
   `docs/automation/implementation-report.md`, and the matching reviewer reads it as its work list. The
   directory does not exist until the first creator run.
+- **Every agent runs more than once, and the second run is scoped.** Each writing agent resolves a mode
+  before it writes: `first_run` (no output yet), `EXISTS` (output present, nothing new asked — stop and
+  change nothing), `revision` (findings supplied — change only what they name, everything else
+  byte-identical), `regenerate` (explicit token — full rewrite). Reviewers write nothing, so they take
+  `previous_findings` instead and switch to `re_review`: the style pass narrows to prior findings and
+  changed files, while the suite, the type check and the coverage pass stay full every iteration.
+  Findings carry stable ids — `[API-C1]`, `[UI-M2]`, `[DESIGN-C1]`, `[REQ-M1]` — that survive across
+  iterations, and a creator answers each one in `Review Findings Addressed` as `fixed`, `disputed` or
+  `not applicable`. Those prefixes name streams, not agents, so the no-sibling-names rule still holds.
+  The contract is `docs/conference/agent_build_plan.md`, "Re-run and Revision Contract"; read it before
+  changing any mode table.
+
+Shared knowledge the agents `Read` at runtime lives in `docs/automation/` — a doc, never a skill, because
+no agent's `tools:` list includes `Skill`. Six files: `implementation-report.md` and
+`browser-exploration.md`, the two spec etalons (`api-spec-etalon.md`, `ui-spec-etalon.md`, one per stream,
+read by that stream's creator *and* its reviewer so the two cannot calibrate against different code), and
+the two process contracts (`revision-contract.md` for the creators, `review-verdict-contract.md` for the
+reviewers). **None of them may name an agent** — they speak in stream terms, or the no-sibling-names rule
+leaks through the back door.
 
 Browser exploration through `playwright-cli` follows `docs/automation/browser-exploration.md`: named
 session per agent, always `close`d, snapshot `ref`s (`e5`) never committed, and never derive a requirement

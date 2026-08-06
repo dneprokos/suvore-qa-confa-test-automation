@@ -1,5 +1,15 @@
 # QA Lead Multi-Agent Workflow
 
+> **Non-canonical — conference background.** This is the original role sketch the agents grew out of,
+> kept for presentation material. It is not the source of truth for anything that runs:
+>
+> - Routing, state and iteration control are canonical in `.claude/skills/qa-workflow/SKILL.md`.
+> - Artifact and receipt contracts are canonical in `docs/conference/agent_build_plan.md`.
+> - Each agent's behavior is canonical in its own `.claude/agents/<slug>.md`.
+>
+> Where this file disagrees with any of those, it is out of date. Do not change an agent to match it,
+> and do not derive a routing decision from it.
+
 The **QA Lead Agent** acts as the main orchestrator of the entire quality engineering workflow. It receives a Jira ticket, delegates tasks to specialized sub-agents, tracks generated artifacts, reviews agent results, and decides whether the workflow can proceed or should return to an earlier phase.
 
 The QA Lead should coordinate the work but should not perform detailed requirement analysis, scenario generation, or test implementation itself.

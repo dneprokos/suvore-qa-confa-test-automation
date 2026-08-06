@@ -23,6 +23,10 @@ test.describe("Owner feature", () => {
 
     // Act
     await ownerPage.openAddAdminForm();
+    // The form must be proven present here: toBeHidden() below passes on a
+    // locator that matches nothing, so without this the closing assertion
+    // would go green even against a broken locator.
+    await expect(ownerPage.addAdminFormHeading).toBeVisible();
     await ownerPage.fillNewAdminForm(
       newAdminEmail,
       AdminTestData.DEFAULT_PASSWORD,
@@ -93,7 +97,8 @@ test.describe("Owner feature", () => {
     await expect(ownerPage.rowFor(seededAdminEmail)).toBeVisible();
 
     const uiEmails = await ownerPage.adminEmails();
-    const apiAdmins = ((await listResponse.json()) as ListAdminsResponse).admins;
+    const apiAdmins = ((await listResponse.json()) as ListAdminsResponse)
+      .admins;
 
     // Assert
     expect(listResponse.status()).toBe(200);

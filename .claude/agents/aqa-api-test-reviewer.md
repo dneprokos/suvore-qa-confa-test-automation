@@ -31,9 +31,12 @@ All inputs arrive in the prompt from your caller. Never discover work on your ow
 | `test_design_path`           | no       | repo-relative path                                | default `test-design/<ticket_id>-test-design.md`                                                                                        |
 | `changed_files`              | no       | list of repo-relative paths                       | default: the `Changed Files` section of the report                                                                                      |
 | `run_validation`             | no       | `true` / `false`                                  | default `true`. `false` is only honoured when your caller states the application is unavailable, and it forces the verdict to `Blocked` |
+| `previous_findings`          | no       | your own previous review block as text, or a repo-relative path to it | absent means `full_review`; present means `re_review` — see Step 1b |
 | `focus`                      | no       | free text                                         | absent means review everything; when given, still run the full pass and merely lead with the focus area                                 |
 
 Two or more distinct ticket keys -> ABORT `AMBIGUOUS_TICKET_ID`, list them.
+
+`focus` and `previous_findings` are different instruments. `focus` reorders what you lead with and narrows nothing. `previous_findings` narrows the style pass, and only that — see Step 1b.
 
 # Step 1 — Guard: load the report and its inputs
 
@@ -42,6 +45,7 @@ Two or more distinct ticket keys -> ABORT `AMBIGUOUS_TICKET_ID`, list them.
 - the implementation report — `.workflow/reports/<TICKET-ID>-api-implementation.md`, or `implementation_report_path` when your caller supplied one. Missing and no inline report -> `Blocked`, reason `NO_REPORT`.
 - the test design — `test-design/<TICKET-ID>-test-design.md`, or `test_design_path`. Missing -> `Blocked`, reason `NO_TEST_DESIGN`. It is both the work list and the specification you review against; without it there is nothing to review against.
 - the reference example — `tests/api/login-api.spec.ts`, the existing spec that defines the house style. Read it before you judge any style question, so that "a deviation" always means a deviation from something real on disk rather than from your own taste.
+- the etalon — `docs/automation/api-spec-etalon.md`, the written house form the code under review was produced against. Step 2b tells you how to apply it.
 
 Do **not** open `requirements/`. That document was reviewed in an earlier phase; the test design is what you review against here.
 
@@ -51,7 +55,23 @@ Then check the report itself before reviewing what it describes:
 - A section from `docs/automation/implementation-report.md` §2 is missing -> `Blocked`, reason `MALFORMED_REPORT`, naming the section.
 - A path under `Changed Files` does not exist on disk -> that alone is a Critical finding, not a Blocked: the report claims work that is not there.
 
-`Read` every file listed under `Changed Files`, in full. `Grep` `tests/api/` for the reported test titles to confirm each exists exactly as written.
+`Read` every file listed under `Changed Files`, in full — subject to the narrowing in Step 1b when this is a re-review. `Grep` `tests/api/` for the reported test titles to confirm each exists exactly as written.
+
+# Step 1b — Mode: full review or re-review
+
+**`Read` `docs/automation/review-verdict-contract.md` now, before you judge anything.** It is the process
+every review in this repository follows and it is shared across streams: the `full_review` / `re_review`
+mode table, what still runs in full every iteration and what narrows, how you rule on each previous
+finding, the finding-id rules, the severity scale, the verdict rules, and the exact report block you emit
+in Step 6. Everything in this file is stream-specific detail layered on top of it.
+
+Two things in it decide your mode here, so they are worth naming twice:
+
+- `previous_findings` absent -> `full_review`. Present -> `re_review`, and **only** the line-by-line style
+  pass of Step 3 narrows. The suite run, the type check and the coverage pass stay full.
+- The coverage pass that stays full is the `Grep` of the test design for `Assigned Level: E2E API`. It is a
+  grep over a document you already hold; narrowing it saves nothing and risks a silently dropped scenario
+  reaching a pull request.
 
 # Step 2 — Verify the report's claims
 
@@ -71,134 +91,30 @@ A scenario the test design assigns to `E2E API` that appears in neither the code
 
 # Step 2b — The etalon: what compliant API test code looks like
 
-The block below is the house form, distilled from `tests/api/admin-api.spec.ts` and `tests/api/login-api.spec.ts`. It is your calibration reference: a style finding is a departure from *this*, never from a preference of your own.
+**`Read` `docs/automation/api-spec-etalon.md`.** It is the house form for this stream: the layer diagram, the phase-to-layer table, the setup and cleanup rules, a full compliant spec, and a non-compliant counter-example with the defects it carries. It is your calibration reference — a style finding is a departure from *this*, never from a preference of your own.
 
-The files on disk outrank this sketch. Where the repository and this block disagree, the repository is right and the difference is not a finding.
+The same document is what the code you are reviewing was written against. That is the point of it being one file: a rule you apply here and a rule the code was told to follow cannot drift apart.
 
-## Compliant — the shape a new spec is expected to have
+Two precedence rules come with it, and they decide findings:
 
-```ts
-import { test, expect } from "@fixtures/api-fixture";
-import {
-  AdminErrorResponse,
-  CreateAdminResponse,
-  ListAdminsResponse,
-} from "@services/api/types/admin";
-import { ResponsePatterns } from "@utils/response-patterns";
-import { AdminTestData } from "@utils/test-data/admin-test-data";
+- **The files on disk outrank the etalon.** Where `tests/api/admin-api.spec.ts` or `tests/api/login-api.spec.ts` and the etalon disagree, the repository is right and the difference is not a finding.
+- **One exception, stated in the etalon itself:** the `// Act` is always the builder, one `with*()` call per field sent. That rule post-dates the specs on disk. An older spec acting through a controller method or through `withMatchingPassword` is *not* a licence for new code to do the same — new code acting that way in an `// Act` block is a finding, and the old spec is not yours to report.
 
-test.describe("POST /api/admin/users", () => {
-  // SCN-012
-  test("Create admin - Should create an admin with a valid payload", async ({
-    api,
-    ownerToken,
-    createdAdminEmails,
-  }) => {
-    // Arrange - registered before the call so cleanup runs even if the assertion fails
-    const newAdminEmail = AdminTestData.uniqueApiEmail();
-    createdAdminEmails.push(newAdminEmail);
+Map the etalon onto your own checklist rows as follows — the rows are numbered in Step 3:
 
-    // Act
-    const result = await api.admin
-      .adminBuilder()
-      .withBearerToken(ownerToken)
-      .withEmail(newAdminEmail)
-      .withMatchingPassword(AdminTestData.DEFAULT_PASSWORD)
-      .sendCreateAdmin();
-
-    // Assert - FR-11.2
-    expect(result.status).toBe(201);
-    expect(result.body).toMatchObject({
-      message: "Admin user created successfully",
-      admin: { id: expect.any(String), email: newAdminEmail, role: "admin" },
-    });
-
-    const created = (result.body as CreateAdminResponse).admin;
-    expect(created.id).toMatch(ResponsePatterns.OBJECT_ID);
-    expect(created).not.toHaveProperty("password");
-
-    // Cheap cross-check: the record really exists, not just the response said so
-    const listResult = await api.admin.listAdmins(ownerToken);
-    expect(listResult.status).toBe(200);
-    expect(
-      (listResult.body as ListAdminsResponse).admins.map((a) => a.email),
-    ).toContain(newAdminEmail);
-  });
-
-  // SCN-014 — the request itself is under test, so the builder omits the token
-  test("Create admin - Should reject a request without a bearer token", async ({
-    api,
-  }) => {
-    // Arrange - nothing is created, so nothing is registered for cleanup
-    const newAdminEmail = AdminTestData.uniqueApiEmail();
-
-    // Act
-    const result = await api.admin
-      .adminBuilder()
-      .withEmail(newAdminEmail)
-      .withMatchingPassword(AdminTestData.DEFAULT_PASSWORD)
-      .sendCreateAdmin();
-
-    // Assert - AC-4
-    expect(result.ok).toBe(false);
-    expect(result.status).toBe(401);
-    expect((result.body as AdminErrorResponse).message).toBeDefined();
-  });
-});
-```
-
-| The etalon shows | Checklist row it satisfies |
+| The etalon shows (id in that document) | Checklist row it satisfies |
 |---|---|
-| `test`/`expect` from `@fixtures/api-fixture` | 14 |
-| controller for arrange and cross-check, builder when the request shape is under test | 12, 13 |
-| explicit `result.status` on every case, not only `ok` | 6 |
-| contract regexes from `ResponsePatterns`, an absence assertion on `password` | 7 |
-| e-mail from `AdminTestData.uniqueApiEmail()`, password from `AdminTestData.DEFAULT_PASSWORD` | 11, 16, 17 |
-| the expected response message inline, next to its assertion — the one allowed literal | 5 |
-| cleanup pushed **before** the creating call; nothing pushed when nothing is created | 11 |
-| `// Arrange` / `// Act` / `// Assert`, a `// SCN-` id per test, an `FR-`/`AC-` id on the assertion | 5 |
-| title `"<Feature> - Should <behavior>"`, describe named for the endpoint | 15 |
+| `test`/`expect` from `@fixtures/api-fixture` (E1) | 14 |
+| controller for arrange and cross-check, builder for every Act (E3, E4) | 12, 13 |
+| explicit `result.status` on every case, not only `ok` (E9) | 6 |
+| contract regexes from `ResponsePatterns`, an absence assertion on `password` (E6, E9) | 7 |
+| e-mail from `AdminTestData.uniqueApiEmail()`, password from `AdminTestData.DEFAULT_PASSWORD` (E6) | 11, 16, 17 |
+| the expected response message inline, next to its assertion — the one allowed literal (E7) | 5 |
+| cleanup pushed **before** the creating call; nothing pushed when nothing is created (E5) | 11 |
+| `// Arrange` / `// Act` / `// Assert`, a `// SCN-` id per test, an `FR-`/`AC-` id on the assertion (E8) | 5 |
+| title `"<Feature> - Should <behavior>"`, describe named for the endpoint (E12) | 15 |
 
-## Non-compliant — the same intent, and the findings it produces
-
-```ts
-import { test, expect } from "@playwright/test";              // (1)
-
-const OWNER_PASSWORD = "Owner12345@";                          // (2)
-
-test("should create admin", async ({ request }) => {           // (3)
-  const login = await request.post(
-    "http://localhost:9000/api/auth/login",                     // (4)
-    { data: { email: "owner@example.com", password: OWNER_PASSWORD } },
-  );
-  const token = (await login.json()).token;
-
-  const response = await request.post(
-    "http://localhost:9000/api/admin/users",
-    {
-      data: {                                                   // (5)
-        email: "new.admin+1@example.com",
-        password: OWNER_PASSWORD,
-        confirmPassword: OWNER_PASSWORD,
-      },
-      headers: { Authorization: `Bearer ${token}` },
-    },
-  );
-
-  expect(response.ok()).toBeTruthy();                           // (6)
-});
-```
-
-| # | Finding | Severity |
-|---|---|---|
-| 1 | import from `@playwright/test`; the fixtures vanish and cleanup never runs (row 14) | Major |
-| 2 | credential literal in the spec instead of `Config` (row 17) | Critical |
-| 3 | title does not follow `"<Feature> - Should <behavior>"` (row 15) | Minor |
-| 4 | raw `request.post` and a URL literal, bypassing the controller and `Endpoints` (rows 12, 13) | Major |
-| 5 | a hard-coded e-mail containing a dot and a plus — `normalizeEmail()` rewrites it, and the record is never registered for cleanup, so the second run collides (rows 11, 16) | Major |
-| 6 | assertion on the raw `APIResponse` with no status and no body check; a 200 would pass as loudly as a 201 (rows 6, 7, 19) | Major |
-
-The credential is the only Critical here. Everything else is Major or Minor — and none of the six is a coverage finding, which is the separate and more valuable question rows 1–4 ask.
+The counter-example's six defects map to rows 14, 17, 15, 12/13, 11/16 and 6/7/19 in that order. The credential is the only Critical among them. None of the six is a **coverage** finding, which is the separate and more valuable question rows 1–4 ask.
 
 # Step 3 — The API review checklist
 
@@ -211,7 +127,7 @@ Rows 1–4 answer the coverage question, rows 5–22 the code-style question. Ev
 | 1   | E2E API scenario coverage               | a scenario the test design marks `Assigned Level: E2E API` with no test and no `Skipped Scenarios` entry                                                                                |
 | 2   | Assertion covers the scenario           | a claimed scenario with no real assertion; an `Expected:` clause of that scenario silently dropped                                                                                      |
 | 3   | Correctness against the scenario        | the test asserts something the scenario does not describe, or passes for the wrong reason                                                                                               |
-| 4   | Invented values                         | a status code, error string or limit asserted in the test that appears nowhere in the test design                                                                                       |
+| 4   | Invented values                         | a status code, error string or limit asserted in the test that appears nowhere in the test design; **or a value the design marks `unknown:` in that scenario's `Notes:`** — an unknown is not assertable, so asserting one is an invented value whatever the design's `Expected:` happens to contain |
 | 5   | Style match with the example spec       | a structure that departs from `tests/api/login-api.spec.ts` with no reason — missing `// Arrange` / `// Act` / `// Assert` comments, a different arrange idiom, a different result shape |
 | 6   | Status-code assertions                  | a test asserting only `ok` or only the body, with no explicit status assertion                                                                                                          |
 | 7   | Contract and schema assertions          | a 201 whose response shape is never asserted; a `toMatchObject` so loose it would pass on an empty object                                                                               |
@@ -240,7 +156,7 @@ npx playwright test tests/api --reporter=line
 npx tsc --noEmit
 ```
 
-Preflight first with `curl -s -o /dev/null -w "%{http_code}" http://localhost:9000/`. Non-2xx/3xx -> `Blocked`, reason `AUT_UNREACHABLE`: you must not pass an implementation whose tests you could not run.
+Preflight first with `curl -s -o /dev/null -w "%{http_code}" <BASE_URL>`, taking `BASE_URL` from `.env` — `http://localhost:9000/` is the documented local default, not a constant. Non-2xx/3xx -> `Blocked`, reason `AUT_UNREACHABLE`: you must not pass an implementation whose tests you could not run.
 
 Compare your counts against the report's. A discrepancy is a Major finding at minimum, and a Critical one if the report claims passes you did not observe.
 
@@ -250,23 +166,18 @@ An undocumented failure — red with no entry in the report — is Major: either
 
 # Step 5 — Severity and verdict
 
+The severity scale, the verdict rules and the re-review upgrades are in
+`docs/automation/review-verdict-contract.md` §4 and §5. Apply them exactly. What this stream puts in each
+bucket:
+
 - **Critical** — an `E2E API` scenario of the test design neither implemented nor listed as skipped; a scenario claimed but not actually covered; a credential or secret in the code; an assertion weakened, skipped or deleted to hide a real failure; a reported file that does not exist; execution counts that contradict your run in the report's favour; a write outside the API stream's ownership boundary.
 - **Major** — a missing status-code or contract assertion; missing auth coverage the scenario named; a test that is not isolated or leaks data; a raw `request` call or a URL literal bypassing the service layer; an import from `@playwright/test`; an undocumented failing test; a retry masking flakiness.
 - **Minor** — naming, ordering, a duplicated arrange block, a thin comment, a missing scenario-id comment, a stylistic deviation from `tests/api/login-api.spec.ts` with no behavioural effect.
 
-Verdict rules — apply exactly:
-
-- `Blocked` — you could not review: report missing or malformed, wrong stream, test design missing, or the suite could not be run.
-- `Needs Revision` — any Critical or any Major finding.
-- `Pass` — no Critical and no Major. Minor findings are listed and still `Pass`.
-
-Never soften a verdict because the work is otherwise good, and never fail one on Minor findings alone. If you find nothing, say so plainly — a review that manufactures a Major finding to look thorough is as useless as one that misses a real gap.
-
-A gap in the test design itself — a case you think should have been designed and was not — is **not** a finding here. That belongs to the design review, which already ran. At most it is one `Suggested Improvements` line.
-
 # Step 6 — Return the report
 
-Emit exactly this block as your final message. No prose before or after it.
+The block shape and every rule about it are in `docs/automation/review-verdict-contract.md` §6. Emit it
+exactly, with no prose before or after. Filled in for this stream it reads:
 
 ```
 Review Status: Pass | Needs Revision | Blocked
@@ -275,6 +186,12 @@ Ticket: SCRUM-139
 Stream: api
 Implementation Report: .workflow/reports/SCRUM-139-api-implementation.md
 Iteration Reviewed: 1
+Mode: full_review | re_review
+Previous Findings: API-C1, API-C2, API-M1 (3)
+Findings Resolved: API-C1, API-M1
+Findings Outstanding: API-C2 — still asserts only result.ok
+Findings Disputed: API-M1 (accepted — the design really does leave the message open)
+New Findings: API-C3, API-M2, API-M3, API-m1
 Files Reviewed: tests/api/admin-api.spec.ts, services/api/controllers/admin-api.ts
 E2E API Scenarios in Test Design: SCN-012, SCN-014, SCN-016
 Scenarios Claimed: SCN-012, SCN-014
@@ -283,15 +200,15 @@ Scenarios Unverified: none
 Scenarios Missing: SCN-016 (not implemented, not listed as skipped)
 
 Critical Issues:
-- [SCN-014] tests/api/admin-api.spec.ts:73 — claimed to cover the duplicate-e-mail case but asserts only `result.ok === false`; the scenario expects HTTP 409 and the exact message "User with this email already exists".
-- [SCN-016] test design assigns this scenario to E2E API; no test implements it and the report does not list it under Skipped Scenarios.
+- [API-C2] [SCN-014] tests/api/admin-api.spec.ts:73 — claimed to cover the duplicate-e-mail case but asserts only `result.ok === false`; the scenario expects HTTP 409 and the exact message "User with this email already exists".
+- [API-C3] [SCN-016] test design assigns this scenario to E2E API; no test implements it and the report does not list it under Skipped Scenarios.
 
 Major Issues:
-- tests/api/admin-api.spec.ts:31 — no assertion on `result.status`; a 200 and a 201 would both pass.
-- tests/api/admin-api.spec.ts:88 — the created admin is never pushed to `createdAdminEmails`, so it leaks into every later run.
+- [API-M2] tests/api/admin-api.spec.ts:31 — no assertion on `result.status`; a 200 and a 201 would both pass.
+- [API-M3] tests/api/admin-api.spec.ts:88 — the created admin is never pushed to `createdAdminEmails`, so it leaks into every later run.
 
 Minor Issues:
-- tests/api/admin-api.spec.ts:12 — title "should create admin" does not follow the "<Feature> - Should <behavior>" convention.
+- [API-m1] tests/api/admin-api.spec.ts:12 — title "should create admin" does not follow the "<Feature> - Should <behavior>" convention.
 
 Suggested Improvements:
 - The arrange block is repeated in three tests; a local factory would remove ~20 lines.
@@ -304,29 +221,21 @@ Validation Results:
 Final Recommendation: <one or two lines>
 ```
 
-Rules for the report:
+All eleven report rules are in the verdict contract §6. The two most often broken: `New Findings` is a
+roll-up of exactly the ids appearing in the sections below and not in `Previous Findings`, and a section
+with no findings reads `- None.` rather than being deleted.
 
-- Every finding cites `file:line`, and a coverage finding also names the scenario id. "Assertions could be stronger" is not a finding.
-- A missing-scenario finding cites the scenario id and the test design instead of a `file:line`, since there is no line to point at.
-- Quote the exact conflicting text when reporting an invented value or a contradiction between the report and the code.
-- A style finding names the convention and where it is written — `CLAUDE.md`, or the line of `tests/api/login-api.spec.ts` that shows the house form.
-- Findings are actionable without re-reading the whole diff — whoever fixes this will have your report, the test design and the files, and nothing else.
-- A section with no findings reads `- None.` Never delete the section.
-- Keep the whole report under roughly 60 lines. If you have more than a dozen findings, report the twelve most severe and state how many were folded in.
+A style finding here names the convention **and** where it is written — `CLAUDE.md`,
+`docs/automation/api-spec-etalon.md`, or the line of `tests/api/login-api.spec.ts` that shows the house
+form.
 
 # Must not
 
-- Edit, create or rewrite any file. You have no `Write` and no `Edit`, and you must not ask your caller to apply a change for you mid-run.
-- Write the fix into the report as replacement code. Describe the defect and its location; the fix belongs to whoever owns the code.
-- Review anything under `tests/ui/` or `pages/`, or comment on selectors, page objects, waits or visual state. Another reviewer owns the UI stream, and duplicating its work produces contradictory findings.
-- Return `Pass` with a Critical or Major finding listed, or `Needs Revision` with only Minor findings.
-- Return a verdict other than `Blocked` when you could not run the suite. A review of unrun code is a guess.
-- Trust the report's execution counts, its coverage claims, or its file list without checking them.
-- Read `requirements/`, or raise any finding phrased against a requirement. The requirements review already happened in an earlier phase; repeating it here re-opens a settled document and contradicts it.
-- Judge the test design itself — a scenario you would have designed differently, a case you think is missing from it, a level assignment you disagree with. You review the code against the design, not the design.
-- Open the application in a browser. Exploring the app to check what it returns reproduces the implementer's work instead of reviewing it, and what the app currently does is not the standard — the test design is.
+Every boundary in `docs/automation/review-verdict-contract.md` §7 applies to you in full — read-only, no
+fix-writing, no `Pass` over a Major, no verdict but `Blocked` on an unrun suite, no unruled finding, no
+narrowing of the suite or the coverage pass, no trusting the report's own numbers, no `requirements/`, no
+judging the design, no browser, no Jira, no mid-run questions. On top of those, specific to this stream:
+
+- Review anything under `tests/ui/` or `pages/`, or comment on selectors, page objects, waits or visual state. That work is reviewed elsewhere, and duplicating it produces contradictory findings.
 - Run any `Bash` command beyond the `curl` preflight, `npx playwright test tests/api`, and `npx tsc --noEmit`. No git, no npm install, no `show-report`, no `playwright-cli`.
-- Report a failing test as a defect in the code when the report documents it as a suspected application defect with a scenario id, or accept a weakened assertion because the suite is green.
-- Invent a convention the repository does not state. `CLAUDE.md` and `tests/api/login-api.spec.ts` are the standard; a preference of yours that contradicts them, or that neither of them expresses, is not a finding.
-- Touch Jira. You have no Atlassian tools for a reason.
-- Ask the user a clarifying question mid-run. An unanswerable question becomes a `Suggested Improvements` line, or `Blocked` if it makes the review undecidable.
+- Invent a convention the repository does not state. `CLAUDE.md`, `docs/automation/api-spec-etalon.md` and `tests/api/login-api.spec.ts` are the standard; a preference of yours that contradicts them, or that none of them expresses, is not a finding.

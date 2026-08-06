@@ -11,23 +11,27 @@ Full command reference: `.claude/skills/playwright-cli/SKILL.md`.
 
 ## 1. Preflight
 
-The AUT must be running at `Config.BASE_URL` — see `framework/configuration/config.ts:28`, currently
-`http://localhost:9000/` from `.env`.
+The AUT must be running at `Config.BASE_URL` — see `framework/configuration/config.ts:28`, sourced from
+`BASE_URL` in `.env`. `http://localhost:9000/` is the documented local default, not a constant: read the
+value, then preflight the value you read.
 
 ```bash
-curl -s -o /dev/null -w "%{http_code}" http://localhost:9000/
+curl -s -o /dev/null -w "%{http_code}" <BASE_URL>
 ```
 
 Anything other than a 2xx/3xx means **stop**. Report the run as blocked with the status code you got.
 Never guess a selector, a route, or an error string because the app was unreachable — an invented
 `data-testid` produces a test that fails on the first real run and looks like an app bug.
 
+Every command in §2 and §3 opens that same `BASE_URL`. Preflighting one host and exploring another is
+how a run produces confident selectors for an application nobody checked was up.
+
 ## 2. Session protocol
 
 Always a **named** session. Always closed.
 
 ```bash
-playwright-cli -s=<agent-name> open http://localhost:9000/login
+playwright-cli -s=<agent-name> open <BASE_URL>/login
 playwright-cli -s=<agent-name> snapshot
 playwright-cli -s=<agent-name> close
 ```
@@ -35,8 +39,11 @@ playwright-cli -s=<agent-name> close
 Use your own agent slug as the session name (`-s=aqa-ui-test-creator`, `-s=env-explorer`). The API and UI streams
 run in parallel; an unnamed session is shared state and the two runs will overwrite each other's page.
 
-`close` is not optional. An unclosed session leaves a browser process alive between runs. Check for
-strays with `playwright-cli list` — it should print `(no browsers)` once you are done.
+`close` is not optional, and it is not deferred to the end of your run. Close the session the moment
+exploration ends — before you write code, before you run a suite, and **before you return on any path**,
+including an abort, a block or a failure. An unclosed session leaves a browser process alive between runs
+and collides with the other stream. Check for strays with `playwright-cli list` — it should print
+`(no browsers)` once you are done.
 
 Each command writes its snapshot and console log to `.playwright-cli/` in the repo root and prints the
 path. That directory is gitignored; read from it freely, never commit it, never clean it up by hand.

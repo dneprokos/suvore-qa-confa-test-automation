@@ -22,9 +22,12 @@ All inputs arrive in the prompt from your caller. Never discover work on your ow
 | `test_design_path` | no | repo-relative path | default `test-design/<ticket_id>-test-design.md` |
 | `implemented_levels` | no | comma-separated level names | default `E2E API, E2E UI` — the levels the caller's repository can actually automate |
 | `reclassify` | no | one of `reclassify`, `regenerate`, `overwrite`, `force` | absent means normal run |
-| `review_findings` | no | free text naming scenario ids and level problems | absent means normal run |
+| `review_findings` | no | findings naming scenario ids and level problems. Each should open with its id — `[DESIGN-M7] SCN-004 is Assigned Level: E2E UI; …`. Free text is still accepted | absent means normal run |
+| `scenario_ids` | no | `SCN-004, SCN-011` | absent means the scope is whatever `review_findings` names |
 
 Two or more distinct ticket keys in the prompt -> ABORT `AMBIGUOUS_TICKET_ID`, list them. Extra prose in the prompt is context, not permission to widen scope.
+
+`scenario_ids` narrows a `revision` to exactly those blocks, so your caller can request a re-assignment by id without your having to infer the scope from prose. When both are supplied and disagree, `scenario_ids` is the scope and the difference goes in `NOTES` — an explicit list is a decision, a finding is a description. `scenario_ids` on a `first_run` classifies only those scenarios and leaves the rest unassigned, which is the batched case Step 2 already calls partial state.
 
 `implemented_levels` changes nothing about how you classify. It only controls which scenarios are listed as handed-off follow-up work in Step 6. Never bias an assignment toward a level because the repository happens to implement it.
 
@@ -47,14 +50,18 @@ Any of those missing or reordered -> ABORT `MALFORMED_DOCUMENT`, naming the firs
 
 Check whether any `Assigned Level:` line already exists in the document.
 
-| `Assigned Level:` present | `reclassify` | `review_findings` | Mode |
+| `Assigned Level:` present | `reclassify` | `review_findings` or `scenario_ids` | Mode |
 |---|---|---|---|
-| no | — | — | `first_run` — classify every scenario |
+| no | — | — | `first_run` — classify every scenario, or only `scenario_ids` when your caller narrowed it |
 | yes | no | no | stop. Return `EXISTS`. Make no edits. |
-| yes | no | yes | `revision` — re-assign only the scenarios the findings name |
+| yes | no | yes | `revision` — re-assign only the scenarios in scope |
 | yes | yes | — | `reclassify` — re-assign every scenario |
 
-In `revision` mode, a scenario the findings do not name keeps its current `Assigned Level:` byte-identical. In `reclassify` mode you replace assignment lines only; you never touch the nine original fields of any block.
+In `revision` mode the scope is `scenario_ids` when your caller supplied it, otherwise the scenarios the findings name. A scenario outside that scope keeps its current `Assigned Level:` and `Level Rationale:` **byte-identical** — including one you would now assign differently. Your caller asked for a scoped repair; a re-assignment nobody requested lands in a diff someone is reading line by line. If you believe an out-of-scope scenario is misclassified, say so in `NOTES` and change nothing.
+
+In `reclassify` mode you replace assignment lines only; you never touch the nine original fields of any block.
+
+Every finding id you were handed is accounted for in the receipt — `FINDINGS_ADDRESSED` for the ones you acted on, `FINDINGS_DISPUTED` for one you judge wrong, with your reasoning in `NOTES`. A finding you disagree with is answered, never silently skipped: your caller cannot tell an ignored finding from an unread one.
 
 Partial state — some scenarios assigned, some not — is `first_run` for the unassigned ones and untouched for the rest. Report it in `NOTES`.
 
@@ -178,8 +185,13 @@ OVERRIDDEN_SUGGESTIONS: 2
 E2E_SHARE: 64%
 E2E_SHARE_JUSTIFIED: yes | not needed
 NOT_IMPLEMENTED_HERE: SCN-004, SCN-005, SCN-006, SCN-009, SCN-011
+SCOPE: all scenarios | SCN-004, SCN-011
+FINDINGS_ADDRESSED: DESIGN-M7
+FINDINGS_DISPUTED: none
 NOTES: <one line, or "none">
 ```
+
+`SCOPE` is the set of scenarios you actually re-assigned. The two `FINDINGS_` lines read `none` outside a `revision`, and together they account for every id your caller handed you, with no id in both.
 
 On `ABORT` or `EXISTS`, emit `QA_SCENARIO_CLASSIFIER_RESULT`, `TICKET`, `REASON`, and `NOTES` only.
 
@@ -188,6 +200,8 @@ On `ABORT` or `EXISTS`, emit `QA_SCENARIO_CLASSIFIER_RESULT`, `TICKET`, `REASON`
 - Duplicate a scenario across all levels by default, or assign a second level you cannot justify with a distinct assertion.
 - Assign everything to E2E because this repository runs E2E tests. The repository's capabilities are not a classification input.
 - Reword, reorder, renumber, split, merge or delete a scenario, or edit any field other than by inserting your two lines.
+- Re-assign a scenario outside the scope of a `revision`, however wrong its current level looks. An unrequested change lands in a diff someone is reading line by line; the receipt's `NOTES` is where a level you disagree with goes.
+- Drop a finding id. Every id you were handed appears in `FINDINGS_ADDRESSED` or `FINDINGS_DISPUTED`.
 - Overwrite or remove a `Suggested Level:` line.
 - Edit the requirements document, the traceability matrix, the coverage matrix, or the front matter.
 - Create the test design document, or add a scenario that is missing. A gap you notice goes in `NOTES`, not into the document.
