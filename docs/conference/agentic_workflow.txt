@@ -1,0 +1,993 @@
+# QA Lead Multi-Agent Workflow
+
+The **QA Lead Agent** acts as the main orchestrator of the entire quality engineering workflow. It receives a Jira ticket, delegates tasks to specialized sub-agents, tracks generated artifacts, reviews agent results, and decides whether the workflow can proceed or should return to an earlier phase.
+
+The QA Lead should coordinate the work but should not perform detailed requirement analysis, scenario generation, or test implementation itself.
+
+---
+
+# Agent Roster
+
+Every agent below has a canonical slug (matches a future `.claude/agents/<slug>.md`) and a display name. Use the slug in configuration and tooling; use the display name in conversation and reports.
+
+| Slug | Display Name | Phase |
+|---|---|---|
+| `qa-lead` | QA Lead | Orchestrator |
+| `qa-requirements-collector` | Requirements Collector | 1 — Test Design |
+| `qa-requirements-reviewer` | Requirements Reviewer (optional) | 1 — Test Design |
+| `qa-scenario-generator` | Scenario Generator | 1 — Test Design |
+| `qa-scenario-classifier` | Scenario Classifier | 1 — Test Design |
+| `qa-scenario-reviewer` | Scenario Reviewer | 1 — Test Design |
+| `aqa-api-test-creator` | API E2E SDET | 2 — Test Automation |
+| `aqa-ui-test-creator` | UI E2E SDET | 2 — Test Automation |
+| `aqa-api-test-reviewer` | API Test Reviewer | 2 — Test Automation |
+| `aqa-ui-test-reviewer` | UI Test Reviewer | 2 — Test Automation |
+| `git-workflow-agent` | Git Workflow Agent | 2 — Test Automation |
+
+**Slug namespacing.** Phase 1 agents are prefixed `qa-` and write only to `requirements/` and `test-design/`; they never touch `tests/`. Phase 2 agents are prefixed `aqa-` — the marker for every agent that writes or reviews test code — followed by the stream (`aqa-api-`, `aqa-ui-`), and they are the only agents that write test code. The prefix and the agent's tool grant must always agree, so the slug alone tells you what an agent is allowed to modify.
+
+This repository only implements E2E API and E2E UI automation with Playwright. Unit, Component, and Integration tests belong to the application repository and are out of scope for this workflow — see [Future Phases](#future-phases).
+
+---
+
+# High-Level Workflow
+
+```text
+qa-lead — QA Lead (Main Orchestrator)
+│
+├── Phase 1: Test Design
+│   │
+│   ├── qa-requirements-collector — Requirements Collector
+│   │      • Read the Jira ticket
+│   │      • Move the ticket to In Progress
+│   │      • Collect all relevant ticket information
+│   │      • Collect subtasks and linked issues
+│   │      • Create the local requirements document
+│   │
+│   ├── qa-requirements-reviewer — Requirements Reviewer — Optional
+│   │      • Identify ambiguities
+│   │      • Identify missing acceptance criteria
+│   │      • Add QA notes
+│   │      • Add risks and open questions
+│   │
+│   ├── qa-scenario-generator — Scenario Generator
+│   │      • Generate test scenarios
+│   │      • Cover positive, negative, boundary, and error cases
+│   │      • Add requirement traceability
+│   │
+│   ├── qa-scenario-classifier — Scenario Classifier
+│   │      • Unit
+│   │      • Component
+│   │      • Integration
+│   │      • E2E API
+│   │      • E2E UI
+│   │
+│   ├── qa-scenario-reviewer — Scenario Reviewer
+│   │      • Review coverage
+│   │      • Find missing scenarios
+│   │      • Detect duplicate scenarios
+│   │      • Validate testing-level assignments
+│   │      • Verify traceability
+│   │
+│   └── qa-lead — QA Lead Decision
+│          • Accept test design
+│          • Request revision
+│          • Escalate open questions
+│          • Continue to Test Automation
+│
+├── Phase 2: Test Automation
+│   │
+│   ├── aqa-api-test-creator — API E2E SDET
+│   │      • Read the approved test design
+│   │      • Identify E2E API scenarios
+│   │      • Implement automated API tests
+│   │      • Run relevant validation checks
+│   │      • Return created test names and changed files
+│   │
+│   ├── aqa-api-test-reviewer — API Test Reviewer
+│   │      • Review new E2E API automation code
+│   │      • Check contracts, status codes, and payload/schema assertions
+│   │      • Check auth and permission coverage
+│   │      • Check test data setup and cleanup
+│   │      • Run static analysis and relevant tests
+│   │      • Return Pass or Needs Revision
+│   │
+│   ├── aqa-ui-test-creator — UI E2E SDET
+│   │      • Work in parallel with the API E2E SDET
+│   │      • Read the approved test design
+│   │      • Identify E2E UI scenarios
+│   │      • Implement automated UI tests
+│   │      • Run relevant validation checks
+│   │      • Return created test names and changed files
+│   │
+│   ├── aqa-ui-test-reviewer — UI Test Reviewer
+│   │      • Review new E2E UI automation code
+│   │      • Check page-object usage and selector stability
+│   │      • Check for fixed waits and flaky patterns
+│   │      • Check visual/state assertions
+│   │      • Run static analysis and relevant tests
+│   │      • Return Pass or Needs Revision
+│   │
+│   ├── git-workflow-agent — Git Workflow Agent or Git Workflow Skills
+│   │      • Create a feature branch
+│   │      • Commit approved changes
+│   │      • Push the branch
+│   │      • Create a pull request
+│   │      • Add Jira and test-design references
+│   │
+│   └── qa-lead — QA Lead Final Decision
+│          • Accept automation results
+│          • Request code changes
+│          • Return work to the responsible agent
+│          • Create follow-up tasks
+│          • Continue to test execution or reporting
+│
+└── Future Phases
+       • Unit, Component, and Integration coverage (application repo)
+       • Automated test execution
+       • Result analysis
+       • Defect creation
+       • Quality reporting
+       • Release recommendation
+```
+
+# Phase 1: Test Design
+
+## 1. Jira Ticket Intake
+
+The workflow begins when the QA Lead receives a Jira ticket from the configured Todo queue.
+
+The QA Lead creates or updates the workflow state for the ticket. The workflow state should contain at least:
+
+* Jira ticket ID
+* Current workflow phase
+* Current workflow status
+* Requirements document path
+* Test design document path
+* Review status
+* Automation status
+* Pull request links
+* Iteration count
+* Open questions
+* Blocking issues
+
+The QA Lead then assigns the ticket to the `qa-requirements-collector`.
+
+---
+
+## 2. qa-requirements-collector — Requirements Collector
+
+**Goal:** Turn a Jira ticket into a complete, testing-oriented requirements document that later agents can work from without re-reading Jira.
+
+**Inputs:** Jira ticket ID.
+
+**Outputs:** `requirements/<TICKET-ID>-requirements.md`; ticket transitioned to `In Progress`.
+
+**Done when:** all acceptance criteria, subtasks, linked issues, and dependencies are captured in the document and the ticket is `In Progress`.
+
+**Must not:** invent acceptance criteria; overwrite or silently modify the original Jira content.
+
+The Requirements Collector is responsible for retrieving and structuring all information related to the Jira ticket.
+
+The agent should:
+
+1. Retrieve the Jira ticket.
+2. Retrieve its description and acceptance criteria.
+3. Retrieve relevant comments.
+4. Retrieve subtasks.
+5. Retrieve linked issues.
+6. Retrieve attachments or referenced documentation when accessible.
+7. Identify dependencies and affected application areas.
+8. Move the Jira ticket to `In Progress` when the ticket is valid and the workflow can start.
+9. Create a local requirements document.
+
+The document should be saved using the Jira ticket ID.
+
+Example:
+
+```text
+requirements/ABC-123-requirements.md
+```
+
+The requirements document should contain:
+
+```text
+# Ticket Summary
+
+# Original Description
+
+# Acceptance Criteria
+
+# Subtasks
+
+# Linked Issues
+
+# Dependencies
+
+# Affected Components
+
+# Testing-Relevant Information
+
+# Known Constraints
+
+# Existing Open Questions
+```
+
+The original Jira information should not be overwritten or silently modified.
+
+---
+
+## 3. qa-requirements-reviewer — Requirements Reviewer
+
+**Goal:** Catch testing-relevant gaps in the requirements document before scenarios are generated from it.
+
+**Inputs:** `requirements/<TICKET-ID>-requirements.md`.
+
+**Outputs:** the same document, extended with QA Review Notes, Missing Information, Identified Risks, Assumptions, and Open Questions sections.
+
+**Done when:** every acceptance criterion has been checked for ambiguity, missing validation/error/permission/boundary/integration/data/observability detail, and risks/assumptions/open questions are recorded.
+
+**Must not:** remove or rewrite sections written by `qa-requirements-collector`.
+
+The Requirements Reviewer is an optional agent.
+
+Instead of using a negatively phrased configuration such as:
+
+```text
+is_trust_to_requirements
+```
+
+the workflow should use a clearer parameter:
+
+```text
+review_requirements: true
+```
+
+The default value should be:
+
+```text
+review_requirements: true
+```
+
+When enabled, the Requirements Reviewer analyzes the requirements document from a testing perspective.
+
+It should identify:
+
+* Ambiguous requirements
+* Missing acceptance criteria
+* Missing validation rules
+* Missing error-handling behavior
+* Missing permission and authorization rules
+* Missing boundary conditions
+* Missing integration details
+* Missing data requirements
+* Missing observability or logging requirements
+* Risks
+* Assumptions
+* Open questions
+
+The agent must not remove or rewrite previous sections.
+
+It should append sections such as:
+
+```text
+# QA Review Notes
+
+# Missing Information
+
+# Identified Risks
+
+# Assumptions
+
+# Open Questions
+```
+
+The initial version of the workflow may leave the questions unresolved. Later, this can be extended with an escalation mechanism that sends questions to the Product Owner, Business Analyst, Developer, or Jira ticket owner.
+
+---
+
+## 4. qa-scenario-generator — Scenario Generator
+
+**Goal:** Derive a complete, traceable set of test scenarios from the (optionally reviewed) requirements document.
+
+**Inputs:** `requirements/<TICKET-ID>-requirements.md` only — not the full Jira retrieval conversation.
+
+**Outputs:** `test-design/<TICKET-ID>-test-design.md` containing all scenarios.
+
+**Done when:** happy path, negative, boundary, validation, error, permission, data, integration, retry/timeout, state-transition, non-functional, and regression-impact cases are covered, each traced to a requirement.
+
+**Must not:** classify testing levels or assign automation suitability beyond a first suggestion — that is `qa-scenario-classifier`'s job to finalize.
+
+After the requirements document has been prepared and optionally reviewed, the QA Lead assigns it to the Scenario Generator.
+
+The Scenario Generator should preferably operate in a fresh context. Its primary input should be the local requirements document rather than the entire Jira retrieval conversation.
+
+The agent should generate scenarios covering:
+
+* Happy paths
+* Negative paths
+* Boundary conditions
+* Validation rules
+* Error handling
+* Permission and authorization cases
+* Data-related cases
+* Integration behavior
+* Retry and timeout behavior
+* State transitions
+* Relevant non-functional risks
+* Regression impact
+
+The scenarios should be stored in a separate document.
+
+Example:
+
+```text
+test-design/ABC-123-test-design.md
+```
+
+Each scenario should contain:
+
+* Scenario ID
+* Scenario title
+* Requirement reference
+* Preconditions
+* Action or behavior
+* Expected result
+* Priority
+* Suggested testing level
+* Automation suitability
+* Notes or dependencies
+
+Example:
+
+```text
+## SCN-001: Create a valid resource
+
+Requirement: AC-01
+Priority: High
+Preconditions: An authenticated user has resource creation permissions.
+
+When:
+The user sends a valid resource creation request.
+
+Then:
+The resource is created successfully and a valid identifier is returned.
+```
+
+---
+
+## 5. qa-scenario-classifier — Scenario Classifier
+
+**Goal:** Assign each scenario to the testing level(s) where it delivers the most diagnostic value for the least cost.
+
+**Inputs:** `test-design/<TICKET-ID>-test-design.md`.
+
+**Outputs:** the same document, with each scenario's testing level(s) finalized.
+
+**Done when:** every scenario has at least one assigned level, and E2E is reserved for critical journeys rather than applied by default.
+
+**Must not:** duplicate every scenario across all levels automatically.
+
+The Scenario Classifier reviews the generated scenarios and assigns each scenario to the most appropriate testing level.
+
+Supported levels should include:
+
+* Unit
+* Component
+* Integration
+* E2E API
+* E2E UI
+
+A scenario may be assigned to multiple levels when different aspects of the same behavior should be verified at different layers.
+
+However, the classifier should avoid automatically duplicating every scenario at all levels. It should select the lowest practical testing level while reserving E2E tests for critical user journeys, service interactions, and system-level validation.
+
+The classifier should consider:
+
+* Where the logic is implemented
+* Required external dependencies
+* Required application layers
+* Cost of execution
+* Execution speed
+* Stability
+* Diagnostic value
+* Business criticality
+
+All five levels are still classified, even though this workflow only implements E2E API and E2E UI. Scenarios classified as Unit, Component, or Integration are kept in the test design for traceability and are handed off as follow-up work for the application repository — see [Future Phases](#future-phases). They are not implemented by this workflow.
+
+---
+
+## 6. qa-scenario-reviewer — Scenario Reviewer
+
+**Goal:** Independently validate that the test design is complete, correctly classified, and free of duplication before automation starts.
+
+**Inputs:** `test-design/<TICKET-ID>-test-design.md`, `requirements/<TICKET-ID>-requirements.md`.
+
+**Outputs:** a structured review report (see below).
+
+**Done when:** a `Pass`, `Needs Revision`, or `Blocked` verdict is returned with concrete findings.
+
+**Must not:** be the same agent instance/context that generated or classified the scenarios.
+
+The Scenario Reviewer should operate independently from the agents that created and classified the scenarios.
+
+The reviewer should evaluate:
+
+* Requirement coverage
+* Acceptance-criteria coverage
+* Missing positive scenarios
+* Missing negative scenarios
+* Missing boundary cases
+* Duplicate scenarios
+* Contradictory scenarios
+* Invalid assumptions
+* Incorrect testing-level assignments
+* Excessive E2E coverage
+* Missing lower-level coverage
+* Traceability between requirements and scenarios
+* Automation suitability
+
+The reviewer should return a structured result:
+
+```text
+Review Status: Pass | Needs Revision | Blocked
+
+Coverage Summary:
+...
+
+Missing Scenarios:
+...
+
+Incorrect Classifications:
+...
+
+Duplications:
+...
+
+Risks:
+...
+
+Required Changes:
+...
+```
+
+---
+
+## 7. qa-lead — QA Lead Test Design Decision
+
+**Goal:** Gate the transition from design to automation based on the scenario review report.
+
+**Inputs:** `test-design/<TICKET-ID>-test-design.md`, scenario review report.
+
+**Outputs:** one of Accept / Request Revision / Escalate, routed to the correct agent.
+
+**Done when:** a decision is recorded in the workflow state.
+
+The QA Lead evaluates the test design and review report.
+
+It may select one of the following decisions:
+
+### Accept
+
+The test design is approved, and the workflow proceeds to Test Automation.
+
+### Request Revision
+
+The QA Lead sends specific feedback to the responsible agent.
+
+For example:
+
+* Missing scenarios return to `qa-scenario-generator`.
+* Incorrect testing levels return to `qa-scenario-classifier`.
+* Missing requirement information returns to `qa-requirements-collector` or `qa-requirements-reviewer`.
+
+### Escalate
+
+Critical open questions prevent reliable test design or implementation.
+
+The workflow may create a Jira comment, assign a clarification task, or pause until a responsible person provides the required information.
+
+---
+
+# Phase 2: Test Automation
+
+After the test design is approved, the QA Lead starts the Test Automation phase.
+
+This phase runs two parallel automation streams, both operating on this repository's Playwright E2E suite:
+
+1. `aqa-api-test-creator` → `aqa-api-test-reviewer`
+2. `aqa-ui-test-creator` → `aqa-ui-test-reviewer`
+
+---
+
+## 8. aqa-api-test-creator — API E2E SDET
+
+**Goal:** Turn approved E2E API scenarios into working, passing Playwright API tests in this repository.
+
+**Inputs:** `test-design/<TICKET-ID>-test-design.md` (scenarios classified as E2E API).
+
+**Outputs:** implementation report (scenarios implemented, test names, changed files under `tests/api/`, execution results, known limitations).
+
+**Done when:** all selected E2E API scenarios are implemented, the new tests pass, and lint/static-analysis checks pass.
+
+**Must not:** implement UI scenarios or touch `tests/ui/`.
+
+The QA Lead assigns approved E2E API scenarios to the API E2E SDET.
+
+The agent should:
+
+1. Read the approved test design document.
+2. Extract scenarios classified as E2E API.
+3. Inspect the automation repository and existing framework (API clients, fixtures, test data helpers).
+4. Identify reusable clients, fixtures, and test data.
+5. Follow existing project conventions.
+6. Implement the selected tests under `tests/api/`.
+7. Run relevant tests.
+8. Run formatting, linting, or static analysis when available.
+9. Update test documentation or mappings if required.
+10. Return an implementation report to the QA Lead.
+
+The implementation report should include:
+
+```text
+Implemented Scenarios:
+- SCN-012
+- SCN-014
+
+Created Tests:
+- createResourceWithValidPayload
+- rejectResourceCreationWithoutPermission
+
+Changed Files:
+- tests/api/resources/create-resource.spec.ts
+
+Execution Result:
+- Passed: 2
+- Failed: 0
+- Skipped: 0
+
+Known Limitations:
+...
+```
+
+The API E2E SDET should return actual test identifiers and file paths rather than only stating that implementation was completed.
+
+---
+
+## 9. aqa-ui-test-creator — UI E2E SDET
+
+**Goal:** Turn approved E2E UI scenarios into working, passing Playwright UI tests in this repository.
+
+**Inputs:** `test-design/<TICKET-ID>-test-design.md` (scenarios classified as E2E UI).
+
+**Outputs:** implementation report (scenarios implemented, test names, changed files under `tests/ui/`, execution results, known limitations).
+
+**Done when:** all selected E2E UI scenarios are implemented, the new tests pass, and lint/static-analysis checks pass.
+
+**Must not:** implement API scenarios or touch `tests/api/`.
+
+The QA Lead assigns approved E2E UI scenarios to the UI E2E SDET, in parallel with the API E2E SDET.
+
+The agent should:
+
+1. Read the approved test design document.
+2. Extract scenarios classified as E2E UI.
+3. Inspect the automation repository and existing framework (page objects, fixtures, test data).
+4. Identify reusable page objects, helpers, and test data.
+5. Follow existing project conventions.
+6. Implement the selected tests under `tests/ui/`.
+7. Run relevant tests.
+8. Run formatting, linting, or static analysis when available.
+9. Update test documentation or mappings if required.
+10. Return an implementation report to the QA Lead.
+
+The implementation report should include:
+
+```text
+Implemented Scenarios:
+- SCN-021
+
+Created Tests:
+- displayCreatedResourceInResourceList
+
+Changed Files:
+- tests/ui/resources/resource-list.spec.ts
+
+Execution Result:
+- Passed: 1
+- Failed: 0
+- Skipped: 0
+
+Known Limitations:
+...
+```
+
+The UI E2E SDET should return actual test identifiers and file paths rather than only stating that implementation was completed.
+
+---
+
+## 10. aqa-api-test-reviewer — API Test Reviewer
+
+**Goal:** Verify that new API E2E tests are correct, well-scoped, and maintainable before they reach a pull request.
+
+**Inputs:** `aqa-api-test-creator` implementation report and the changed files under `tests/api/`.
+
+**Outputs:** review report (Pass / Needs Revision / Blocked) with critical/major/minor issues and validation results.
+
+**Done when:** a verdict is returned; on `Needs Revision`, findings are specific enough for `aqa-api-test-creator` to act on without re-reading the whole diff.
+
+**Must not:** review UI files or UI-only concerns (selectors, page objects, visual state).
+
+After receiving the API implementation report, the QA Lead assigns the changes to the API Test Reviewer.
+
+The API Test Reviewer should inspect:
+
+* Correctness of implemented behavior
+* Requirement and scenario coverage
+* Status code and contract/schema assertions
+* Payload validation
+* Auth and permission coverage
+* Test independence and isolation
+* Test data creation and cleanup
+* Reusability of API clients and fixtures
+* Naming conventions
+* Framework conventions
+* Hard-coded values
+* Secrets or credentials
+* Retry misuse
+* Error handling
+* Maintainability
+* Execution time
+* Parallel-execution compatibility
+* CI compatibility
+
+The agent should also run available validation commands when possible.
+
+It should return:
+
+```text
+Review Status: Pass | Needs Revision | Blocked
+
+Critical Issues:
+...
+
+Major Issues:
+...
+
+Minor Issues:
+...
+
+Suggested Improvements:
+...
+
+Validation Results:
+...
+
+Final Recommendation:
+...
+```
+
+When the result is `Needs Revision`, the QA Lead should return the work to `aqa-api-test-creator` with the review comments.
+
+A maximum iteration count should be configured to prevent endless review loops.
+
+Example:
+
+```text
+max_review_iterations: 3
+```
+
+---
+
+## 11. aqa-ui-test-reviewer — UI Test Reviewer
+
+**Goal:** Verify that new UI E2E tests are correct, stable, and maintainable before they reach a pull request.
+
+**Inputs:** `aqa-ui-test-creator` implementation report and the changed files under `tests/ui/`.
+
+**Outputs:** review report (Pass / Needs Revision / Blocked) with critical/major/minor issues and validation results.
+
+**Done when:** a verdict is returned; on `Needs Revision`, findings are specific enough for `aqa-ui-test-creator` to act on without re-reading the whole diff.
+
+**Must not:** review API files or API-only concerns (contracts, status codes, payload schemas).
+
+After receiving the UI implementation report, the QA Lead assigns the changes to the UI Test Reviewer.
+
+The UI Test Reviewer should inspect:
+
+* Correctness of implemented behavior
+* Requirement and scenario coverage
+* Assertion quality
+* Test independence and isolation
+* Test data creation and cleanup
+* Page-object usage and reusability
+* Naming conventions
+* Framework conventions
+* Hard-coded values
+* Secrets or credentials
+* Retry misuse
+* Fixed waits
+* Flaky or brittle selectors
+* Error handling
+* Maintainability
+* Execution time
+* Parallel-execution compatibility
+* CI compatibility
+
+The agent should also run available validation commands when possible.
+
+It should return:
+
+```text
+Review Status: Pass | Needs Revision | Blocked
+
+Critical Issues:
+...
+
+Major Issues:
+...
+
+Minor Issues:
+...
+
+Suggested Improvements:
+...
+
+Validation Results:
+...
+
+Final Recommendation:
+...
+```
+
+When the result is `Needs Revision`, the QA Lead should return the work to `aqa-ui-test-creator` with the review comments.
+
+The same `max_review_iterations` limit applies.
+
+---
+
+## 12. git-workflow-agent — Git Workflow
+
+**Goal:** Turn approved, reviewed changes into a single pull request with full traceability back to the Jira ticket and test design.
+
+**Inputs:** approved changes from both streams, once `aqa-api-test-reviewer` and `aqa-ui-test-reviewer` both return `Pass`.
+
+**Outputs:** feature branch, commits, pushed branch, pull request.
+
+**Done when:** the pull request is open and references the Jira ticket, implemented scenarios, and test results.
+
+**Must not:** push or open a PR before both reviews pass.
+
+A pull request should be created only after the relevant changes pass review.
+
+Git operations should be handled through dedicated Git workflow skills or the Git Workflow Agent.
+
+The workflow should:
+
+1. Confirm that both required reviews passed.
+2. Create a feature branch.
+3. Stage approved files.
+4. Create meaningful commits.
+5. Push the branch.
+6. Create a pull request.
+7. Include the Jira ticket ID.
+8. Include the implemented scenario IDs.
+9. Include test execution results.
+10. Include known limitations and follow-up tickets.
+
+Example branch name:
+
+```text
+test/ABC-123-e2e-automation
+```
+
+Since API and UI E2E tests live in this single repository, one pull request covers both streams.
+
+Example pull request description:
+
+```text
+## Jira Ticket
+
+ABC-123
+
+## Implemented Scenarios
+
+- SCN-001
+- SCN-004
+- SCN-009
+
+## Added Tests
+
+- shouldCreateResourceForValidRequest
+- shouldRejectResourceWithoutRequiredPermission
+- displayCreatedResourceInResourceList
+
+## Test Levels
+
+- E2E API
+- E2E UI
+
+## Validation
+
+- API tests: Passed
+- UI tests: Passed
+- Linting: Passed
+
+## Follow-Up Items
+
+- ABC-456: Add Unit/Integration coverage in the application repository
+```
+
+---
+
+## 13. qa-lead — QA Lead Final Decision
+
+**Goal:** Close out the automation phase based on both streams' results.
+
+**Inputs:** implementation reports, review results, and pull request info from both streams.
+
+**Outputs:** one of Accept / Request Revision / Create Follow-Up Work / Block / Continue.
+
+**Done when:** a decision is recorded in the workflow state.
+
+After receiving implementation reports, review results, and pull request information, the QA Lead makes the final decision for the automation phase.
+
+Possible decisions include:
+
+### Accept
+
+All required E2E tests are implemented, reviewed, validated, and submitted through a pull request.
+
+### Request Revision
+
+The QA Lead returns the work to `aqa-api-test-creator`, `aqa-ui-test-creator`, `aqa-api-test-reviewer`, or `aqa-ui-test-reviewer`.
+
+### Create Follow-Up Work
+
+Unresolved coverage gaps, including Unit/Component/Integration scenarios, are converted into follow-up Jira tickets.
+
+### Block
+
+The workflow cannot proceed because of missing requirements, infrastructure limitations, application defects, or failed validation.
+
+### Continue
+
+The workflow proceeds to the next phase, such as:
+
+* Test execution
+* CI pipeline monitoring
+* Failure analysis
+* Defect creation
+* Quality reporting
+* Release-readiness assessment
+
+---
+
+# Recommended Parallel Execution
+
+The two automation streams run in parallel after the test design is approved.
+
+```text
+                         ┌─────────────────────────┐
+                         │ Approved Test Design    │
+                         └────────────┬────────────┘
+                                      │
+                   ┌──────────────────┴──────────────────┐
+                   │                                     │
+                   ▼                                     ▼
+            aqa-api-test-creator                               aqa-ui-test-creator
+       API E2E SDET                            UI E2E SDET
+                   │                                     │
+                   ▼                                     ▼
+        aqa-api-test-reviewer                       aqa-ui-test-reviewer
+                   │                                     │
+                   └──────────────────┬──────────────────┘
+                                      ▼
+                              qa-lead Decision
+                                      │
+                         ┌────────────┴────────────┐
+                         │                         │
+                         ▼                         ▼
+                  Request Revision          git-workflow-agent
+                                                   │
+                                                   ▼
+                                              Pull Request
+```
+
+The QA Lead should wait until both parallel branches finish before closing the automation phase.
+
+However, failure in one branch should not automatically discard successful work from the other branch. Each branch should maintain its own result and review status.
+
+---
+
+# Example Workflow State
+
+```yaml
+ticket_id: ABC-123
+phase: test_automation
+status: in_progress
+
+configuration:
+  review_requirements: true
+  non_e2e_coverage_strategy: create_follow_up_ticket
+  max_review_iterations: 3
+
+artifacts:
+  requirements: requirements/ABC-123-requirements.md
+  test_design: test-design/ABC-123-test-design.md
+
+test_design:
+  status: approved
+  review_status: passed
+  open_questions: []
+
+automation:
+  api:
+    status: review_in_progress
+    agent: aqa-api-test-creator
+    reviewer: aqa-api-test-reviewer
+    implemented_scenarios:
+      - SCN-012
+      - SCN-014
+    created_tests:
+      - createResourceWithValidPayload
+      - rejectResourceCreationWithoutPermission
+    review_status: pending
+
+  ui:
+    status: completed
+    agent: aqa-ui-test-creator
+    reviewer: aqa-ui-test-reviewer
+    implemented_scenarios:
+      - SCN-021
+    created_tests:
+      - displayCreatedResourceInResourceList
+    review_status: passed
+
+pull_request: null
+
+follow_up_tickets:
+  - ABC-456
+
+final_decision: pending
+```
+
+# Recommended Agent Boundaries
+
+To keep the workflow predictable, each agent should have a clearly limited responsibility.
+
+| Slug | Responsibility |
+|---|---|
+| `qa-requirements-collector` | Collects and structures requirements. |
+| `qa-requirements-reviewer` | Evaluates requirement quality. |
+| `qa-scenario-generator` | Creates scenarios. |
+| `qa-scenario-classifier` | Assigns testing levels. |
+| `qa-scenario-reviewer` | Validates the test design. |
+| `aqa-api-test-creator` | Implements E2E API tests. |
+| `aqa-api-test-reviewer` | Validates E2E API test quality. |
+| `aqa-ui-test-creator` | Implements E2E UI tests. |
+| `aqa-ui-test-reviewer` | Validates E2E UI test quality. |
+| `git-workflow-agent` | Manages branches, commits, pushes, and pull requests. |
+| `qa-lead` | Coordinates all agents, stores workflow state, handles iteration, and makes final decisions. |
+
+This separation keeps contexts smaller, reduces confirmation bias, and makes every workflow step easier to validate, repeat, and replace.
+
+---
+
+# Future Phases
+
+* **Unit, Component, and Integration coverage** — owned by the application repository's own workflow, not this one. `qa-scenario-classifier` still tags scenarios at these levels for traceability; unimplemented ones become follow-up Jira tickets (`non_e2e_coverage_strategy: create_follow_up_ticket`) rather than blocking this workflow.
+* Automated test execution (scheduled/CI-triggered runs of the suite this workflow builds)
+* Result analysis
+* Defect creation
+* Quality reporting
+* Release recommendation
+
+A follow-up Jira ticket should be created for non-E2E coverage when:
+
+* Requirements are unclear.
+* Expected behavior is disputed.
+* The production code is not testable without significant refactoring.
+* New test infrastructure is required in the application repository.
+* The scenario reveals a likely product defect.
+* The required change is outside the current ticket's scope.

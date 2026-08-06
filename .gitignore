@@ -1,0 +1,44 @@
+
+# Playwright
+node_modules/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
+
+# playwright-cli exploration artifacts (snapshots, console logs)
+/.playwright-cli/
+
+# Credentials - Config reads these, they never belong in the repo
+.env
+.env.*
+!.env.example
+
+# QA workflow state and implementation reports
+/.workflow/
+
+# Claude Code local layer - machine-specific permissions and enabled MCP servers.
+# .claude/agents/, .claude/skills/ and .mcp.json stay tracked.
+.claude/settings.local.json
+
+# Python bytecode from skill scripts
+__pycache__/
+*.pyc
+
+# TypeScript
+*.tsbuildinfo
+
+# Logs
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editors
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
