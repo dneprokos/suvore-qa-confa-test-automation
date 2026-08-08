@@ -98,6 +98,83 @@ fixture uses.
 Never arrange through a second HTTP client, a database call, or a UI flow. `createdAdminEmails` cleanup
 runs through the owner token the fixture already holds.
 
+## Reading the API surface
+
+**`Read` `docs/automation/api-surface-reading.md`.** The `# API Surface` section of a requirements
+document — what it answers, what it never answers, how `## Spec Gaps` and an inherited `Auth:` line are
+read, what `Source:` means, and what to do when the section is missing — lives there, because both
+streams read the same section and a second copy of those rules would drift from the first.
+
+One line of it decides every question this stream asks of the surface: **a value you assert must appear
+in the test design's `Expected:`.** The surface supplies the route, the verb, the parameter names and the
+bearer requirement; the design supplies everything the test claims.
+
+## Query parameters
+
+`GET` collections take their filters and paging in the query string. The `// Act` rule does not change:
+**one `with*()` per parameter the request sends**, so the whole request still reads at the point it is
+made. A parameter set with a payload object, or spliced into the URL as a string, hides what was sent —
+the same defect as `withBody` in an Act block.
+
+The builder holds the query the way it already holds headers, and Playwright serialises it through
+`params`:
+
+```ts
+export class GamesRequestBuilder {
+  private query: Record<string, string | number | boolean> = {};
+  private headers: Record<string, string> = {};
+
+  constructor(private readonly request: APIRequestContext) {}
+
+  // #region Query
+  withQueryParam(name: string, value: string | number | boolean): this {
+    this.query[name] = value;
+    return this;
+  }
+
+  /** Named sugar for the parameters the API documents. */
+  withLimit(limit: number): this {
+    return this.withQueryParam("limit", limit);
+  }
+
+  withPage(page: number): this {
+    return this.withQueryParam("page", page);
+  }
+
+  withSearch(search: string): this {
+    return this.withQueryParam("search", search);
+  }
+  // #endregion
+
+  async sendListGames(): Promise<ListGamesApiResult> {
+    const response = await this.request.get(Endpoints.games.list, {
+      params: this.query,
+      headers: this.headers,
+    });
+
+    return toApiResult<ListGamesResponse | GamesErrorResponse>(response);
+  }
+}
+```
+
+and the Act reads as one line naming every parameter it sends:
+
+```ts
+// Act
+const result = await api.games.builder().withLimit(10).withPage(2).sendListGames();
+```
+
+Rules for the sugar:
+
+- Add a named `with*()` for a parameter the API surface documents, and use it. `withLimit(10)` says what the
+  request means; `withQueryParam("limit", 10)` only says what it contains.
+- Keep `withQueryParam` for a parameter no scenario names repeatedly, and for one the surface does not
+  document — that case needs the escape hatch precisely because there is nothing to name it after.
+- Never add a `with*()` for a parameter no scenario uses. A builder is grown by the tests that need it, not
+  filled in from a route list.
+- A parameter omitted from the chain is a parameter the request does not send. That is a meaningful test
+  input — the default-paging case is `sendListGames()` with an empty chain, not `withPage(1)`.
+
 ## Compliant — the shape a new spec is expected to have
 
 Every line below is the real shape of `tests/api/admin-api.spec.ts`. Copy the shape, not the scenarios.

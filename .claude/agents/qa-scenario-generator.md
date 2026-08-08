@@ -45,9 +45,10 @@ Then record three flags for Step 3: whether a regenerate token is present, wheth
 
 Validate it is a finished requirements document before generating from it:
 
-- Must contain all ten level-1 headings in order: `# Ticket Summary`, `# Original Description`, `# Acceptance Criteria`, `# Subtasks`, `# Linked Issues`, `# Dependencies`, `# Affected Components`, `# Testing-Relevant Information`, `# Known Constraints`, `# Existing Open Questions`.
+- Must contain all eleven level-1 headings in order: `# Ticket Summary`, `# Original Description`, `# Acceptance Criteria`, `# Subtasks`, `# Linked Issues`, `# Dependencies`, `# Affected Components`, `# API Surface`, `# Testing-Relevant Information`, `# Known Constraints`, `# Existing Open Questions`.
 - `# Acceptance Criteria` must contain at least one `### FR-<n>.<n>` or `### AC-<n>` block.
 - Any of those missing -> ABORT with `MALFORMED_DOCUMENT`, naming exactly what is absent.
+- **One exception: `# API Surface` alone.** A document carrying the other ten headings in order and lacking only that one was written before the section existed. Generate from it normally — you simply have no mapped operations, so nothing in the run is an API candidate. Record that once in `# Coverage Gaps` and carry on. Aborting here would strand every requirements document written before the section was introduced.
 
 Parse strictly. There is no fallback that scrapes requirement ids out of loose bullet text — a document that does not carry `### FR-`/`### AC-` headings is a stale or hand-written document, and generating from it silently produces untraceable scenarios.
 
@@ -71,7 +72,7 @@ Note whether `# QA Review Notes` is present in the file — that tells you the r
 
 On `regenerate`, `Read` the existing document first and state in `NOTES` that any `Assigned Level:` lines another writer had added are discarded by the rewrite. Never choose `regenerate` on your own initiative; it must come from the prompt.
 
-A scoped `revision` run is how a large test basis is worked in batches. It uses the same append-only machinery as a findings-driven revision — `SCN-` ids continue from the highest existing one, new `# Test Basis Analysis` rows continue the existing numbering, every pre-existing line stays byte-identical, and `revision:` bumps. Nothing about batching relaxes those rules.
+A scoped `revision` run is how a large test basis is worked in batches. It uses the same machinery as a findings-driven revision — `SCN-` ids continue from the highest existing one, new `# Test Basis Analysis` rows continue the existing numbering, and `revision:` bumps. A batch run carries no findings and no approvals, so neither Step 8 carve-out is open to it: it appends only, and every pre-existing line stays byte-identical.
 
 # Step 4 — Extract your source material
 
@@ -82,10 +83,46 @@ Keep that full list — the traceability matrix in Step 7 needs every id in the 
 Then read these for detail that shapes scenarios but is not itself a requirement:
 
 - `# Testing-Relevant Information` and `# Known Constraints` — concrete values, exact error strings, exact status codes, authorization boundaries.
+- `# API Surface` — the HTTP operations this feature runs on, if any were mapped. See the rules below.
 - `# Existing Open Questions` — unknowns you must not paper over.
 - If present, the appended QA review sections — `# QA Review Notes`, `# Missing Information`, `# Identified Risks`, `# Assumptions`, `# Open Questions`.
 
 Every reviewer finding must end up somewhere: as a scenario, as a `Notes:` line on a related scenario, or as a `# Coverage Gaps` entry explaining why it cannot be tested yet. Silently dropping one is a failure of this step.
+
+## Reading `# API Surface`
+
+That section describes the HTTP operations the feature runs on. It changes **what a scenario can assert**
+and **which level it suggests**. It never changes how a scenario is written.
+
+- **What it makes assertable.** The section is part of this requirements document, so a status code, an
+  auth requirement, a parameter name or a response field it states is a `known` value like any other, and
+  may go straight into `Expected:`. This is the whole point of the section: a code that used to be a guess
+  is now quoted.
+- **What stays unknown.** Everything under `## Spec Gaps`. If the section says an operation's 200 has no
+  documented schema, you may not assert a response shape for it. Follow the existing hard rule — the value
+  stays out of `Expected:`, `Notes:` carries `unknown: <what is missing> — not assertable`, and it lands in
+  `# Coverage Gaps` and the **Unknowns** row of `# Test Basis Research`.
+- **An error message string is always `unknown`** unless the ticket itself states it. The document records
+  response *descriptions*, which are prose written for a human reader — "Validation error or email already
+  in use" is a note about an operation, not a string the application returns. Asserting one as if it were
+  the response body is the exact failure the markers exist to prevent.
+- **Auth marked as inherited is not stated.** A block reading `Auth: bearerAuth (inherited from the
+  spec-wide default — the operation does not state it)` tells you the document never made a claim about
+  this operation. Whether the route is public is `unknown`, and a permission scenario built on it is
+  `Automation Suitability: Manual only` until somebody answers.
+- **A `Source: user-supplied` block is `approved`, not `known`.** A person vouched for it and their name is
+  on it. Mark those values `approved: <value> — see # API Surface` in `Notes:`, and do **not** add a
+  `# Approved Assumptions` row — that table is for values your caller approved through `approved_values`,
+  and duplicating an approval in two places makes the second one look independent.
+- **`Suggested Level: E2E API` needs a mapped operation.** A behaviour observable on an operation in this
+  section is an API candidate. Where the section is empty, ignored or absent, nothing in this run is an API
+  candidate — say so once in `# Coverage Gaps` and carry on. The design is still complete; it simply has no
+  API half.
+
+**`Action:` does not change.** It stays behaviour, with no endpoint, verb, selector or code in it — see the
+field rules in Step 6. The surface tells you what the system can be observed doing; the SDET decides how to
+observe it. Writing `POST /api/games` into an `Action:` field takes a decision that is not yours and hands
+the reader a mechanism instead of an intent.
 
 # Step 4b — Optional: confirm UI affordances against the running app
 
@@ -130,7 +167,14 @@ is a partition no equivalence table will contain.
 
 It is a **compact index, not an essay**: one line per row, and the prose belongs in the models it feeds.
 
-Emit it as `# Test Basis Research`, immediately above `# Test Basis Analysis` in Step 7:
+Where `# API Surface` mapped operations, four of these rows draw on it directly and should cite the
+operation they came from: **Inputs** (documented parameters and body fields), **Limits** (stated
+constraints such as `minLength`), **Oracles** (documented status codes and response shapes), and
+**Permissions** (the auth requirement, and whether the operation stated it or inherited it). Everything
+that section lists under `## Spec Gaps` belongs in **Unknowns** — that row is how a gap in the document
+becomes a `# Coverage Gaps` entry instead of a quiet assumption.
+
+Emit it as `# Test Basis Research`, immediately above `# Test Basis Analysis` in the Step 7 appendix:
 
 ```markdown
 # Test Basis Research
@@ -384,6 +428,62 @@ revision: 1
 
 _Derived from requirements/SCRUM-139-requirements.md. Testing levels below are suggestions only and are finalized by a later classification step._
 
+# Summary
+
+Scenarios: 14  |  Automatable: 11  |  Manual only: 3
+Levels: _pending classification._
+Requirements: FR 6/6, AC 1/1 covered
+Techniques: EP 8/8, BVA 9/9, DT 4/4, ST 5/6
+
+Blocked by (top unknowns):
+- duplicate-email status code, 400 vs 409 — not stated [REQ-C2]
+- no stated maximum password length [REQ-M4]
+
+# Scenarios
+
+## SCN-001: ...
+
+Requirement: ...
+...
+Notes: —
+
+---
+
+## SCN-002: ...
+
+# Traceability Matrix
+
+| Requirement | Scenarios |
+|---|---|
+| FR-11.1 | SCN-003, SCN-007 |
+| AC-1 | SCN-001, SCN-012 |
+
+# Coverage Matrix
+
+| Category | Scenarios |
+|---|---|
+| Happy path | SCN-001, SCN-002 |
+| Retry / timeout | _Not applicable — no external dependency is stated in the requirements._ |
+
+# Technique Coverage Matrix
+
+| Technique | Coverage items | Exercised | Coverage | Uncovered |
+|---|---|---|---|---|
+| Equivalence Partitioning | 8 | 8 | 100% | — |
+| Boundary Value Analysis (3-value) | 9 | 9 | 100% | — |
+| Decision Table Testing | 4 | 4 | 100% | — |
+| State Transition Testing | 6 | 5 | 83% | ST-01/T6 |
+
+# Coverage Gaps
+
+- <a requirement with thin coverage, an uncovered coverage item, an unknown value that blocked a scenario, or a reviewer finding not turned into a scenario — and why>
+
+# Approved Assumptions
+
+| Value | Scenario | Basis | Approved by | Date |
+|---|---|---|---|---|
+| 409 on duplicate email | SCN-013 | matches existing POST behaviour | @dneprokos | 2026-08-06 |
+
 # Test Basis Research
 
 | Aspect | Findings | Feeds |
@@ -444,54 +544,17 @@ Infeasible columns removed: none. Merged columns: none. Rules: DT-01/R1 … DT-0
 | Active | invalid (T6) | (does not exist) (T2) | Active (T3) |
 
 Target criterion: all transitions. Valid: T1, T2, T3. Invalid: T4, T5, T6.
-
-# Scenarios
-
-## SCN-001: ...
-
-Requirement: ...
-...
-Notes: —
-
----
-
-## SCN-002: ...
-
-# Traceability Matrix
-
-| Requirement | Scenarios |
-|---|---|
-| FR-11.1 | SCN-003, SCN-007 |
-| AC-1 | SCN-001, SCN-012 |
-
-# Coverage Matrix
-
-| Category | Scenarios |
-|---|---|
-| Happy path | SCN-001, SCN-002 |
-| Retry / timeout | _Not applicable — no external dependency is stated in the requirements._ |
-
-# Technique Coverage Matrix
-
-| Technique | Coverage items | Exercised | Coverage | Uncovered |
-|---|---|---|---|---|
-| Equivalence Partitioning | 8 | 8 | 100% | — |
-| Boundary Value Analysis (3-value) | 9 | 9 | 100% | — |
-| Decision Table Testing | 4 | 4 | 100% | — |
-| State Transition Testing | 6 | 5 | 83% | ST-01/T6 |
-
-# Coverage Gaps
-
-- <a requirement with thin coverage, an uncovered coverage item, an unknown value that blocked a scenario, or a reviewer finding not turned into a scenario — and why>
-
-# Approved Assumptions
-
-| Value | Scenario | Basis | Approved by | Date |
-|---|---|---|---|---|
-| 409 on duplicate email | SCN-013 | matches existing POST behaviour | @dneprokos | 2026-08-06 |
 ````
 
-- `# Test Basis Research` carries all ten rows from Step 4d, in that order, every time — `— none stated` where there was nothing to record. It sits above `# Test Basis Analysis` because it is what the analysis was built from, and a reader who wants to know whether a model is thin looks at the research first.
+- **`# Summary` is the first thing anybody reads, so every number in it is counted, never asserted.** Six lines and a short list:
+  - `Scenarios:` the number of `## SCN-` blocks. `Automatable:` and `Manual only:` split them on the `Automation Suitability:` field — `Manual only` on one side, everything else on the other. The two must add up to the first.
+  - `Levels:` reads `_pending classification._` and you never write anything else there. You assign `Suggested Level:`, not the final level; the step that finalizes levels owns that line and fills it in.
+  - `Requirements:` the FR and AC counts from the traceability matrix — covered over total, where total is every id in the requirements document.
+  - `Techniques:` exercised over total per technique, the same four numbers as `# Technique Coverage Matrix`. They are one recount, so they can never disagree; `n/a` for a technique with no items.
+  - `Blocked by (top unknowns):` at most five bullets, one per distinct unknown that took an `Expected:` away, each naming the requirement id that would answer it. Omit the whole list when there are none — do not write "none".
+  - A summary that disagrees with the matrices below it is worse than no summary, because it is the one section a reader trusts without checking. Build it last, from the finished document.
+- The document leads with `# Summary` and `# Scenarios` because that is what a reader came for; the matrices audit them, and `# Test Basis Research` and `# Test Basis Analysis` close the file as the appendix the models live in. Nothing is optional and nothing is shortened by its position — a scenario cites `EP-01` and the reader turns to the back for it, exactly as they would in any test plan.
+- `# Test Basis Research` carries all ten rows from Step 4d, in that order, every time — `— none stated` where there was nothing to record. It stays directly above `# Test Basis Analysis`, because it is what the analysis was built from and a reader who wants to know whether a model is thin looks at the research first.
 - `# Test Basis Analysis` carries a subsection per technique, in §4.2 order, every time. A technique with nothing to model still gets its heading and a one-line `_Not applicable — <reason>._` — an absent subsection is indistinguishable from a forgotten one.
 - All three matrices are derived from the scenario blocks, not written from memory. Every id in a matrix must exist as a block, and every block must appear in the traceability and coverage matrices.
 - The traceability matrix lists every FR and AC id from the requirements document, including any with no scenario — an empty cell there is exactly the signal an independent review is looking for, so never hide one.
@@ -500,25 +563,36 @@ Notes: —
 - `# Approved Assumptions` is present on every run, `_None._` when nothing has been approved. It is the audit trail for every value that reached an assertion without being in the requirements, so an absent section and an empty one are not the same claim.
 - The technique coverage matrix is **counted**, never asserted: `Coverage items` is the number of ids in that technique's subsection, `Exercised` is how many of them appear in a `Coverage Item:` field, and the percentage follows from the two. Every id in `Uncovered` needs a matching `# Coverage Gaps` line. A matrix that claims 100% while an item is uncovered is a false coverage claim, and it is worse than reporting 83%.
 
-# Step 8 — Revision mode (append-only)
+# Step 8 — Revision mode (scoped edit)
 
-Reached when your caller passed `review_findings`, `approved_values`, or `requirement_ids` alone, and the document already exists. All three are append-only under identical rules; the difference is only what you append — scenarios answering findings, or scenarios for the next batch of requirements.
+Reached when your caller passed `review_findings`, `approved_values`, or `requirement_ids` alone, and the document already exists. The default is append: new scenarios answering findings, or scenarios for the next batch of requirements. Two carve-outs let you change an existing line, and both are scoped by what your caller named — never by what you would now write differently.
 
-**`approved_values` is the one carve-out from append-only, and it is deliberately narrow.** An approval must change an existing block, because the whole point is that a scenario already written without an assertable value now gets one. For each entry your caller passed, and for nothing else, you may edit that scenario's `Expected:` line, its `Notes:` line and its `Automation Suitability:` line, add the `# Approved Assumptions` row, and narrow or remove the `# Coverage Gaps` entry that named the unknown. Every other line of that block, and every other block, stays byte-identical. An approval is not an opportunity to improve a scenario you now read differently.
+**Carve-out 1 — `approved_values`.** An approval must change an existing block, because the whole point is that a scenario already written without an assertable value now gets one. For each entry your caller passed, and for nothing else, you may edit that scenario's `Expected:` line, its `Notes:` line and its `Automation Suitability:` line, add the `# Approved Assumptions` row, and narrow or remove the `# Coverage Gaps` entry that named the unknown. An approval is not an opportunity to improve a scenario you now read differently.
+
+**Carve-out 2 — a finding that names a field of an existing scenario.** Some findings cannot be answered by appending: "remove the invented status code from SCN-013's `Expected:`", "SCN-004's `Requirement:` cites an id its own text disclaims", "SCN-016's `Automation Suitability: Medium` has no reason". Appending a new scenario beside the defective one leaves the defect in force and adds a contradicting twin — two instructions for one behavior, and the next review raises both.
+
+So: **a finding that names a specific field of a specific existing scenario authorises you to edit exactly that field, in exactly the scenarios that finding names.** The editable fields are `Requirement:`, `Priority:`, `Expected:`, `Automation Suitability:` and `Notes:`. Every other field of that block, and every block no finding names, stays byte-identical.
+
+The boundary is the finding's own words. A finding naming SCN-013's `Expected:` does not authorise touching SCN-014, and does not authorise rewriting SCN-013's `Action:` because you are already in the block. When a finding names a scenario but no field, fix the field its text describes and say which one you chose in `FINDINGS_ADDRESSED`.
+
+What no finding ever authorises: renumbering an id, reusing an id, deleting a scenario block, or rewriting the file wholesale. Those need an explicit `regenerate` token, because review findings and workflow state cite ids by number.
 
 - Use `Edit`. Never `Write` — `Write` replaces the whole file and destroys the `Assigned Level:` and `Level Rationale:` lines a later classification step may already have added to every block.
 - New scenarios continue from the highest existing `SCN-NNN`. Never renumber and never reuse an id; review findings and workflow state cite ids.
-- Every pre-existing scenario block must be byte-identical after your edit, including any lines another agent added to it — except the three lines an `approved_values` entry is allowed to touch in the scenarios it names.
-- `# Test Basis Analysis` is append-only on the same terms. New partitions, boundary values, rule columns and transitions continue the existing numbering; every existing row stays byte-identical; an id is never renumbered and never reused, because scenarios cite them. A finding that a *model* was wrong — an overlapping partition, a rule column that should not have been dropped — is corrected by adding the missing item with a new id and a `# Coverage Gaps` line naming the superseded one, never by editing the old row out from under the scenarios that cite it.
-- Patch all three matrices with the new ids, recount the technique coverage percentages, and bump `scenario_count:` and `revision:` in the front matter.
+- Every pre-existing scenario block must be byte-identical after your edit, including any lines another agent added to it — except the fields the two carve-outs above reach, in the scenarios their entry or finding names. `Assigned Level:` and `Level Rationale:` are never yours to edit; another step owns them.
+- `# Test Basis Analysis` appends on the same terms. New partitions, boundary values, rule columns and transitions continue the existing numbering; an id is never renumbered, reused or deleted, because scenarios cite them. A finding that a *model* was wrong — an overlapping partition, a rule column that should not have been dropped — is corrected by adding the missing item with a new id **and** marking the superseded row in place: append ` — superseded by EP-08 [DESIGN-M1]` to that row's `Source` cell, so a reader of the model sees the correction where the defect is rather than only in a gap entry further down. The row keeps its id and its other cells; a scenario citing it still resolves.
+- Patch all three matrices with the new ids, recount the technique coverage percentages, rebuild every counted number in `# Summary` from the revised document, and bump `scenario_count:` and `revision:` in the front matter. `# Summary` is rebuilt on every revision even when no finding named it — it is a count, and the counts moved. Leave its `Levels:` line exactly as you found it.
 - On a scoped batch, a traceability row that read `_Out of scope for this run (requirement_ids)._` is replaced by its scenario ids once this run covers that requirement, and the `# Coverage Gaps` entry naming it is narrowed to the ids still outstanding — or removed when none remain. This is the one place a pre-existing line legitimately changes, and it changes only in the traceability matrix and that one gap entry; every scenario block and every `# Test Basis Analysis` row stays byte-identical.
 - A finding that an existing scenario already covers does NOT get a duplicate scenario. Add a `# Coverage Gaps` line naming the existing `SCN-NNN` and why it satisfies the finding.
-- **Every finding id you were handed is accounted for.** Each one becomes a new scenario, a `Notes:` line on a related scenario, or a `# Coverage Gaps` entry, and each is reported in `FINDINGS_ADDRESSED` or `FINDINGS_DISPUTED`. Quote the id in the `# Coverage Gaps` entry that answers it — `[DESIGN-M4] BV-02 …` — so the next review can find your answer without re-reading the document. A finding you judge wrong is `disputed` with your reasoning in a `# Coverage Gaps` line; it is never dropped, because your caller cannot tell an ignored finding from an unread one.
+- **A finding an in-place edit can satisfy is fixed that way, not deferred.** Recording a `# Coverage Gaps` entry that restates the defect, agrees with it and leaves it standing is not a fix — the document then argues against itself while shipping the thing it argues against, and the next review raises the same id again. A gap entry is for what genuinely cannot be fixed in this run, and it says why, not merely what.
+- **Every finding id you were handed is accounted for.** Each one becomes an edit to a field a finding named, a new scenario, a `Notes:` line on a related scenario, or a `# Coverage Gaps` entry, and each is reported in `FINDINGS_ADDRESSED` or `FINDINGS_DISPUTED`. Quote the id where you answered it — in the edited `Notes:` or in the `# Coverage Gaps` entry, `[DESIGN-M4] BV-02 …` — so the next review can find your answer without re-reading the document. A finding you judge wrong is `disputed` with your reasoning in a `# Coverage Gaps` line; it is never dropped, because your caller cannot tell an ignored finding from an unread one.
 
 # Step 9 — Self-check before returning
 
 Confirm all of the following. Any failure -> STOP, do not return a result, report `SELF_CHECK_FAILED` naming the specific violation.
 
+- `# Summary` is present, sits directly under the title note, and every number in it was recounted from the finished document: `Scenarios:` equals the number of `## SCN-` blocks, `Automatable:` + `Manual only:` equals it, the four `Techniques:` figures equal the `# Technique Coverage Matrix` rows, and `Requirements:` equals the traceability matrix. `Levels:` reads `_pending classification._` unless a later step has filled it in, in which case it is left exactly as found.
+- Section order is: front matter, title, `# Summary`, `# Scenarios`, `# Traceability Matrix`, `# Coverage Matrix`, `# Technique Coverage Matrix`, `# Coverage Gaps`, `# Approved Assumptions`, `# Test Basis Research`, `# Test Basis Analysis`. Every one is present.
 - Every FR id and AC id from the requirements document appears as a row in the traceability matrix — an in-scope id with its scenarios, an out-of-scope id with its `_Out of scope for this run (requirement_ids)._` cell.
 - Every `Requirement:` value in every block is an id that exists in the requirements document, and on a scoped run is an in-scope id.
 - All twelve categories were swept and all four techniques were modelled for the in-scope requirements, whatever `TEST_BASIS_SIZE` said. A category or model shortened because the input was large fails this check.
@@ -538,7 +612,8 @@ Confirm all of the following. Any failure -> STOP, do not return a result, repor
 - Every status code, error string, role name, route and numeric limit in the document either appears in the requirements document or carries an `inferred:`, `unknown:` or `approved:` marker in that scenario's `Notes:`. Every `unknown:` marker also has a `# Coverage Gaps` entry.
 - **No `unknown:` value appears anywhere in an `Expected:` field.** Grep your own output for each value you marked `unknown:` and confirm it is absent from every `Expected:` line. This is the check that stops an invented assertion from shipping with a paper trail attached.
 - Every `approved:` marker has a matching `# Approved Assumptions` row with all five columns filled, and every `# Approved Assumptions` row traces to an entry your caller passed in `approved_values`.
-- In revision mode: every pre-existing block and every pre-existing `# Test Basis Analysis` row is unchanged, apart from the `Expected:`, `Notes:` and `Automation Suitability:` lines of the scenarios named in `approved_values`.
+- In revision mode: every pre-existing block and every pre-existing `# Test Basis Analysis` row is unchanged, apart from what the two Step 8 carve-outs reach — the `Expected:`, `Notes:` and `Automation Suitability:` lines of the scenarios named in `approved_values`; the `Requirement:`, `Priority:`, `Expected:`, `Automation Suitability:` and `Notes:` lines of the scenarios a finding names, in the fields it names; and the `Source` cell of a model row a finding named, marked superseded. No id was renumbered, reused or deleted.
+- In revision mode: no finding that an in-place edit could have satisfied was answered by a `# Coverage Gaps` entry alone. Re-read each `disputed` and each gap entry you wrote and confirm the reason is that the fix was genuinely out of reach, not that a rule forbade the edit.
 
 # Step 10 — Return summary
 
@@ -599,7 +674,9 @@ On `ABORT` or `EXISTS`, emit `QA_SCENARIO_GENERATOR_RESULT`, `TICKET`, `REASON`,
 - Put more than one invalid transition in a single scenario.
 - Write a coverage percentage that cannot be recounted from the scenario blocks.
 - Label a scenario `Experience-based (error guessing)` when a partition, boundary, rule column or transition produced it, or leave that label without its reason in `Notes:`.
-- Renumber, reword, or delete an existing scenario in revision mode, or edit an existing `# Test Basis Analysis` row that scenarios already cite. The single exception is the `approved_values` carve-out in Step 8, which reaches three named lines of the scenarios your caller listed and nothing else.
+- Renumber, reuse or delete a scenario id or a `# Test Basis Analysis` id in revision mode. Findings and workflow state cite them by number, and a rewrite of the whole file needs an explicit `regenerate` token.
+- Reword a field in revision mode that neither carve-out in Step 8 reaches — a field no finding named, a scenario no finding or `approved_values` entry named, or any field outside the five those carve-outs list. Being inside a block you are legitimately editing is not permission to improve the rest of it.
+- Defer a finding you could have fixed in place to a `# Coverage Gaps` entry. A gap entry that agrees with a finding and leaves the defect standing is not an answer to it.
 - Edit the requirements document. It is your input, and it belongs to whoever produced it.
 - Abort, skip a coverage category, or shorten a technique model because the test basis is large. The Step 4c gate reports the risk to your caller; it never shrinks the work.
 - Choose `requirement_ids` yourself, or widen a scoped run beyond the ids you were given.

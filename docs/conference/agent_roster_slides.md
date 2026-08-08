@@ -9,7 +9,7 @@ Key notes only. Full specs: [`agent_build_plan.md`](./agent_build_plan.md).
 ### `qa-requirements-collector`
 **In:** ticket id → **Out:** requirements doc + ticket In Progress
 - Jira ticket → structured requirements document
-- Only agent with Jira access
+- One of two agents with Jira access — the intake end
 - Never invents an acceptance criterion
 
 ### `qa-requirements-reviewer`
@@ -65,12 +65,20 @@ Key notes only. Full specs: [`agent_build_plan.md`](./agent_build_plan.md).
 - Proposes a commit message, commits nothing
 - Secret in the change set → blocked, no message proposed
 
+### `qa-jira-transition`
+**In:** ticket id + PR URL → **Out:** PR comment + ticket In Review
+- The return leg: the run ends on the ticket it started from
+- The other agent with Jira access — and **no filesystem tools at all**
+- Comment first, transition second: a failed move still leaves the link
+- `pr_url` of `none` → abort before the first tool call
+- Re-run → `EXISTS`. Reads the ticket's comments to know, never trusts the caller
+
 ---
 
 ## Skills
 
 ### `qa-workflow` — the lead orchestrator
-**In:** ticket id + mode → **Out:** state file, and a PR at the end
+**In:** ticket id + mode → **Out:** state file, a PR, and the ticket back in In Review
 - Skill, not an agent: subagents cannot spawn subagents
 - The only file that names one agent next to another
 - **Manual mode** — pause after every agent, user picks the transition
@@ -103,6 +111,26 @@ Key notes only. Full specs: [`agent_build_plan.md`](./agent_build_plan.md).
 
 ---
 
+## Hooks
+
+### `agent-metrics.mjs` — `PostToolUse` on `Task`
+**In:** the harness's own result object → **Out:** one line in `.workflow/metrics/<TICKET-ID>.jsonl`, one line in the transcript
+- Tokens, duration, tool count — per agent run
+- **No agent can measure itself**: the numbers are computed after the subagent has already stopped
+- Nor can the caller — the `Task` result hands the model text and nothing else
+- So the measurement comes from outside the conversation. That is what a hook is for
+- Emits `AGENT_RUN_METRICS:` as `additionalContext`, so it lands right after that agent's receipt
+- Swallows every error, exits `0`. Metrics never fail a run
+
+### `metrics-report.mjs` — the end-of-run table
+**In:** ticket id → **Out:** cost table
+- One row per run, in completion order — a 3-iteration loop is 3 rows
+- `n/N` per agent, `Σ` total, wall clock
+- Sum of durations > wall clock = the parallel Phase 2 streams
+- Cost is reported, never routed on. Verdicts route; numbers narrate
+
+---
+
 ## Five rules that hold it together
 
 1. **No agent names another agent.** Routing lives in one skill.
@@ -115,10 +143,12 @@ Key notes only. Full specs: [`agent_build_plan.md`](./agent_build_plan.md).
 
 | | |
 |---|---|
-| Subagents | 10 |
+| Subagents | 11 |
 | Skills | 8 |
-| Agents that can write to Jira | 1 |
+| Hooks | 1 (+1 reporting script) |
+| Agents that can write to Jira | 2 — one per end of the run |
 | Agents that can write test code | 2 |
 | Reviewers that can edit anything | 0 |
+| Agents that can report their own cost | 0 |
 | Review iterations before escalation | 2 |
 | Pull requests per ticket | 1 |

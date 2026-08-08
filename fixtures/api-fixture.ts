@@ -3,10 +3,23 @@ import { ApiFacade } from "@services/api/api-facade";
 import { AdminUser, ListAdminsResponse } from "@services/api/types/admin";
 import { LoginResponse } from "@services/api/types/auth";
 
+/**
+ * One resource to remove after the test.
+ *
+ * `label` is what a cleanup warning names, so it has to identify the record to
+ * a human reading a CI log - "game 66f1a2 (Contra)", not "task 3".
+ */
+export type CleanupTask = {
+  label: string;
+  run: () => Promise<void>;
+};
+
 type ApiFixtures = {
   api: ApiFacade;
   ownerToken: string;
   createdAdminEmails: string[];
+  cleanupTasks: CleanupTask[];
+  uncleanableResources: string[];
 };
 
 export const test = base.extend<ApiFixtures>({
@@ -79,6 +92,54 @@ export const test = base.extend<ApiFixtures>({
           );
         }
       }
+    }
+  },
+
+  /**
+   * Removal steps for any resource `createdAdminEmails` does not cover.
+   *
+   * Register the task the instant the resource exists - for a UI create flow,
+   * before the submit. Fixture teardown runs whether the test passed or failed,
+   * so a task registered at creation time survives a failing assertion, while
+   * one registered after the assertions does not run at all.
+   *
+   * Tasks are drained in reverse: a resource created last may depend on one
+   * created earlier, so it has to go first. Each runs in its own try/catch and
+   * a failure is only ever a warning - a cleanup problem must not change the
+   * test result, which has to keep reflecting the behaviour under test.
+   */
+  cleanupTasks: async ({}, use) => {
+    const tasks: CleanupTask[] = [];
+
+    await use(tasks);
+
+    for (const task of [...tasks].reverse()) {
+      try {
+        await task.run();
+      } catch (error) {
+        console.warn(
+          `[cleanup] Removing ${task.label} threw: ${String(error)}. It may be left behind.`,
+        );
+      }
+    }
+  },
+
+  /**
+   * Labels of records this test created that the application offers no way to
+   * remove. Pushing one turns a silent leak into a line in the run output.
+   *
+   * This is the honest last resort, not a shortcut around `cleanupTasks`: a
+   * resource with a delete route belongs there. A label here means the route
+   * does not exist, and the same fact belongs under `Known Limitations` in the
+   * implementation report.
+   */
+  uncleanableResources: async ({}, use) => {
+    const labels: string[] = [];
+
+    await use(labels);
+
+    for (const label of labels) {
+      console.warn(`[cleanup] NOT CLEANED UP: ${label} - no delete endpoint`);
     }
   },
 });
