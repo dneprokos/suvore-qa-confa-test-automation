@@ -101,12 +101,26 @@ Each stream emits its own receipt block with its own leading key. Three rules ho
 - **Do not implement a scenario assigned to another level**, and do not write, move or modify a line
   inside the sibling stream's ownership. A parallel stream owns those files and an edit there collides
   with work in flight.
+  **One carve-out, additive only:** a stream may *add* a file, an endpoint key or a facade member to the
+  sibling's service layer when a scenario cannot otherwise be set up or cleaned up. Adding is safe with
+  both streams in flight because a conflict lands on different lines; modifying is not. Nothing already
+  there may be renamed, retyped, re-valued or deleted, the sibling's fixture file stays closed, and every
+  addition is listed on the receipt so the boundary crossing is visible. If the sibling's report already
+  lists what you need, reuse it rather than adding a second copy.
 - **Do not modify `playwright.config.ts`, `framework/`, `tsconfig.json`, `package.json` or `.env`.** A
   scenario that cannot be automated without one of those is a `Shared Change Requested` entry and, if
   truly blocking, a skipped scenario.
 - **Do not read `requirements/`**, or assert a value taken from it. The requirements were reviewed and
   closed in an earlier phase; the test design is the specification, and a value in one but not the other
   is a design question, not one to settle inside a spec.
+  **One section is exempt: `# API Surface`.** It documents how the system is reached — route, verb,
+  parameters, auth requirement, response shape — and a stream that must call an operation needs it. The
+  exemption is for mechanics only, and it does not widen what may be asserted: **a value you assert must
+  appear in the test design's `Expected:`**, whatever that section documents about the operation. Reading
+  any other section of the file remains out of bounds. A stream whose subject is not the HTTP request
+  narrows the exemption further — it reads the surface for arrange and cleanup mechanics and nothing
+  else, and a route it documents is never a reason to write a test for that route. The section's own
+  rules are in `docs/automation/api-surface-reading.md`, including what to do when it is absent.
 - **Do not edit the test design.** It is an input, and it belongs to whoever produced it.
 - **Do not report an execution result you did not observe**, and never carry counts over from a previous
   iteration.
@@ -116,10 +130,15 @@ Each stream emits its own receipt block with its own leading key. Three rules ho
   rendered string. A value the design marks `unknown:` is not assertable at all.
 - **Do not put a credential, token or secret literal in a spec.** Everything comes from `Config`.
 - **Do not declare test data inside a spec.** It already exists under `utils/`, and a second copy drifts
-  from the first without anything failing. A file-local helper that only *reads* a result is fine.
+  from the first without anything failing. A helper that drives or reads the system under test belongs in
+  the layer that models it, not at a spec's module scope.
 - **Do not rename, re-value or delete anything already in `utils/**`.** The sibling stream reads the same
   classes, and the change would land under it mid-run.
-- **Do not leave a created record behind.** Every test cleans up what it created.
+- **Do not leave a created record behind.** Every test cleans up what it created, registered the moment
+  the record exists so a failing assertion cannot skip past the registration, and scoped to that test's
+  own data — never a delete-all, with `fullyParallel` on. A record the application offers no route to
+  remove is the one exception, and it is reported rather than ignored: in the run output, under
+  `Cleanup Gaps`, and on the receipt.
 - **Do not rewrite, reformat, resort or re-run a fix over a test no finding names.** An unrequested
   improvement invalidates the `file:line` of every finding handed in and buries the change the review is
   looking for.

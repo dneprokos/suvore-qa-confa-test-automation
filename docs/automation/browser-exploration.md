@@ -78,18 +78,38 @@ report, and never copy one into a document.
 
 ## 4. Translating findings into locators
 
-This project uses `getByTestId` and `getByRole` only. No CSS, no XPath, no text-matching on copy that
-product can reword. See `pages/login-page.ts:11-14` and `pages/home-page.ts:8-9` for the house style.
+A locator comes from the **highest tier the application makes possible**. See `pages/login-page.ts:11-14`
+and `pages/home-page.ts:8-9` for the house style — both are tier 1 throughout.
 
-| Snapshot shows | Confirm with | Write as |
+| Tier | Locator | Status |
 |---|---|---|
-| element with `data-testid` | `eval "el => el.getAttribute('data-testid')" e5` | `page.getByTestId("email-input")` |
-| `button "Logout"` | role + accessible name are in the snapshot already | `page.getByRole("button", { name: "Logout" })` |
-| `status` / `alert` live region | role is in the snapshot | `page.getByRole("status")` |
-| no testid, no stable role | — | report it as a gap; **do not** fall back to CSS |
+| 1 | `getByRole`, `getByLabel`, `getByPlaceholder`, `getByTestId` | preferred |
+| 2 | `#id` — an author-written, stable id | allowed with justification |
+| 3 | `[data-*]` — a stable attribute other than the testid | allowed with justification |
+| 4 | structural CSS (`table > tbody > tr`) | last resort, with justification |
+| — | XPath; a generated or hashed class name (`.css-1a2b3c`, a CSS-module class); a text match on copy product can reword; `nth()` on a **data** row | **banned at every tier** |
 
-That last row matters: an element with no stable hook is a finding to escalate, not a problem to solve
-with a brittle selector. Say so in the report so the app team can add a `data-testid`.
+| Snapshot shows | Confirm with | Write as | Tier |
+|---|---|---|---|
+| element with `data-testid` | `eval "el => el.getAttribute('data-testid')" e5` | `page.getByTestId("email-input")` | 1 |
+| `button "Logout"` | role + accessible name are in the snapshot already | `page.getByRole("button", { name: "Logout" })` | 1 |
+| `status` / `alert` live region | role is in the snapshot | `page.getByRole("status")` | 1 |
+| no testid, no role name, but an id in the markup | `eval "el => el.id" e5` | `page.locator("#game-genre")` | 2 |
+| no testid, no role name, no id, but a stable `data-*` | `eval "el => el.dataset" e5` | `page.locator("[data-column='genre']")` | 3 |
+| none of the above, but a stable structural position | `eval "el => el.outerHTML" e5` | a structural CSS selector | 4 |
+| nothing stable at any tier | — | report it as a gap; **never** invent a hook |
+
+Every tier below 1 has to earn it. `eval` the higher tiers first and record what you found — the
+justification comment says what was actually tried, so "no role" means you looked. Three things travel
+with a tier drop:
+
+1. `// LOCATOR-FALLBACK: tier <n> — <why every higher tier is impossible>` on the locator field,
+2. a `LOCATOR_GAPS` entry in the receipt,
+3. the `Tier` column of the selector map below.
+
+The ladder is not a licence to guess. An element with no stable hook **at any tier** is still a finding
+to escalate, not a problem to solve with a selector you hope holds. Say so in the report so the app team
+can add a `data-testid`.
 
 ## 5. Output contract
 
@@ -97,19 +117,24 @@ An exploration run ends with a **selector map**, not prose:
 
 ```markdown
 ### /login
-| Element | Role | data-testid | Locator |
-|---|---|---|---|
-| Email field | textbox | email-input | page.getByTestId("email-input") |
-| Password field | textbox | password-input | page.getByTestId("password-input") |
-| Submit button | button | login-button | page.getByTestId("login-button") |
-| Error banner | status | — | page.getByRole("status") |
+| Element | Role | data-testid | Tier | Locator |
+|---|---|---|---|---|
+| Email field | textbox | email-input | 1 | page.getByTestId("email-input") |
+| Password field | textbox | password-input | 1 | page.getByTestId("password-input") |
+| Submit button | button | login-button | 1 | page.getByTestId("login-button") |
+| Error banner | status | — | 1 | page.getByRole("status") |
+| Genre cell | — | — | 2 | page.locator("#game-genre") |
 ```
 
-One table per page or route. Every row must trace to something you actually observed in a snapshot.
+One table per page or route. Every row must trace to something you actually observed in a snapshot, and
+every row whose `Tier` is not 1 must also appear under `LOCATOR_GAPS`.
 
 ## 6. Must not
 
 - Report a selector that did not appear in a snapshot you ran in this session.
+- Drop below tier 1 without having `eval`ed the higher tiers, or without the three receipts in §4.
+- Use an XPath, a generated class name, or a text match on product copy at any tier. Those are not
+  tier 4; they are outside the ladder.
 - Leave a session open, or use the default unnamed session.
 - Put a `ref` (`e5`) into any committed file.
 - Write to `tests/`, `pages/`, `fixtures/`, or `services/` during an exploration run — exploration

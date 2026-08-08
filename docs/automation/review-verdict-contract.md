@@ -198,6 +198,13 @@ Rules for the report:
   them.
 - **Do not read `requirements/`**, or raise a finding phrased against a requirement. The requirements
   review already happened; repeating it re-opens a settled document and contradicts it.
+  **One section is exempt: `# API Surface`.** The code you review was allowed to take its mechanics from
+  it, so you need it to tell a documented route from a guessed one. Use it for exactly that. A finding
+  phrased against it — a gap in the surface, an operation nobody mapped — belongs to the requirements
+  review, not to yours, and **a value documented there but absent from the design's `Expected:` is an
+  invented assertion**, which is a finding against the code and not against the document. How that
+  section is read — and how far a stream whose subject is not the HTTP request may use it — is in
+  `docs/automation/api-surface-reading.md`.
 - **Do not judge the test design** — a scenario that would have been designed differently, a case
   thought missing, a level assignment disagreed with. The code is reviewed against the design, not the
   design against an opinion.

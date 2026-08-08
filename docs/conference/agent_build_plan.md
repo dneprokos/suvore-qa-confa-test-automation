@@ -132,6 +132,57 @@ may not do with a disputed finding is leave it unaddressed.
 
 ---
 
+## Run Metrics Contract
+
+A workflow that re-runs agents needs to say what the re-runs cost. Tokens and wall time per agent run, in
+order, with the totals — that is the fourth artifact of a run, alongside the requirements document, the
+test design and the two implementation reports.
+
+**No agent can produce it.** The numbers are computed by the harness *after* a subagent has stopped: its
+final message is already written when the accounting closes, so an agent asked to print its own token
+count would be inventing one. Nor does the caller see them — the `Task` tool hands the model the agent's
+text and nothing else. The measurement has to come from outside the conversation, which is what a hook is
+for.
+
+### The mechanism
+
+`.claude/settings.json` registers a `PostToolUse` hook on the `Task` tool:
+
+```json
+{ "hooks": { "PostToolUse": [ { "matcher": "Task",
+  "hooks": [ { "type": "command", "command": "node .claude/hooks/agent-metrics.mjs" } ] } ] } }
+```
+
+The hook reads the harness's own result object — `agentType`, `resolvedModel`, `status`, `totalTokens`,
+`usage` (`input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`),
+`totalDurationMs`, `totalToolUseCount`, `toolStats` — and does two things with it:
+
+1. **Appends one JSON line** to `.workflow/metrics/<TICKET-ID>.jsonl`. Append-only, one line per run, so a
+   three-iteration review loop leaves three lines and the file survives a resume in a new session.
+2. **Emits an `AGENT_RUN_METRICS:` line** as `hookSpecificOutput.additionalContext`, which the harness
+   places in the transcript directly after that agent's own output. This is the closest thing to "the
+   agent returns its cost" that is honest: the agent returns its receipt, and the line that follows is the
+   harness stating what the receipt cost.
+
+`node .claude/hooks/metrics-report.mjs <TICKET-ID>` renders the log as the end-of-run table: one row per
+run in completion order, an `n/N` counter per agent, a `Σ` total, and the wall clock. Sum-of-durations
+exceeding wall clock is the parallel Phase 2 streams, not a bug.
+
+### Rules
+
+| Rule | Why |
+|---|---|
+| The ticket id appears in **every** delegation prompt | the hook attributes the run by reading it there; without it the run is filed under `unassigned` |
+| Cost is reported, never routed on | an expensive stream is not a failing one. Verdicts route; numbers narrate |
+| A missing number is reported as `metrics unavailable` | a plausible estimate is indistinguishable from a measurement, and worse than a blank |
+| The orchestrator reads the log; only the hook writes it | keeps the "this skill writes exactly one file" rule intact |
+| Failure of the hook never fails the run | `agent-metrics.mjs` swallows every error and exits `0`. Metrics are diagnostics, not workflow |
+
+No agent file changes for any of this, and none may. Naming the hook in an agent body would give the agent
+knowledge of the machinery around it, which is the same class of leak as naming a sibling.
+
+---
+
 ## Current State
 
 _Last refreshed: 2026-08-06._
@@ -145,12 +196,13 @@ _Last refreshed: 2026-08-06._
 | `package.json` | Still no scripts. Commands are run directly: `npx playwright test tests/api`, `npx playwright test tests/ui`, `npx tsc --noEmit`. §0.3 was **not** done; the agents are written against the real commands. |
 | Framework | `fixtures/` (api + pages), `pages/` (3 page objects), `services/api/` (facade → controllers → builders → `endpoints.ts` → `toApiResult`), `framework/configuration/config.ts` (Joi-validated `.env`). Note the shape differs from §0.1 — there is no `tests/fixtures/` and no `tests/pages/`. |
 | `.mcp.json` | `atlassian` SSE server, enabled in `.claude/settings.local.json` |
-| `.claude/agents/` | All five Phase 1 agents built: `qa-requirements-collector`, `qa-requirements-reviewer`, `qa-scenario-generator`, `qa-scenario-classifier`, `qa-scenario-reviewer`. All four Phase 2 agents built: `aqa-api-test-creator`, `aqa-ui-test-creator`, `aqa-api-test-reviewer`, `aqa-ui-test-reviewer`. All nine carry the `# Inputs` contract and name no sibling. A tenth, `git-change-analyst`, was added after the ship-phase split (see below) — read-only, `Read, Grep, Glob, Bash`, writes nothing. |
+| `.claude/agents/` | All five Phase 1 agents built: `qa-requirements-collector`, `qa-requirements-reviewer`, `qa-scenario-generator`, `qa-scenario-classifier`, `qa-scenario-reviewer`. All four Phase 2 agents built: `aqa-api-test-creator`, `aqa-ui-test-creator`, `aqa-api-test-reviewer`, `aqa-ui-test-reviewer`. All nine carry the `# Inputs` contract and name no sibling. A tenth, `git-change-analyst`, was added after the ship-phase split (see below) — read-only, `Read, Grep, Glob, Bash`, writes nothing. An eleventh, `qa-jira-transition`, closes the return leg — Atlassian tools only, no filesystem tools. |
 | `.claude/skills/` | In-repo: `git-branch-creator`, `git-commit-creator`, `git-pr-creator`, `git-push-creator`, `git-workflow-orchestrator`, `playwright-cli`, `qa-ship-tests`, `requirements-reviewer` (interactive copy), `skill-creator`, `skill-validator`, `qa-workflow`. Phase 0.7 is **done**. `qa-workflow` (the orchestrator) is built — manual and auto modes, `max_review_iterations` default 2. |
 | `requirements/` | `SCRUM-139-requirements.md` present, in the canonical `qa-requirements-collector` shape (front matter, `### FR-11.x` / `### AC-1` blocks). |
 | `test-design/` | Does not exist yet — created by the first `qa-scenario-generator` run. Both SDETs abort with `NO_TEST_DESIGN` until it does. |
 | `.workflow/` | Does not exist yet — created by the first SDET run, which writes `.workflow/reports/<TICKET-ID>-<stream>-implementation.md`. Add it to `.gitignore` before the first commit. |
-| `.claude/settings.local.json` | `permissions.allow` covers `Write`/`Edit` on `requirements/**`, `test-design/**`, `tests/**`, `pages/**`, `services/**`, `fixtures/**`, `.workflow/**`, plus `npx playwright *`, `npx tsc *`, the `curl` preflight, the read-only Atlassian tools and `transitionJiraIssue`. |
+| `.claude/hooks/` | `agent-metrics.mjs` (the `PostToolUse` / `Task` hook) and `metrics-report.mjs` (the end-of-run table renderer). Node 22, no dependencies. Registered in the tracked `.claude/settings.json`, which exists for this and nothing else. |
+| `.claude/settings.local.json` | `permissions.allow` covers `Write`/`Edit` on `requirements/**`, `test-design/**`, `tests/**`, `pages/**`, `services/**`, `fixtures/**`, `.workflow/**`, plus `npx playwright *`, `npx tsc *`, the `curl` preflight, the read-only Atlassian tools, `transitionJiraIssue` and `addCommentToJiraIssue`. |
 | `CLAUDE.md` | Written. Covers the fixture chain import rule, the API facade layering, locator and wait policy, and the test conventions — this is what §0.4 asked for, and it is what both SDETs and both reviewers key off. |
 
 ---
@@ -277,8 +329,27 @@ The `requirements-reviewer` skill is no longer part of this decision — the rev
 | `aqa-ui-test-reviewer` | Built |
 | `git-workflow-agent` | **Reuse** existing `git-workflow-orchestrator` skill, wrapped by `qa-ship-tests` |
 | `git-change-analyst` | **Build** — not in the workflow spec; the read-only half of the git-row split |
+| `qa-jira-transition` | **Build** — not in the workflow spec; the return leg (see below) |
 
-10 agents to build — all 10 built. 1 orchestrator skill (`qa-workflow`, built), 1 reused skill.
+11 agents to build — all 11 built. 1 orchestrator skill (`qa-workflow`, built), 1 reused skill.
+
+### Why the return leg is its own agent
+
+The workflow spec ends at the pull request. In practice that leaves the ticket sitting in `In Progress`
+with no link to the work, which is the one state a board cannot recover from on its own — the run looks
+unfinished to everybody who is not reading this transcript.
+
+Three candidates could have closed it, and two are wrong for structural reasons. `qa-ship-tests` would
+bury a Jira side effect inside a git skill and reverse its own "no Jira access" rule. `qa-workflow` would
+break the rule that the orchestrator does none of the work itself. So the return leg is an agent, mirroring
+the intake leg: `qa-requirements-collector` moves the ticket to `In Progress` at the start,
+`qa-jira-transition` comments the PR and moves it to `In Review` at the end, and the orchestrator routes
+between them without touching Jira.
+
+Its tool grant is the narrowest in the repository — five Atlassian calls and **no filesystem tools at all**.
+That is deliberate: it cannot read a report, so it cannot be tempted to summarise one, and every claim in
+its comment is either a value from its prompt or a fact Jira just returned. It also cannot see GitHub, so
+it never asserts the pull request is open or green — it records the URL and says where it came from.
 
 ### Why the git row became a skill, not an agent
 
@@ -335,7 +406,7 @@ The installed `~/.claude/skills/requirements-reviewer/SKILL.md` was written for 
 | Emits a standalone 5-section report | Must **append** `QA Review Notes`, `Missing Information`, `Identified Risks`, `Assumptions`, `Open Questions` to the existing file |
 | Grades on 8 characteristics of requirement text | Workflow spec asks for 12 QA gap checks — validation rules, error handling, permissions, boundaries, integration, data, observability |
 
-The two rubrics are complementary, not competing: the 8 characteristics judge *how the requirement is written*, the 12 gap checks judge *what testing detail is missing*. The agent needs both, so it carries its own copy of the 8-characteristic table (8 rows — cheaper to inline than to load a 278-line skill) and adds the gap checklist on top.
+The two rubrics are complementary, not competing: the 8 characteristics judge *how the requirement is written*, the 13 gap checks judge *what testing detail is missing*. The thirteenth is **API surface evidence** — a requirement whose behaviour is observable over HTTP but whose document maps no operation cannot become an API test, because there is no route to call and no status code to assert. It is graded once for the document, not once per requirement, and `ignored` is a Major rather than a Critical: a decision a person already took is a weaker gap than one nobody noticed, and re-raising it as blocking would loop the review over a settled question. The agent needs both, so it carries its own copy of the 8-characteristic table (8 rows — cheaper to inline than to load a 278-line skill) and adds the gap checklist on top.
 
 Keep the skill installed for interactive human use. It is not on the workflow's critical path, which also removes it from the Phase 0.7 portability decision.
 
@@ -371,6 +442,7 @@ Build it as `.claude/skills/qa-workflow/SKILL.md`, invoked as `/qa-workflow ABC-
 | 5 | `aqa-api-test-creator`, `aqa-api-test-reviewer` | **The entire Phase 2 pattern** — built |
 | 6 | `aqa-ui-test-creator`, `aqa-ui-test-reviewer` | Clone of step 5 — built |
 | 7 | `qa-workflow` Phase 2 + `qa-ship-tests` | End to end, ticket to pull request — both built |
+| 8 | `qa-jira-transition` + `qa-workflow` Step 4 | The return leg — pull request back onto the ticket, `In Review` — both built |
 
 Step 5 carries the design risk — implement/review/revise loop, iteration cap, report format. Step 6 is largely a copy once step 5 is stable. Do not build steps 5 and 6 in parallel.
 
@@ -393,7 +465,7 @@ An agent that modifies **nothing** is exempt from the directory half of that rul
 
 | Agent | Tools |
 |---|---|
-| `qa-requirements-collector` | `Read, Write, mcp__atlassian__*` |
+| `qa-requirements-collector` | `Read, Write, Glob, Bash, mcp__atlassian__*` — `Bash` for `scripts/api-surface.mjs` only |
 | `qa-requirements-reviewer` | `Read, Edit` |
 | `qa-scenario-generator` | `Read, Write, Edit, Glob, Bash` |
 | `qa-scenario-classifier` | `Read, Edit, Glob` |
@@ -404,6 +476,7 @@ An agent that modifies **nothing** is exempt from the directory half of that rul
 | `aqa-api-test-reviewer` | `Read, Grep, Glob, Bash` |
 | `aqa-ui-test-reviewer` | `Read, Grep, Glob, Bash` |
 | `git-change-analyst` | `Read, Grep, Glob, Bash` |
+| `qa-jira-transition` | `mcp__atlassian__*` only — no filesystem tools |
 
 **Reviewers get no `Edit` or `Write`.** A reviewer that can edit will fix what it finds and return `Pass`, and the Needs-Revision signal disappears — which is the one thing the review step exists to produce. Reviewers keep `Bash` so they can run `npm run test:api` / `lint` to verify claims independently.
 
@@ -411,7 +484,9 @@ An agent that modifies **nothing** is exempt from the directory half of that rul
 
 `qa-scenario-generator` gets **both** `Write` and `Edit`, which looks like a contradiction of the rule above until you follow the revision loop. It uses `Write` once, to create the test design. Every later revision — `qa-scenario-reviewer` returned `Needs Revision`, missing scenarios routed back — must be `Edit`, because by then `qa-scenario-classifier` has written `Assigned Level:` lines into the same document and a `Write` would erase them. The tool grant cannot express "Write once, then Edit", so the agent body carries that rule and Step 9's self-check enforces it. `Glob` is for the existence guards, matching both sibling agents.
 
-`qa-requirements-collector` is the only agent with Atlassian access. No other agent should be able to modify Jira.
+**Exactly two agents hold Atlassian access, one at each end of the run.** `qa-requirements-collector` reads the ticket and moves it to `In Progress`; `qa-jira-transition` comments the pull request on it and moves it to `In Review`. Both are restricted to the status field — neither may edit a description, a custom field, or somebody else's comment — and no third agent gets Jira access. If a step needs a Jira change that is not "read" or "move status", that is a human's job, not a new tool grant.
+
+`qa-jira-transition` deliberately holds **no** `Read`, `Write`, `Glob` or `Bash`. Everything it writes into Jira is either a parameter it was handed or a value Jira just returned, so there is no path by which it summarises a report it half-read or repeats a review verdict it cannot verify. It is the smallest grant in the repository and the clearest illustration that a tool withheld is a rule enforced.
 
 ### Browser access rides on `Bash`
 
@@ -457,7 +532,17 @@ once, including tests neither stream is reviewing. That is an orchestrator- or h
 
 ### 1. `qa-requirements-collector`
 
-**Status: built.** `.claude/agents/qa-requirements-collector.md`. The shipped version differs from the sketch below: it also carries `Glob` (existence guard), an `# Environment` block with the site/cloudId/status ids, and a `QA_REQUIREMENTS_COLLECTOR_RESULT` receipt block.
+**Status: built.** `.claude/agents/qa-requirements-collector.md`. The shipped version differs from the sketch below: it also carries `Glob` (existence guard), `Bash` (the API surface step below), an `# Environment` block with the site/cloudId/status ids, and a `QA_REQUIREMENTS_COLLECTOR_RESULT` receipt block.
+
+**It has a second source.** Jira says what the feature must do; the application's OpenAPI document says what a test can observe. Step 4b maps the feature onto the operations that serve it and writes them into the document as `# API Surface` — the eleventh heading, between `# Affected Components` and `# Testing-Relevant Information`. Contract:
+
+- **The agent never fetches or parses the document itself.** `scripts/api-surface.mjs` does that — it reads the spec out of the Swagger UI bootstrap script, filters to matched operations, and prints the finished section. `Bash` exists in the tool grant for that one command and nothing else. An LLM re-deriving a 24 KB JavaScript slice on every run is expensive and non-deterministic in a place where neither is needed.
+- **Match precedence is `exact-path` -> `tag` -> `path-segment`**, and the basis that fired is written into the section, because it is what a reviewer needs to judge how far the match can be trusted.
+- **Outcomes are `mapped`, `partial`, `none` and `ignored`**, carried on the receipt as `API_SURFACE` with `SURFACE_PROVENANCE`, `MATCH_BASIS`, `MATCHED_OPERATIONS` and `SPEC_GAPS`. `partial` means either a weak basis or documented gaps; it is the common case and it is not a problem to solve here.
+- **The spec is incomplete per operation, and the section says so.** `## Spec Gaps` lists what the document is silent about — a 2xx with no schema, an operation with no error responses, an auth requirement inherited from the spec-wide default rather than stated. Downstream those are `unknown:`, never assertable. An error *message string* is never in an OpenAPI document at all; response descriptions are prose for humans.
+- **A human may supply the surface or skip it.** `endpoint_hints` seeds the match and may add what the document omits; the spec wins on shape, the hint wins on existence. A hint-sourced fact carries `Source: user-supplied — <approver> — <date>` and the approver is never synthesised — no approver means `ABORT HINTS_WITHOUT_APPROVER`. `api_surface_mode: ignore` skips the mapping and writes the consequence into the document.
+- **A `surface_revision` mode exists** so that supplying hints against an existing document resolves to a scoped rewrite instead of `EXISTS`. It touches only `# API Surface`, makes no Jira call, and reports `JIRA_STATUS: unchanged`. Without it the "provide the endpoints and re-run" path dead-ends.
+- **The API surface never gates Jira.** It is not a `Retrieval Gap`. A stopped application says nothing about how well the ticket was read, and must not hold the ticket in `To Do`.
 
 ```markdown
 ---
@@ -474,7 +559,7 @@ Body outline:
 2. Collect description, acceptance criteria, comments, subtasks, linked issues, attachments.
 3. Derive dependencies and affected components — mark as *derived*, never as if stated in the ticket.
 4. Transition to `In Progress` **only after** retrieval succeeds and the ticket is workable.
-5. Write `requirements/<TICKET-ID>-requirements.md` using the section template from the workflow spec.
+5. Write `requirements/<TICKET-ID>-requirements.md` using the section template from the workflow spec — **eleven** level-1 headings, `# API Surface` between `# Affected Components` and `# Testing-Relevant Information`.
 6. Return a short summary: path written, AC count, ticket status.
 
 Must not: invent acceptance criteria; edit the Jira description; transition a ticket it could not fully read.
@@ -545,15 +630,17 @@ Body outline (10 steps, same skeleton as `qa-requirements-collector` and `qa-req
 
 1. **Resolve the ticket ID** — the shared regex guard. Also detect a regenerate token, *review findings*, and `requirement_ids`; the three together select the run mode.
 2. **Guard: validate the source** — `Glob` + `Read` `requirements/<TICKET-ID>-requirements.md`. Ten level-1 headings in order, plus at least one `### FR-` or `### AC-` block, or `ABORT: MALFORMED_DOCUMENT`. Strict parse, no bullet-scraping fallback — a document without those headings is stale or hand-written, and generating from it produces untraceable scenarios. Zero ACs but FRs present is not an abort; it becomes a coverage gap.
-3. **Guard: idempotency and mode** — a five-row table over {document exists} × {regenerate token} × {review findings} × {`requirement_ids`} selecting `first_run` / `revision` / `regenerate` / `EXISTS`. An existing document plus `requirement_ids` and nothing else is the *next batch* of a scoped run, and it reaches revision mode by the same append-only path a review finding does.
+3. **Guard: idempotency and mode** — a five-row table over {document exists} × {regenerate token} × {review findings} × {`requirement_ids`} selecting `first_run` / `revision` / `regenerate` / `EXISTS`. An existing document plus `requirement_ids` and nothing else is the *next batch* of a scoped run; it reaches revision mode by the same path a review finding does, but carries no findings and no approvals, so neither Step 8 carve-out is open to it and it appends only.
 4. **Extract source material** — FR/AC ids verbatim, plus `# Testing-Relevant Information`, `# Known Constraints`, and any `qa-requirements-reviewer` sections. Every reviewer finding must land as a scenario, a `Notes:` line, or a `# Coverage Gaps` entry. `requirement_ids`, when supplied, splits those ids into an in-scope and an out-of-scope set; an id in it that the document does not carry aborts `REQUIREMENT_NOT_FOUND`.
 4c. **Size the test basis** — count the in-scope FRs and ACs and report `TEST_BASIS_SIZE` on every run. Above 20, set `OVERSIZED_INPUT` and record a coverage gap saying a `requirement_ids`-scoped re-run is the remedy. The gate is warn-never-block: a large ticket still gets a full design, because a gate that abandons the run trades a thin document for no document. What it must never do is license less work — a category dropped or a model shortened "because the input was large" fails the Step 9 self-check.
 4d. **Research the test basis before modelling it** — ten fixed rows (actors & roles, entities & states, inputs, limits, oracles, permissions, dependencies, data lifetime, domain terms, unknowns), emitted as `# Test Basis Research` above `# Test Basis Analysis`. One line per row, always all ten, `— none stated` where there is nothing. The `Feeds` column is what stops it being decorative: every row names the coverage-item id, sweep category, `Expected:` or `Coverage Gaps` entry that consumes it, so a row with findings and no `Feeds` cell is research nobody built on. The step exists because Step 5 can only model what Step 4 noticed, and a partition never noticed is invisible to every check downstream of it. The **Oracles** row carries the observability question — response contract, API read-back, rendered state, event record, or absence of a side effect — which is what keeps an `Expected:` assertable; the **Unknowns** row feeds the confidence markers below.
 5. **Model the test basis with the ISTQB black-box techniques** — equivalence partitioning, boundary value analysis, decision table testing, state transition testing (ISTQB CTFL v4.0 §4.2), one subsection each, emitting numbered **coverage items** (`EP-NN`, `BV-NN`, `DT-NN/RN`, `ST-NN/TN`). Scenarios are derived *from* these models rather than invented and labelled afterwards, which is what turns coverage from a judgement call into arithmetic. Key rules: every partition set carries its invalid partitions and targets Each Choice; 3-value BVA is the default and 2-value must name the infeasible neighbour; decision tables are required wherever an outcome depends on two or more conditions, and removed or merged columns must be recorded because they change the coverage denominator; state transition testing emits a state *table* so the invalid transitions are visible, targets all-transitions coverage, and allows at most one invalid transition per scenario to avoid defect masking.
 5b. **Sweep the twelve coverage categories** — the original table, unchanged, now positioned as the completeness check *over* the models: it catches what no partition, rule column or transition would have produced. The default failure mode of this agent is happy paths plus one token negative case, and the sweep is what prevents it.
 6. **Scenario block format** — twelve fields, one per line, under `## SCN-NNN: <title>`. This is the contract; see below.
-7. **Write the document** — front matter, `# Test Basis Research`, `# Test Basis Analysis`, `# Scenarios`, `# Traceability Matrix`, `# Coverage Matrix`, `# Technique Coverage Matrix`, `# Coverage Gaps`, `# Approved Assumptions`. All three matrices are derived from the blocks, never written from memory; the technique percentages in particular are counted, never asserted. On a scoped run the traceability matrix still lists **every** id in the requirements document, an out-of-scope one reading `_Out of scope for this run (requirement_ids)._` — a batch that hid those rows would be indistinguishable from a finished design, which is the one failure this document exists to prevent.
-8. **Revision mode (append-only)** — `Edit` only. Numbering continues from the highest existing id, never renumbers, and every pre-existing block stays byte-identical including `qa-scenario-classifier`'s `Assigned Level:` lines. `# Test Basis Analysis` is append-only on the same terms — a wrong model is superseded by a new id plus a coverage-gap note, never edited out from under the scenarios citing it.
+7. **Write the document** — front matter, `# Summary`, `# Scenarios`, `# Traceability Matrix`, `# Coverage Matrix`, `# Technique Coverage Matrix`, `# Coverage Gaps`, `# Approved Assumptions`, `# Test Basis Research`, `# Test Basis Analysis`. All three matrices are derived from the blocks, never written from memory; the technique percentages in particular are counted, never asserted. **`# Summary` leads and the two test-basis sections close the file as an appendix** — the reader came for the scenarios, the matrices audit them, and the models are what a scenario's `Coverage Item:` id sends you to the back for. Nothing is optional and nothing is shortened by its position. `# Summary` is six counted lines plus at most five blocked-by bullets, every figure recounted from the finished document and none of it asserted; its `Levels:` line reads `_pending classification._` because the writer knows only `Suggested Level:`, and the classification step owns that one line. On a scoped run the traceability matrix still lists **every** id in the requirements document, an out-of-scope one reading `_Out of scope for this run (requirement_ids)._` — a batch that hid those rows would be indistinguishable from a finished design, which is the one failure this document exists to prevent.
+8. **Revision mode (scoped edit)** — `Edit` only, never `Write`. Numbering continues from the highest existing id and no id is ever renumbered, reused or deleted, because findings and workflow state cite them; a full rewrite needs the explicit `regenerate` token. The default is to append, with **two carve-outs that reach an existing line, both scoped by what the caller named**: an `approved_values` entry reaches the `Expected:`, `Notes:` and `Automation Suitability:` lines of the scenarios it names, and a finding that names a field reaches `Requirement:`, `Priority:`, `Expected:`, `Automation Suitability:` or `Notes:` in the scenarios it names. Everything else stays byte-identical, including the classification step's `Assigned Level:` lines. `# Test Basis Analysis` appends new ids on the same terms; a superseded model row is marked in place in its `Source` cell rather than deleted, so the correction sits where the defect is and every scenario citing the id still resolves.
+
+   **Why the carve-out for findings exists.** Without it the two design agents deadlock. A reviewer legitimately writes "remove the invented status code from SCN-013's `Expected:`"; a strictly append-only writer cannot comply, appends a corrected twin instead, and now ships two instructions for one behavior with the original defect still in force. The reviewer re-raises the id, the iteration cap trips, and the run escalates on a finding both agents agree about. A revision is scoped by *what the findings name*, not by *whether the line already exists* — and a finding an in-place edit could satisfy must be fixed that way, never deferred to a coverage-gap entry that restates the defect and leaves it standing.
 9. **Self-check** — traceability complete, every `Requirement:` id real, ids unique and sequential, all twelve fields present, all twelve categories accounted for, all ten research rows and all four technique subsections present, every coverage item exercised or declared a gap, every `Coverage Item:` id real, every technique percentage recountable, every status code and error string traceable to the requirements or marked, and **no `unknown:` value anywhere in an `Expected:` field**. Failure returns `SELF_CHECK_FAILED` rather than a broken document.
 10. **Return summary** — house-style receipt block. `NEXT: qa-scenario-classifier`.
 
@@ -606,7 +693,9 @@ Must not: touch Jira; read `tests/`, `playwright.config.ts` or any application s
 
 ### 4. `qa-scenario-classifier`
 
-**Status: built.** `.claude/agents/qa-scenario-classifier.md`. Shipped with `Glob` added for the existence guard, an `# Inputs` table (`ticket_id`, `test_design_path`, `implemented_levels`, `reclassify`, `review_findings`), and two lines written per scenario rather than one — `Assigned Level:` plus a one-line `Level Rationale:`, inserted between `Suggested Level:` and `Automation Suitability:`. The 50% E2E figure is a self-check that forces a written justification, not a quota that rewrites assignments — a hard cap would corrupt the judgement it is meant to audit. `implemented_levels` exists so the follow-up-work list can be computed, and is explicitly barred from influencing any assignment. When the block format grew to twelve fields, this agent's strict field list gained `Technique:` and `Coverage Item:` — mandatory, or it aborts `MALFORMED_DOCUMENT` on every document the generator now produces — and one assignment rule: `Technique:` is a signal for factor 1 (an EP or BVA scenario over a single self-contained parameter rule is the archetypal Unit candidate; a decision-table or state-transition scenario rarely settles below Integration), never a verdict that overrides what `Expected:` makes decidable.
+**Status: built.** `.claude/agents/qa-scenario-classifier.md`. Shipped with `Glob` added for the existence guard, an `# Inputs` table (`ticket_id`, `test_design_path`, `implemented_levels`, `reclassify`, `review_findings`), and two lines written per scenario rather than one — `Assigned Level:` plus a one-line `Level Rationale:`, inserted between `Suggested Level:` and `Automation Suitability:`. The 50% E2E figure is a self-check that forces a written justification, not a quota that rewrites assignments — a hard cap would corrupt the judgement it is meant to audit. `implemented_levels` exists so the follow-up-work list can be computed, and is explicitly barred from influencing any assignment.
+
+That 50% self-check was later found to be unenforceable, and the fix changed the shape of the agent. On the games-management ticket it produced `Unit=1, E2E UI=18` — an 89% share — and duly wrote its justification, because a justification is cheaper than a re-think and the rule said in as many words not to move an assignment to hit a number. The cause was structural, not a lapse: classification ran strictly scenario by scenario, and a scenario judged alone almost always survives the E2E test — it *is* user-visible, it *does* need a browser. Nothing in the agent could see that eighteen individually reasonable scenarios traversed the same three screens. Two changes followed. The E2E UI definition gained the stub test — **would a stubbed backend still catch this bug?** — with four named `Expected:` shapes it routes to Component or Integration (a rendered control, breadth over a real dataset, parity between two views of one source, a page-size cap). And a second pass, `Step 3b`, groups the E2E candidates by *journey* — actor, entry point, routes traversed — keeps one positive and one negative per journey, and demotes the rest with a rationale naming the kept scenario id that covers each. That pass is the only place scenarios are considered together and it can only move a scenario **down**; promotion to E2E stays a per-scenario judgement on the scenario's own text, so the grouping cannot inflate the set it exists to shrink. The receipt gained `E2E_JOURNEYS`, `E2E_KEPT` and `E2E_DEMOTED`, which the orchestrator prints at the 1.4 pause. `E2E_SHARE` survives as a reported figure with no threshold attached: the budget is the journey count, and a percentage cannot tell a design with four real journeys from one holding four copies of the same one. The original instinct — that a hard cap would corrupt the judgement it audits — was right; the mistake was leaving a soft cap in its place instead of a structural rule. When the block format grew to twelve fields, this agent's strict field list gained `Technique:` and `Coverage Item:` — mandatory, or it aborts `MALFORMED_DOCUMENT` on every document the generator now produces — and one assignment rule: `Technique:` is a signal for factor 1 (an EP or BVA scenario over a single self-contained parameter rule is the archetypal Unit candidate; a decision-table or state-transition scenario rarely settles below Integration), never a verdict that overrides what `Expected:` makes decidable.
 
 ```markdown
 ---
@@ -627,7 +716,7 @@ Body outline:
 
 Must not: duplicate scenarios across all levels by default; drop or reword scenarios; classify everything as E2E.
 
-**Acceptance test:** on the demo ticket, fewer than half the scenarios land on E2E, and at least one is assigned Unit or Integration — proving it can route work away from this repo.
+**Acceptance test:** on the demo ticket, fewer than half the scenarios land on E2E, and at least one is assigned Unit or Integration — proving it can route work away from this repo. Two further checks close the hole the first version left open: **no two kept E2E scenarios share a journey** — same actor, same entry point, same routes, where one run of either already traverses what the other asserts — and **every demoted scenario's `Level Rationale:` names the kept scenario id that covers it**. A run that satisfies the percentage while keeping six scenarios on one journey fails.
 
 ---
 
@@ -717,6 +806,25 @@ Report path: `.workflow/reports/<TICKET-ID>-<stream>-implementation.md`. Not `te
 directory belongs to Phase 1, and the naming rule says Phase 2 agents do not write there. Not the repo
 either: the report is workflow state and stays out of the pull request.
 
+**The one exception to "Phase 2 never reads `requirements/`": the `# API Surface` section.** The API
+creator and the API review may open that section and nothing else in the file. It is a different kind of
+source from the test design, and the split is what keeps the exception safe:
+
+| Document | Answers | Governs |
+|---|---|---|
+| the test design | *what is true* | every assertion |
+| `# API Surface` | *how the system is reached* — route, verb, parameters, auth, response shape | no assertion at all |
+
+The rule that holds them apart is one line: **a value you assert must appear in the test design's
+`Expected:`.** A status code the surface documents but the design did not select is not assertable; the
+operation *can* return it, and only the design decides whether this test claims it does.
+
+A section-scoped read ban on an open file is unenforceable by access, so it is enforced by outcome
+instead. Row 4 of the API review checklist rules any assertion whose value is in neither the design's
+`Expected:` nor the surface an **invented value**, and row 23 rules a route, verb or parameter that
+appears in neither the surface nor a scenario a **guessed mechanic**. Both are checkable from the code
+alone, which is the only kind of rule a reviewer can actually apply.
+
 **The red-test rule** is the one design decision worth arguing about. `CLAUDE.md` requires that a known
 application defect be asserted against the *specification*, with a comment naming the defect — so a
 finished SDET run can legitimately end with `failed=1`. That collides with the workflow spec's "done
@@ -758,8 +866,10 @@ read `CLAUDE.md` and inventory `fixtures/`, `services/api/`, `tests/api/`; `curl
 run `npx playwright test tests/api` + `npx tsc --noEmit` with a three-cycle fix cap; revision mode;
 self-check; write report and receipt.
 
-**The test design is the only specification the stream reads.** Step 2 loads it and nothing else; the
-agent does not open `requirements/` at all. That document was written, reviewed by
+**The test design is the only specification the stream reads.** Step 2 loads it, plus the `# API Surface`
+section of `requirements/` and nothing else in that file. The surface answers a different question —
+*how is the system reached* — and supplies no assertion; the rule holding the two apart is that a value
+asserted must appear in the design's `Expected:`. That document was otherwise written, reviewed by
 `qa-requirements-reviewer` and closed in Phase 1, and the test design already encodes what it decided.
 Reading both invites the SDET to assert a requirement the design deliberately left out, and makes it the
 one deciding which document wins when they disagree — a decision that belongs to the design phase. So
@@ -809,18 +919,20 @@ see below.
 Outputs: the workflow spec's review block, plus `E2E API Scenarios in Test Design`, `Scenarios Claimed` /
 `Verified` / `Unverified` / `Missing`.
 
-Body: guard and load; **verify the report's claims** before judging quality; a 22-row API checklist;
+Body: guard and load; **verify the report's claims** before judging quality; a 23-row API checklist;
 run `npx playwright test tests/api` and `npx tsc --noEmit` itself; severity and verdict; report.
 
 **The review is scoped to two questions**, stated at the top of the body: (1) was every scenario the test
 design assigns to `E2E API` implemented and actually asserted, and (2) does the code follow the style of
-`tests/api/login-api.spec.ts` and `CLAUDE.md`. Checklist rows 1–4 answer the first, rows 5–22 the second.
+`tests/api/login-api.spec.ts` and `CLAUDE.md`. Checklist rows 1–4 answer the first, rows 5–23 the second.
 
-The test design is the **only** specification the reviewer reads. It does not open `requirements/` at
-all: that document was already reviewed by `qa-requirements-reviewer` in Phase 1, and a second pass here
-re-opens a settled document and produces findings that contradict the design the tests were written
-from. A gap in the test design itself belongs to the design review, not this one — at most a
-`Suggested Improvements` line.
+The test design is the **only** specification the reviewer reads. Of `requirements/` it opens the
+`# API Surface` section and nothing else — it needs that section for exactly the reason the creator did,
+to tell a documented route from a guessed one, and rows 4 and 23 are where it uses it. The rest of that
+document was already reviewed by `qa-requirements-reviewer` in Phase 1, and a second pass here re-opens a
+settled document and produces findings that contradict the design the tests were written from. A gap in
+the test design itself belongs to the design review, not this one — at most a `Suggested Improvements`
+line, and a gap in the surface belongs to the requirements review.
 
 The highest-value check is Step 2, not the checklist: a scenario claimed as implemented whose test does
 not actually assert that scenario's expected outcome. A green suite cannot catch it, and it is the
@@ -965,14 +1077,61 @@ path appears in `git status --short`.
 
 ---
 
+### 9.7 `qa-jira-transition`
+
+**Status: built.** `.claude/agents/qa-jira-transition.md`. The return leg: it puts the pull request on the
+ticket and moves the ticket to `In Review`.
+
+```markdown
+---
+name: qa-jira-transition
+tools: mcp__atlassian__getAccessibleAtlassianResources, mcp__atlassian__getJiraIssue, mcp__atlassian__getTransitionsForJiraIssue, mcp__atlassian__transitionJiraIssue, mcp__atlassian__addCommentToJiraIssue
+model: sonnet
+color: green
+---
+```
+
+Inputs: `ticket_id` and `pr_url` (both required), plus `target_status` (default `In Review`), `scenarios`,
+`branch_name`, `summary_line`, `comment_on_success`, `transition_on_success`.
+
+Outputs: a `QA_JIRA_TRANSITION_RESULT` block — `OK | PARTIAL | EXISTS | ABORT` — with the status
+transition, the transition id, whether the comment was `added | skipped | already_present`, and the
+`PR_URL` it was handed.
+
+It shares `qa-requirements-collector`'s `# Environment` block verbatim — same site, same cloudId, same
+status/transition-id table, same "never hardcode a transition id, resolve it by target status name and
+report the drift" rule. The two agents are the only ones that need it, and they are the two ends of the
+same run.
+
+Four rulings worth knowing:
+
+* **The comment comes before the transition.** If the transition then fails, the ticket still carries the
+  link a human needs to finish the move; the reverse order leaves a moved ticket nobody can trace to a
+  pull request.
+* **An invalid `pr_url` is an abort, not a warning.** `none`, empty, `pending`, or anything that is not
+  `https://github.com/<owner>/<repo>/pull/<digits>` aborts `NO_PR_URL` / `INVALID_PR_URL` before any tool
+  call. Moving a ticket to `In Review` on a pull request nobody can open is worse than leaving it alone.
+* **Idempotent by reading the ticket, not by trusting the caller.** Step 2 fetches the comments and scans
+  for the exact URL; a match plus a matching status returns `EXISTS` having changed nothing. Re-running the
+  workflow over a shipped ticket must not stack duplicate comments.
+* **No multi-hop.** If Jira offers no direct transition from the current status to `In Review`, it returns
+  `PARTIAL` / `NO_TRANSITION_PATH` and lists what was offered. Improvising a route through another status
+  changes the board's history to make an automated run succeed.
+
+**Acceptance test:** run twice against a ticket whose pull request exists. The first run comments once and
+moves `In Progress -> In Review`; the second returns `EXISTS`, adds no second comment and issues no
+transition. Then run it with `pr_url: none` — it must abort `NO_PR_URL` with zero tool calls.
+
+---
+
 ### 10. `qa-workflow` skill (the `qa-lead` orchestrator)
 
 **Status: built.** `.claude/skills/qa-workflow/SKILL.md`, invoked as `/qa-workflow ABC-123 [--auto]`.
 
 Inputs: `ticket_id` (required), `mode` (`manual` | `auto`, default `manual`), `max_review_iterations`
 (default **2**, alias `maxReviewIterations`), `review_requirements` (default `true`), `resume`,
-`start_phase`, `skip_ship`, `dry_run`, plus `explore_app`, `run_tests`, `branch_name` and `base_branch` as
-pass-throughs.
+`start_phase`, `skip_ship`, `skip_jira_handback`, `jira_target_status` (default `In Review`), `dry_run`,
+plus `explore_app`, `run_tests`, `branch_name` and `base_branch` as pass-throughs.
 
 Responsibilities:
 
@@ -984,7 +1143,16 @@ Responsibilities:
 4. Enforce `max_review_iterations` (default 2) in auto mode. On reaching it, stop and escalate rather than looping.
 5. Run `aqa-api-test-creator` and `aqa-ui-test-creator` in parallel; wait for both streams before the final decision; keep per-stream status so one failure does not discard the other's passing work.
 6. Invoke the ship phase only when both reviewers return `Pass`.
+6a. Close the loop when — and only when — the ship phase actually produced a pull request: hand the
+   `PR_URL`, branch and scenario ids to the Jira return leg so the ticket carries the link and reaches
+   `In Review`. Skipped on `dry_run`, on `skip_ship`, and on `skip_jira_handback`. A failed hand-back is
+   recorded and surfaced in `NEXT_ACTION`; it never fails the run, and it never triggers a retry loop or a
+   rollback of the pull request.
 7. Persist state after every step so an interrupted run can resume.
+8. Read the `AGENT_RUN_METRICS` line that follows each agent's output, fold `tokens` and `duration_s` into
+   that step's `history` entry, and close the run with two sections — the artifacts produced and the
+   `metrics-report.mjs` cost table, one row per agent run in order. See the
+   [Run Metrics Contract](#run-metrics-contract).
 
 **Two modes.** They differ in exactly one thing — who decides the transition — and share every other rule,
 so the state file written by one is resumable by the other.
@@ -1016,7 +1184,8 @@ hint added to an agent file is a contract violation; it belongs in the step regi
 Must not: perform requirements analysis, scenario generation, or test implementation itself; write anything
 except `.workflow/<TICKET-ID>.yaml`; loop past the cap or raise it mid-run; reach around `qa-ship-tests` to
 the git skills; discard one stream's passing result because the other failed; route a `DEFECT_SUSPECTED`
-entry back as a defect to fix; touch Jira.
+entry back as a defect to fix; touch Jira; write or edit the metrics log, estimate a token count, or let
+one influence a routing decision.
 
 **Acceptance tests:**
 
@@ -1024,6 +1193,8 @@ entry back as a defect to fix; touch Jira.
 * `--max-review-iterations 1` against a design the reviewer fails: one route-back, one re-review, then `ESCALATED` naming the outstanding `[DESIGN-*]` ids. It must not loop.
 * Force the UI stream past its cap while the API stream passes. The return block still shows `API: review=Pass`, and no git phase runs.
 * Run twice end to end. The second run advances on `EXISTS` receipts, `git status` stays clean, and no artifact's `iteration:` or `revision:` moves.
+* After any run with at least one route-back, `.workflow/metrics/<TICKET-ID>.jsonl` has one line per agent
+  run — the re-run agent appearing twice — and the closing table's row count matches the line count.
 
 ---
 
@@ -1036,6 +1207,8 @@ Run these once steps 1–7 are complete.
 * **Non-E2E routing** — a Unit-classified scenario produces a follow-up ticket entry, not a Playwright test.
 * **Tool boundaries** — confirm no reviewer modified a file across a full run.
 * **Fresh clone** — clone to an empty directory and run end to end. Catches missing skills, missing env vars, missing scripts.
+* **Return leg** — after a real ship, the ticket carries exactly one comment with the pull-request URL and sits in `In Review`. Re-run the workflow over the same ticket: no second comment, no second transition. Then run a `--dry-run` ship and confirm Jira was not touched at all.
+* **Hand-back failure is survivable** — deny `transitionJiraIssue` for one run. The workflow still returns `OK`, `PR_URL` is intact, and `NEXT_ACTION` names the manual move. A run that reports `BLOCKED` because a status did not change has the priorities backwards.
 
 ### Re-run and revision checks
 
@@ -1046,8 +1219,11 @@ ticket after steps 1–9.
   findings. Second run returns `EXISTS`, `git status` is clean, and no artifact's `iteration:` or
   `revision:` moved. The two SDETs are the ones this has never held for.
 * **Scoped revision** — hand an SDET one real finding naming one file. `git diff --stat` lists that
-  file and the implementation report, nothing else. Repeat for the generator (append-only) and the
-  classifier (only the named scenarios re-assigned).
+  file and the implementation report, nothing else. Repeat for the classifier (only the named scenarios
+  re-assigned) and for the generator, where the check has two halves: a finding naming a *missing*
+  scenario appends one and touches no existing block, and a finding naming an *existing field* changes
+  that field in place — `git diff` shows the edited line, not a new scenario beside the old one and not a
+  coverage-gap entry agreeing with the finding while the defect stands.
 * **Disputed finding** — hand an SDET a finding it should reject. It appears in `Review Findings
   Addressed` as `disputed` **and** under `Known Limitations`. A finding that appears in neither is the
   failure mode this check exists to catch.

@@ -96,7 +96,7 @@ Criteria 1–13 audit the scenarios against the requirements. Criteria 14–18 a
 | 7 | Contradictory scenarios | two scenarios asserting different outcomes for the same input and preconditions |
 | 8 | Invalid assumptions | an `Expected:` value — status code, error string, limit, field name, role, route — that appears nowhere in the requirements document **and** carries no `inferred:` or `approved:` marker in that scenario's `Notes:`. An untagged value is a claim the requirements state it, so the finding is the silent claim, not the value. A value tagged `inferred:` whose stated basis is a general convention rather than something in the requirements is a mislabel, and should have been `unknown:` |
 | 9 | Incorrect level assignments | a scenario at a level where its `Expected:` outcome is not decidable, or one pushed to E2E though its assertion is a self-contained rule |
-| 10 | Excessive E2E coverage | validation and formatting rules assigned to E2E as a group rather than individually justified |
+| 10 | Excessive E2E coverage | two or more E2E scenarios covering one journey — same actor, same entry point, same routes — where a single run of one already traverses what the other asserts; an E2E assertion that would pass, and fail correctly, against a stubbed backend response; validation and formatting rules assigned to E2E as a group rather than individually justified. Individually justified assignments are the usual form of this finding: each scenario needs a browser, and none of them needs its own |
 | 11 | Missing lower-level coverage | a requirement whose logic clearly lives in one module with no Unit, Component, or Integration scenario anywhere |
 | 12 | Traceability | a `Requirement:` id that does not exist in the requirements document; a matrix row disagreeing with the blocks |
 | 13 | Automation suitability | `Automation Suitability:` below `High` with no reason in `Notes:`; a scenario whose `Action:` is untestable as written |
@@ -110,6 +110,7 @@ Criteria 1–13 audit the scenarios against the requirements. Criteria 14–18 a
 
 Additional structural checks, folded into the criteria above:
 
+- `# Summary` is present directly under the title, and every number in it survives a recount from the document below it (criterion 18). `Scenarios:` equals the `## SCN-` block count; `Automatable:` plus `Manual only:` equals it, split on the `Automation Suitability:` field; `Techniques:` matches `# Technique Coverage Matrix`; `Requirements:` matches the traceability matrix; `Levels:` matches `# Level Assignment Summary` when levels are assigned. A summary that overstates is Major, not Minor — it is the one section a reader trusts without checking, and a reviewer is the only thing between it and them.
 - Every scenario block has all its fields, one per line, and unique sequential ids (criterion 12).
 - When `expect_levels_assigned` is `true`, every scenario has exactly one `Assigned Level:` line with a valid level, and a `Level Rationale:` (criterion 9). A missing assignment is Major, not Blocked.
 - Any coverage gap the test design itself declares is read and weighed. A gap that is honestly recorded and genuinely unresolvable (an unknown value nobody has stated) is not a Major finding — it is confirmation the design is honest. A gap recorded to excuse work that could have been done is Major.

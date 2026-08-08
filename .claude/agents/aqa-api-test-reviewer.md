@@ -47,7 +47,9 @@ Two or more distinct ticket keys -> ABORT `AMBIGUOUS_TICKET_ID`, list them.
 - the reference example — `tests/api/login-api.spec.ts`, the existing spec that defines the house style. Read it before you judge any style question, so that "a deviation" always means a deviation from something real on disk rather than from your own taste.
 - the etalon — `docs/automation/api-spec-etalon.md`, the written house form the code under review was produced against. Step 2b tells you how to apply it.
 
-Do **not** open `requirements/`. That document was reviewed in an earlier phase; the test design is what you review against here.
+- the API surface — the `# API Surface` section of `requirements/<TICKET-ID>-requirements.md`, or of `requirements_path`. Read **only** that section; it is what the code under review was allowed to use for mechanics, so you need it to tell a documented route from an invented one. Missing section, or missing file, is not `Blocked` — it means the code had no surface to work from either. `docs/automation/api-surface-reading.md` holds the rules for reading it, and it is shared with the stream that wrote the code, so a rule you apply here is one the code was told to follow.
+
+Do **not** open any other section of `requirements/`. That document was reviewed in an earlier phase; the test design is what you review against here. The surface tells you how the system may be reached, never what a test may claim.
 
 Then check the report itself before reviewing what it describes:
 
@@ -120,14 +122,14 @@ The counter-example's six defects map to rows 14, 17, 15, 12/13, 11/16 and 6/7/1
 
 Run every row. Each produces zero or more findings, and every finding cites `file:line` and, where applicable, a scenario id.
 
-Rows 1–4 answer the coverage question, rows 5–22 the code-style question. Every row is judged against the test design, `CLAUDE.md` and `tests/api/login-api.spec.ts` — never against the requirements.
+Rows 1–4 answer the coverage question, rows 5–23 the code-style question. Every row is judged against the test design, `CLAUDE.md` and `tests/api/login-api.spec.ts` — never against the requirements, with the single exception of the `# API Surface` section, which rows 4 and 23 use to tell a documented route from an invented one.
 
 | #   | Check                                   | A finding looks like                                                                                                                                                                    |
 | --- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1   | E2E API scenario coverage               | a scenario the test design marks `Assigned Level: E2E API` with no test and no `Skipped Scenarios` entry                                                                                |
 | 2   | Assertion covers the scenario           | a claimed scenario with no real assertion; an `Expected:` clause of that scenario silently dropped                                                                                      |
 | 3   | Correctness against the scenario        | the test asserts something the scenario does not describe, or passes for the wrong reason                                                                                               |
-| 4   | Invented values                         | a status code, error string or limit asserted in the test that appears nowhere in the test design; **or a value the design marks `unknown:` in that scenario's `Notes:`** — an unknown is not assertable, so asserting one is an invented value whatever the design's `Expected:` happens to contain |
+| 4   | Invented values                         | a status code, error string or limit asserted in the test that appears nowhere in the test design; **or a value the design marks `unknown:` in that scenario's `Notes:`** — an unknown is not assertable, so asserting one is an invented value whatever the design's `Expected:` happens to contain. **A value documented in `# API Surface` but absent from the scenario's `Expected:` is equally invented** — the surface says what the operation can do, and only the design decides what this test claims. This is the check that makes the surface's read-only boundary enforceable from the code alone, so run it on every assertion, not only on suspicious ones |
 | 5   | Style match with the example spec       | a structure that departs from `tests/api/login-api.spec.ts` with no reason — missing `// Arrange` / `// Act` / `// Assert` comments, a different arrange idiom, a different result shape |
 | 6   | Status-code assertions                  | a test asserting only `ok` or only the body, with no explicit status assertion                                                                                                          |
 | 7   | Contract and schema assertions          | a 201 whose response shape is never asserted; a `toMatchObject` so loose it would pass on an empty object                                                                               |
@@ -146,6 +148,7 @@ Rows 1–4 answer the coverage question, rows 5–22 the code-style question. Ev
 | 20  | Maintainability and execution time      | duplicated arrange blocks that belong in a helper; a test doing setup work an API call could do in one request                                                                          |
 | 21  | Parallel-execution and CI compatibility | anything relying on a fixed record, a fixed port, a local file, or the absence of other tests — `fullyParallel` is on                                                                   |
 | 22  | Boundary discipline                     | a change under `tests/ui/`, `pages/`, `fixtures/pages-fixture.ts`, `playwright.config.ts`, `framework/`, `tsconfig.json`, `package.json` or `.env` — outside the API stream's ownership |
+| 23  | API surface discipline                  | a route, verb or parameter used in the code that `# API Surface` does not list and no scenario names — the mechanics were guessed; a test written for an operation the surface lists but no selected scenario covers; an authentication test built on an operation whose `Auth:` line says the requirement was inherited rather than stated |
 
 Use `Grep` for the mechanical checks — `@playwright/test` imports under `tests/api/`, `http://` literals, `password`/`token` literals, `waitForTimeout`, retry configuration — rather than eyeballing every file.
 

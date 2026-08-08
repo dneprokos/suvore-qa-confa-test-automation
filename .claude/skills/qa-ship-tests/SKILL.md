@@ -26,7 +26,7 @@ Run it on the main thread. It reads files and invokes other skills; a subagent c
 | Parameter | Required | Form | If absent |
 |---|---|---|---|
 | `ticket_id` | yes | `SCRUM-139` | stop and ask for it — never guess from the branch or the newest file |
-| `api_review` | no | `Pass` / `Needs Revision` / `Blocked`, or the reviewer's report block | read it from the caller's state; if unknown, treat as **not passed** |
+| `api_review` | no | `Pass` / `Needs Revision` / `Blocked` / `not_applicable — <reason>`, or the reviewer's report block | read it from the caller's state; if unknown, treat as **not passed** |
 | `ui_review` | no | same | same |
 | `api_report_path` | no | repo-relative path | default `.workflow/reports/<TICKET-ID>-api-implementation.md` |
 | `ui_report_path` | no | repo-relative path | default `.workflow/reports/<TICKET-ID>-ui-implementation.md` |
@@ -45,8 +45,15 @@ worse than none.
 1. **Both reviews passed.** `api_review` and `ui_review` are both `Pass`. `Needs Revision`, `Blocked`,
    or unknown -> stop, name the stream and the verdict. A stream with zero scenarios counts as passed
    only when its implementation report says `IMPLEMENTED_SCENARIOS: none` for a genuine reason.
-2. **Both reports exist and are current.** Read both. Their `ticket:` matches, and their `iteration:`
-   matches the iteration each reviewer says it reviewed.
+   **A stream your caller reports as `not_applicable` is settled, not passed, and rules 1 and 2 do not
+   apply to it.** That stream never ran, so it has no verdict and no report to hold to one. It needs a
+   stated reason — `not_applicable` with nothing behind it is indistinguishable from a stream that was
+   forgotten, and that is the difference between a deliberate scope decision and a silent gap. Carry the
+   reason into the PR body under *Streams Not Run*. At least one stream must have shipped work; both
+   `not_applicable` -> stop, there is nothing to ship.
+2. **Both reports exist and are current.** Read both — excluding a `not_applicable` stream, which has
+   none. Their `ticket:` matches, and their `iteration:` matches the iteration each reviewer says it
+   reviewed.
 3. **No unresolved Critical or Major** finding in either review block.
 4. **The repository is a git repository** with a remote. `git rev-parse --is-inside-work-tree` and
    `git remote -v`. Not a repo, or no remote -> stop and say so; this skill does not `git init`.
@@ -117,6 +124,11 @@ SCRUM-139
 - API review: Pass
 - UI review: Pass
 
+## Streams Not Run
+
+- E2E API — no API surface was mapped for this feature, so scenarios could not name a route, a status
+  code or a response shape. Ignored by @dneprokos on 2026-08-08.
+
 ## Known Limitations
 
 - SCN-016 not automated: the requirements state no maximum password length.
@@ -180,4 +192,6 @@ On `BLOCKED`, name the gate that failed and what would clear it.
 - Open a second pull request for the same ticket. Both streams ship in one PR, by design. An existing
   PR with the same ticket prefix means stop and ask.
 - Invent a scenario id, a test title, a count, or a PR section from memory instead of reading it.
-- Transition the Jira ticket or comment on it. This skill has no Jira access.
+- Transition the Jira ticket or comment on it. This skill has no Jira access. `PR_URL`, `BRANCH` and
+  `SCENARIOS` in the receipt are what a caller needs to arrange that; emitting them is where this skill's
+  responsibility ends.

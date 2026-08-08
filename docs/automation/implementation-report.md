@@ -94,6 +94,10 @@ Type check: npx tsc --noEmit — pass
 
 - None.
 
+## Cleanup Gaps
+
+- None.
+
 ## Known Limitations
 
 - Parallel-safe: every test creates its own admin with a unique e-mail and registers it for cleanup.
@@ -112,11 +116,11 @@ The `ui` stream's extra section takes this shape, between `Reused Framework` and
 ## Explored Locators
 
 ### /owner
-| Element | Role | data-testid | Locator |
-|---|---|---|---|
-| Admin table body | rowgroup | — | page.getByRole("table").getByRole("rowgroup").nth(1) |
-| Delete button (per row) | button "Delete Admin" | — | rowFor(email).getByRole("button", { name: "Delete Admin" }) |
-| Toast | status | — | page.getByRole("status") |
+| Element | Role | data-testid | Tier | Locator |
+|---|---|---|---|---|
+| Admin table body | rowgroup | — | 1 | page.getByRole("table").getByRole("rowgroup").nth(1) |
+| Delete button (per row) | button "Delete Admin" | — | 1 | rowFor(email).getByRole("button", { name: "Delete Admin" }) |
+| Toast | status | — | 1 | page.getByRole("status") |
 ````
 
 ## 3. Section rules
@@ -127,11 +131,12 @@ The `ui` stream's extra section takes this shape, between `Reused Framework` and
 | Skipped Scenarios | Every selected scenario that produced no test, with a reason. A selected scenario appearing in neither table is a contract violation. |
 | Changed Files | Repo-relative paths with `new` or `modified` and a one-clause summary. Every path must exist on disk. |
 | Reused Framework | What already existed and was used. An empty list on a repo that has fixtures is a reuse failure, not an empty section. |
-| Explored Locators | **`ui` stream only.** The selector map from `docs/automation/browser-exploration.md` §5 — one table per route, every row traceable to a snapshot taken in this run **or carried forward from a previous iteration's report for a locator still in `pages/`**. `- None.` only when the map is genuinely empty, with a clause saying why (`every locator already existed in pages/`). Never a snapshot ref (`e5`). |
+| Explored Locators | **`ui` stream only.** The selector map from `docs/automation/browser-exploration.md` §5 — one table per route, including its `Tier` column, every row traceable to a snapshot taken in this run **or carried forward from a previous iteration's report for a locator still in `pages/`**. Every row whose tier is not 1 also appears under `LOCATOR_GAPS` in the receipt. `- None.` only when the map is genuinely empty, with a clause saying why (`every locator already existed in pages/`). Never a snapshot ref (`e5`). |
 | Execution Result | The real command and the real counts, copied from the run. Never estimated, never carried over from a previous iteration. |
 | Failing Tests | Test title, `file:line`, expected vs actual, and why it still ships. |
 | Suspected Application Defects | A failure believed to be the application's fault, tied to a scenario id, quoting the `Expected:` value the test asserts. |
 | Shared Change Requested | A file outside the writing stream's ownership that the work needed, and why. The change itself is not made. |
+| Cleanup Gaps | One entry per record a test creates and cannot remove, naming the resource and the missing route. `- None.` when every created record is registered for cleanup — which is the normal case, and the only case where the section is empty. A record that leaks with no entry here is a contract violation, not an empty section. See §3b. |
 | Known Limitations | Anything a reviewer would otherwise have to discover — flakiness risk, environment coupling, data assumptions. |
 | Review Findings Addressed | One row per finding id the writing stream was handed. `- None.` on a `first_run`. See §3a. |
 
@@ -163,6 +168,33 @@ the previous map forward for every locator still present in `pages/`, because th
 evidence anyone downstream has that a committed locator was ever observed. Blanking it to `- None.`
 because this pass explored nothing destroys the record and forces the next run to re-explore from zero.
 
+### 3b. Cleanup Gaps
+
+Every record a test causes to exist is removed after the test, through the cleanup fixtures — never
+through a UI teardown chain, and never by a delete-all that would reach another test's data while
+`fullyParallel` is on.
+
+Registration happens **the instant the resource exists**, before any assertion. Fixture teardown already
+runs whether the test passed or failed; what does not run is a registration the failing assertion jumped
+over. In a UI create flow that means registering before the submit.
+
+A gap is the one honest exception: the application offers no way to remove the record. It is reported
+three times over, so it cannot be mistaken for an oversight —
+
+1. in the run output, by pushing the label to the `uncleanableResources` fixture, which prints
+   `[cleanup] NOT CLEANED UP: <label> - no delete endpoint`,
+2. here, naming the resource and the missing route,
+3. on the `CLEANUP_GAPS:` line of the receipt.
+
+A gap entry names the route that is missing, not just the fact of the leak:
+
+```markdown
+## Cleanup Gaps
+
+- SCN-031 — a game created through the Add Game form. The API surface documents no
+  `DELETE /api/games/{id}`; the record stays in the catalogue and every later run sees it.
+```
+
 ## 4. Ownership boundary
 
 Two automation streams run in parallel against one repository. Each writes only inside its own
@@ -172,9 +204,21 @@ boundary; a need outside it becomes a `Shared Change Requested` entry, never a s
 |---|---|
 | API stream | `tests/api/**`, `services/api/**`, `fixtures/api-fixture.ts` |
 | UI stream | `tests/ui/**`, `pages/**`, `fixtures/pages-fixture.ts` |
+| Both, additive only | `utils/**`; `services/api/**` for the UI stream — see below |
 | Neither | `playwright.config.ts`, `framework/**`, `tsconfig.json`, `package.json`, `.env`, `requirements/**`, `test-design/**`, `docs/**` |
 
 Both streams **read** everything. Only writing is partitioned.
+
+**The additive-only carve-out.** A UI test cannot clean up a resource the facade has no method for, and
+`Shared Change Requested` leaves the record behind. So the UI stream may *add* to `services/api/**` — a
+new file under `controllers/`, `builders/` or `types/`, a new top-level key in `endpoints.ts`, and one
+new `readonly` member on `ApiFacade` to register the controller. It may not modify, rename, retype or
+delete anything already there, and `fixtures/api-fixture.ts` stays closed to it entirely.
+
+Additive-only is what makes this safe with both streams running at once: every conflict is different
+lines of the same file rather than the same line twice. If the API stream's report already lists the
+controller, reuse it instead of adding a second, and list every addition on the receipt's
+`SHARED_ADDITIONS:` line so the next reader can see across the boundary.
 
 ## 5. A red test is a valid result
 
