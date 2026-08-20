@@ -86,8 +86,8 @@ fixtures/           api-fixture.ts → pages-fixture.ts (the second extends the 
 services/api/       facade → controllers → request builders → endpoints.ts → toApiResult
 framework/          Joi-validated Config
 utils/              AdminTestData, AuthTestData, ResponsePatterns — every value a spec sends or matches
-docs/automation/    browser-exploration.md, implementation-report.md — contracts the agents follow
-docs/conference/    agentic_workflow.txt (spec) and agent_build_plan.md (build order + status)
+docs/automation/    etalons/ contracts/ references/ — what the agents read at run time (see its README)
+docs/conference/    agent_build_plan.md — the concept: roster, phases, and why it is shaped this way
 requirements/       <TICKET-ID>-requirements.md, written by the collector agent
 test-design/        <TICKET-ID>-test-design.md, written by the generator agent
 ```
@@ -127,9 +127,9 @@ failure is the report.
 
 ## The agent workflow
 
-`docs/conference/agentic_workflow.txt` is the spec and `docs/conference/agent_build_plan.md` tracks build
-order and current status. Ten subagents in `.claude/agents/` split into two phases, each phase a
-create → review → revise loop:
+`docs/conference/agent_build_plan.md` is the concept — the roster, the phases and the reasoning — and
+`docs/automation/README.md` indexes what the agents actually read while running. Eleven subagents in
+`.claude/agents/` split into two phases, each phase a create → review → revise loop:
 
 | Phase | Agent | Reads | Writes |
 |---|---|---|---|
@@ -143,9 +143,10 @@ create → review → revise loop:
 | 2 | `aqa-ui-test-creator` | `Assigned Level: E2E UI` scenarios | `tests/ui/**`, `pages/**` |
 | 2 | `aqa-ui-test-reviewer` | that code and its report | a verdict, cited by file and line |
 | ship | `git-change-analyst` | the git working tree | nothing — returns a proposed commit message and PR facts |
+| ship | `qa-jira-transition` | its prompt and Jira | comments the pull request on the ticket and moves it on |
 
 Each Phase 2 creator also writes `.workflow/reports/<TICKET-ID>-<stream>-implementation.md` in the shape
-of `docs/automation/implementation-report.md`; the matching reviewer reads it as its work list. That
+of `docs/automation/contracts/implementation-report.md`; the matching reviewer reads it as its work list. That
 directory is gitignored and does not exist until the first creator run.
 
 Skills in `.claude/skills/` are the things that act on your behalf on the main thread, where they can ask
@@ -167,5 +168,5 @@ Design rules that hold across `.claude/agents/`:
   `fixtures/pages-fixture.ts`. `utils/**` is shared and additive only.
 
 Browser exploration goes through the `playwright-cli` skill under the protocol in
-`docs/automation/browser-exploration.md`: one named session per agent, always closed, snapshot refs never
+`docs/automation/references/browser-exploration.md`: one named session per agent, always closed, snapshot refs never
 committed, and no requirement ever derived from what the UI currently does.

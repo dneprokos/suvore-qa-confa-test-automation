@@ -10,7 +10,7 @@ description: >-
   every routing decision. Use when asked to "run the QA workflow", "start the lead
   orchestrator", "automate <TICKET-ID> end to end", "run the QA lead", or
   "/qa-workflow <TICKET-ID>".
-argument-hint: "<TICKET-ID> [--auto] [--max-review-iterations N] [--resume] [--dry-run]"
+argument-hint: "<TICKET-ID> [--auto] [--max-review-iterations N] [--allow-alternative-flow-gaps] [--resume] [--dry-run] | <TICKET-ID> --reset"
 ---
 
 # QA Workflow — the lead orchestrator
@@ -38,8 +38,11 @@ file breaks that contract; add it to the step registry below instead.
 | `ticket_id` | yes | `SCRUM-139`, or a `/browse/<KEY>` URL | stop and ask — never guess from the branch or the newest file |
 | `mode` | no | `manual` \| `auto` (`--auto` sets `auto`) | `manual` |
 | `max_review_iterations` | no | integer >= 1; alias `maxReviewIterations` | `2` |
+| `batch_threshold` | no | integer >= 1 | `15` — above this many in-scope requirements, step 1.3 runs in batches |
+| `batch_size` | no | integer >= 1 | `10` — requirements per batch once the threshold is crossed |
 | `review_requirements` | no | `true` \| `false` | `true` |
 | `resume` | no | flag | auto-detected: a state file for this ticket means resume |
+| `reset` | no | flag (`--reset`) | `false` — a state file is resumed, never reset. **`request` tier only**: never read from `state`, never inferred from drift, a decline, a failed step or a cap being reached. Confirmed with the user in both modes before anything moves. **It is the whole invocation**: the run ends when the reset is written, and starting the fresh run is a second command without the flag |
 | `start_phase` | no | `design` \| `automation` \| `ship` | resolved from the state file |
 | `skip_ship` | no | flag | `false` |
 | `skip_jira_handback` | no | flag | `false` — a created pull request always goes back on the ticket |
@@ -49,6 +52,8 @@ file breaks that contract; add it to the step registry below instead.
 | `api_endpoints_approver` | no | `@handle — YYYY-MM-DD` | required whenever `api_endpoints` is given; without it 1.1 aborts `HINTS_WITHOUT_APPROVER`. Never fill it in yourself |
 | `api_surface` | no | `map` \| `ignore` | `map`. `ignore` skips the mapping for the whole run and prints the consequence |
 | `on_missing_api_surface` | no | `escalate` \| `ignore` | `escalate`. Auto mode only; what Checkpoint B does when the design wants API coverage and no surface exists |
+| `on_blocked_alternative_flow` | no | `escalate` \| `continue`; `--allow-alternative-flow-gaps` sets `continue` | `escalate`. Auto mode only; what the design gate does when an unapproved unknown leaves an in-scope requirement with no automatable coverage. `continue` relaxes it for **alternative-flow** requirements only — a main flow stops the run under either value. The test is in `references/phase-1-design.md` |
+| `confirm_ui` | no | `true` \| `false` | pass-through to 1.3; its own default of `false` applies, so scenario generation opens no browser |
 | `explore_app` | no | `auto` \| `always` \| `never` | pass-through to the UI stream; its own default applies |
 | `run_tests` | no | `true` \| `false` | pass-through to both SDETs; their own default applies |
 | `branch_name`, `base_branch` | no | git refs | pass-through to the ship phase |
@@ -61,100 +66,282 @@ an alias for the one parameter that is commonly written the other way.
 1. **Ticket id.** Uppercase project key, hyphen, digits. A `/browse/<KEY>` URL yields the key. No id, or two
    different ids in the request -> stop and ask. Do not guess.
 2. **State.** Read `.workflow/<TICKET-ID>.yaml`.
-   * Missing -> create it from the schema below with `phase: test_design`, all counters `0`, and the
-     resolved configuration. Create `.workflow/` if needed.
-   * Present -> this is a **resume**. Announce the recorded phase, status and step, and continue from there.
-     Do not restart at Jira intake, and do not re-run a step whose artifact already exists.
+   * Missing -> `node scripts/workflow-state.mjs init <TICKET-ID> --set mode=<mode> --set …` for each
+     resolved configuration value. It writes the skeleton — `phase: test_design`, all counters `0` —
+     and creates `.workflow/` itself. `EXISTS` on that command means this is a resume after all.
+     **Write every `configuration.*` key the schema carries, including the ones left at their default**,
+     rather than only the ones this invocation named: a gate-relaxing setting that exists in the first
+     session and not in the file is a setting the resume silently loses, and the banner would go on
+     reporting it as `state` on the strength of nothing.
+   * Present -> this is a **resume**. Run `node scripts/workflow-state.mjs validate <TICKET-ID>` first and
+     act on what it says, then announce the recorded phase, status and step and continue from there. Do not
+     restart at Jira intake, and do not re-run a step whose artifact already exists.
+   * Then run `node scripts/workflow-state.mjs check-artifacts <TICKET-ID>` — **on every resume, before
+     choosing a phase.** `validate` rules on what the document says; this rules on whether the files it
+     names are still there. Exit `0` means every recorded path is on disk; exit `4` means at least one is
+     gone, and the row says which field named it and which stream it belongs to. See *Artifact drift* below.
+   * A non-empty `in_flight:` means the previous session was interrupted mid-delegation. Follow *Resuming
+     an interrupted delegation* below before doing anything else.
+2a. **`--reset`, and only when this invocation asked for it.** See *Dropping to the first stage* below.
+   Missing state file -> there is nothing to reset; say so and fall through to `init`. Present -> run
+   `validate` and `check-artifacts` **first**, because they are what say what is about to be thrown
+   away, then the dry run, then the question, then the reset — **and then the invocation is over**.
+   Steps 3 and 4 below do not run: there is no mode to resolve for a run that will not start, and the
+   banner is defined as what precedes the first delegation. Return `OK` and stop.
 3. **Mode.** `auto` only when explicitly asked (`--auto`, `mode: auto`, "run it automatically"). Anything
-   else, including silence, is `manual`. Print the resolved mode before the first delegation so nobody is
-   surprised by which one is running.
+   else, including silence, is `manual`.
+4. **Print the run parameters.** Before the first delegation, always.
+
+### The run-parameters banner
+
+Every parameter in the `## Inputs` table, its resolved value, and **where that value came from**. Print it
+after the state file is loaded and before anything is delegated, in both modes, on a fresh run and on a
+resume alike.
+
+The source column is the half that earns the banner. A resolved value alone reads as a decision somebody
+made; most of them are defaults nobody chose, and on a resume the ones that matter came out of a state file
+written days ago by a command line nobody has in front of them any more. Three sources, and they are also
+the precedence order — `request` beats `state`, `state` beats `default`:
+
+| Source | Means |
+|---|---|
+| `request` | this invocation set it — a flag, or a named value in the prompt |
+| `state` | read from `configuration:` in `.workflow/<TICKET-ID>.yaml`; a resume inherits it |
+| `default` | nobody set it; the `If absent` column of `## Inputs` applies |
+
+```
+QA Workflow — SCRUM-140
+
+  ticket_id                     SCRUM-140                 request
+  mode                          auto                      request (--auto)
+  max_review_iterations         2                         default
+  batch_threshold               15                        default
+  batch_size                    10                        default
+  review_requirements           true                      default
+  resume                        yes                       state (phase: test_automation, step 2.1b)
+  start_phase                   test_automation           state
+  skip_ship                     false                     default
+  skip_jira_handback            false                     default
+  jira_target_status            In Review                 default
+  dry_run                       false                     default
+  api_endpoints                 —                         default
+  api_endpoints_approver        —                         default
+  api_surface                   map                       default
+  on_missing_api_surface        escalate                  default
+  on_blocked_alternative_flow   continue                  request (--allow-alternative-flow-gaps)
+  confirm_ui                    — (agent default)         default
+  explore_app                   — (agent default)         default
+  run_tests                     — (agent default)         default
+  branch_name / base_branch     — / —                     default
+
+  Non-default settings this run:
+  - on_blocked_alternative_flow: continue — an unapproved unknown that leaves an
+    alternative-flow requirement with no coverage will NOT stop this run. A main flow
+    still stops it. See the design gate.
+```
+
+Rules for it:
+
+* **Every row in `## Inputs` appears, including the ones nobody set.** A parameter absent from the banner
+  reads as a parameter that does not exist, which is how a run acquires a setting its operator never knew
+  was available. `—` is a value; a missing row is not.
+* **A pass-through prints `— (agent default)`**, not the agent's actual default. This skill does not know
+  it, and printing a number it did not resolve is a claim about a file it has not read.
+* **The `Non-default settings this run` list is the point of the banner in auto mode.** One line per
+  parameter not at its default, saying what it changes in behavioural terms rather than restating the
+  value. Anything that relaxes a gate says so in the words a stop would have used. `- None.` when
+  everything is at its default — which is itself worth printing, because it is the answer to "why did it
+  stop?" as often as any setting is.
+* **On a resume, `state` rows are the ones to look at**, so the banner is reprinted in full on every
+  resume rather than assumed to be remembered from the session that started the run.
+* It is printed, never stored. The state file already holds `configuration:`; a second copy would be one
+  more thing that can disagree with it.
 
 ## Workflow state — `.workflow/<TICKET-ID>.yaml`
 
-This is the only file this skill writes.
+This is the only file whose contents are this skill's to decide, and it is the resume contract: every
+delegation is parameterised out of it, so a field that quietly loses its value does not fail loudly —
+it re-runs a reviewer in full-review mode, or hands an implementer an unscoped revision, at full cost
+and with nothing in the transcript to say why. `.workflow/SCRUM-132.yaml` is the worked example: it
+carried `test_design.last_findings` twice, once holding an 1800-character routing block and once
+holding `null`. YAML keeps the last value. A whole review round ran without its findings.
 
-```yaml
-ticket_id: SCRUM-139
-phase: test_design            # test_design | test_automation | ship | done
-status: in_progress           # in_progress | paused | escalated | blocked | declined | completed
-mode: manual                  # manual | auto
-current_step: "1.3"
+**The field contract is `references/state-schema.md`. Read it before the first write of a session** —
+every key, its type, whether it is required, and the twelve checks. Do not reproduce the schema here
+and do not invent a key: a field the schema has no opinion on goes under a `notes:` map, at the top
+level or inside a section.
 
-configuration:
-  review_requirements: true
-  non_e2e_coverage_strategy: create_follow_up_ticket
-  max_review_iterations: 2
-  jira_target_status: In Review
+**Never hand-write this file. Every change goes through `scripts/workflow-state.mjs`**, which
+re-emits the whole document from a parsed model, atomically, and refuses a write whose result would
+not validate. That is what makes the SCRUM-132 defect unreachable rather than merely reported: no
+command inserts a line, so no command can produce a second copy of a key.
 
-iterations:                   # one counter per review loop, never shared
-  design: 0
-  api: 0
-  ui: 0
-
-artifacts:
-  requirements: requirements/SCRUM-139-requirements.md
-  test_design: test-design/SCRUM-139-test-design.md
-  metrics: .workflow/metrics/SCRUM-139.jsonl   # written by the hook, not by this skill
-  api_surface:
-    status: mapped            # mapped | partial | none | ignored | absent
-    provenance: openapi       # openapi | user-supplied | mixed | none | ignored
-    match_basis: "tag (6 operations)"   # or the reason, when there is no basis
-    matched_operations: 6
-    spec_gaps: 9
-    decided_by: null          # set only on a human ignore, or a user-supplied surface
-    decided_at: null
-
-test_design:
-  status: pending             # pending | generated | classified | approved
-  review_status: pending      # pending | passed | needs_revision | blocked
-  open_questions: []
-  last_findings: null         # the reviewer's own previous block, fed back as previous_findings
-  unapproved_unknowns: []     # [{ scenario: SCN-013, missing: "duplicate-email status code" }]
-  blocked_scenarios: []       # scenarios left Automation Suitability: Manual only by an unknown
-  approved_assumptions: []    # [{ value, scenario, basis, approved_by, date }] — fed back as approved_values
-
-automation:
-  api:
-    status: pending           # pending | not_applicable | implemented | review_in_progress | passed | needs_revision | blocked
-    not_applicable_reason: null   # required whenever status is not_applicable
-    report: .workflow/reports/SCRUM-139-api-implementation.md
-    implemented_scenarios: []
-    created_tests: []
-    review_status: pending
-    last_findings: null
-  ui:
-    status: pending           # same enum as api
-    not_applicable_reason: null
-    report: .workflow/reports/SCRUM-139-ui-implementation.md
-    implemented_scenarios: []
-    created_tests: []
-    review_status: pending
-    last_findings: null
-
-pull_request: null           # the PR_URL off the ship receipt — the input to the hand-back
-jira:
-  status: In Progress        # last status this run observed or set
-  handback_status: pending   # pending | done | skipped | partial | failed
-  comment: pending           # pending | added | already_present | skipped
-follow_up_tickets: []
-final_decision: pending       # pending | accept | request_revision | escalate | block | decline | continue
-declined:                     # written only when the user declines; null otherwise
-  at_step: null               # the step registry row the run was standing on
-  question: null              # what was asked, in one line
-  reason: null                # the user's own words, or "no reason given" — never a paraphrase you invented
-
-history:
-  - { step: "1.1", agent: qa-requirements-collector, result: OK, at: 2026-08-06T10:12:00Z,
-      tokens: 63563, duration_s: 109.0, note: "6 FR, 1 AC" }
+```bash
+node scripts/workflow-state.mjs init  <TICKET-ID> [--set <path>=<value>]...   # step 0, once
+node scripts/workflow-state.mjs set   <TICKET-ID> <path>=<value>...           # the ordinary persist
+node scripts/workflow-state.mjs set-block <TICKET-ID> <path> --from-stdin     # a multi-line value
+node scripts/workflow-state.mjs append <TICKET-ID> <path> --json '<json>' [--dedupe]
+node scripts/workflow-state.mjs clear-in-flight <TICKET-ID> --agent <name>
+node scripts/workflow-state.mjs get   <TICKET-ID> <dotted.path>               # a value, raw
+node scripts/workflow-state.mjs validate <TICKET-ID>                          # belt and braces
+node scripts/workflow-state.mjs check-artifacts <TICKET-ID>                   # step 0, every resume
+node scripts/workflow-state.mjs normalize <TICKET-ID>                         # after a hand edit
+node scripts/workflow-state.mjs reset <TICKET-ID> --reason "<why>" [--dry-run] # human-asked only
 ```
 
-**Persist after every step, before the next delegation.** That one rule is what makes an interrupted run
-resumable: kill the session mid-flight, re-invoke `/qa-workflow SCRUM-139`, and it picks up from the
-recorded step instead of re-reading Jira.
+Vocabulary to read off these commands: `created` / `set` / `append` — it happened. `unchanged` — it
+was already so, and mtime was not touched; that is a success, not a no-op to retry. `EXISTS` from
+`init` normalizes as `already_done` like any other. A refusal names its code — `WS-E21` for a value
+outside an enum, `WS-E01` for a document with a duplicated key, which `normalize` resolves. `reset`
+prints its move list and then `created`, the same word `init` prints, so it normalizes the same way;
+`dry-run` is never read as a write that happened.
 
-`last_findings` matters as much as the counters. A reviewer switches to its cheaper `re_review` mode only
-when handed `previous_findings`, and an implementer scopes its revision only when handed `review_findings`.
-Both come out of this file, not out of the transcript.
+Three habits the commands are shaped around:
+
+* **Set the fields that only make sense together in one command.** `set <T> automation.api.status=not_applicable automation.api.not_applicable_reason="…"` writes; either half alone is refused. That is the point of validating before the write rather than after it.
+* **A multi-line value never goes through the shell.** `last_findings` is written with
+  `set-block … --from-stdin`, so an 1800-character block reaches the file without quoting eating it.
+* **`--force` exists and is not for routine use.** It writes a document that does not validate. If
+  you reach for it, say in `history` why.
+
+`get` prints a value exactly as it is stored, so a multi-line `last_findings` can be lifted straight
+into the next delegation's parameters rather than retyped through this conversation.
+
+**Still run `validate` after a persist, and fix a non-zero exit before the next delegation.** The
+write path is the guard now; validation is the second one, and it is what catches a file some other
+session or a human hand-edited.
+
+**Persist after every step, before the next delegation.** That one rule is what makes an interrupted
+run resumable: kill the session mid-flight, re-invoke `/qa-workflow SCRUM-139`, and it picks up from
+the recorded step instead of re-reading Jira.
+
+`last_findings` matters as much as the counters. A reviewer switches to its cheaper `re_review` mode
+only when handed `previous_findings`, and an implementer scopes its revision only when handed
+`review_findings`. Both come out of this file, not out of the transcript.
+
+### Artifact drift — what the file says exists, and what does
+
+`check-artifacts` stats every path the document names — `artifacts.requirements`,
+`artifacts.test_design`, each stream's `report`, and every entry of each stream's `created_tests`.
+`artifacts.metrics` is deliberately not among them: the hooks own that file, and its absence before
+the first agent run is normal rather than drift.
+
+**This is not a validation failure, and exit `4` is not exit `1`.** The state file is not wrong about
+what happened; it is wrong about what still exists, because something outside the run deleted,
+renamed or reset an artifact between sessions. Three runs have now routed correctly on that false
+premise and failed at the point of use — the last one nine delegations later, at the ship gate, on a
+document that validated clean the whole way. Step 0's other existence check is scoped to
+`in_flight:`, which is empty on a run that completed its delegations, so nothing else catches this.
+
+A missing artifact is **a fact to announce and route on, exactly as a non-empty `in_flight:` is**.
+The script decides nothing; this table does:
+
+| What is gone | Do |
+|---|---|
+| An artifact of a step this run has not reached yet | Nothing to decide. Announce it and carry on |
+| The artifact of a step recorded as done, which a later step reads | Announce it, then re-run the step that produces it — every agent is a pure function of its parameters. Reset that step's status to match, and say so in `history` |
+| Every artifact of a whole phase | Do not silently rebuild it. Manual mode asks; auto mode escalates with `status: escalated` naming the paths. Where the human's answer to that question is *start over*, `reset` is the command — never a hand rename. The trigger stays human either way: drift never resets anything on its own, and auto mode escalates rather than offering the option |
+
+A re-run forced by drift is a re-run, not a review round: it does not spend `iterations.*`.
+
+### Dropping to the first stage
+
+`--reset` archives this ticket's state file and every document a fresh run would otherwise refuse to
+rewrite, then re-initialises. It is the answer to *throw this away and run it again from 1.1*, which
+the workflow could not express: every writing step returns `EXISTS` when it finds its own output on
+disk, and this skill may not hand out a regenerate token. The gap was being filled at a shell prompt
+— `.workflow/SCRUM-132.yaml` carries a step-0 note describing three renames done by hand, and calls
+itself the third occurrence.
+
+**Human-triggered, in both modes.** `--reset` is a request somebody typed; nothing here infers one.
+Auto mode still asks, the same deliberate exception the ship phase's git confirmations already are.
+
+1. `validate` and `check-artifacts`, announced. **A non-zero `validate` does not stop this one thing**
+   — a document that fails validation is a reason to reset, not a reason to refuse — so report the
+   output and carry on. This is the only place in this skill where that is true.
+2. `node scripts/workflow-state.mjs reset <TICKET-ID> --reason "<why>" --dry-run`. Print it verbatim.
+   The plan comes from the same function the real run uses, so the question below is about the list
+   the user is looking at.
+3. Ask, with the Decline option *Terminal return and declining* requires:
+   * **Reset** — archive the listed files and start at step 0.
+   * **Reset, fresh configuration** — the same, without carrying `configuration:` forward. Offer this
+     only when the archived configuration is non-default; otherwise it is a distinction with no
+     difference.
+   * **Resume instead** — change nothing, continue from the recorded phase and step. A reset asked
+     for out of frustration with one drifted artifact is usually better served by *Artifact drift*.
+   * **Decline** — stop here, change nothing.
+4. On a confirming answer, run the command for real with `--reason` set to **the user's own words**.
+   Never compose one for them; the script refuses an empty reason, which is the point of it.
+5. `validate` the fresh document. Do **not** run `check-artifacts` — it records nothing yet, and the
+   command would print "no artifact paths recorded yet", which is noise.
+6. Apply this invocation's `request`-tier configuration with `set` on top of what was carried.
+7. **Stop. Delegate nothing.** Return `OK` with the receipt block, the archive list under *Artifacts
+   produced*, and `NEXT_ACTION: run /qa-workflow <TICKET-ID> to start the fresh run at 1.1`.
+
+**`--reset` resets and ends the invocation. It never continues into 1.1.** The fresh document does
+read as a run with nothing to resume, and routing it onward would need no special-casing anywhere —
+which is exactly the trap. A person who typed `--reset` asked for one thing, and turning that into
+nine unattended delegations spends their tokens on a decision they did not make. Starting the run is
+a second invocation, without the flag, and a person who wants both types two commands. Do not print
+the run-parameters banner either: it is defined as the thing printed *before the first delegation*,
+and there is no delegation.
+
+On **Decline**, write `status: declined`, `final_decision: decline` and `declined.*` with
+`at_step: "0"` onto the document that was about to be archived — it is still there, because nothing
+has moved — and return `DECLINED` with the full receipt block.
+
+What a reset does **not** touch: `artifacts.metrics`, which the hooks own, and every `created_tests`
+entry, which is live source. A spec renamed to `old_do_not_use_*.ts` still matches `testDir`, still
+typechecks and is still imported by whatever imported it — so those files stay exactly where they
+are and the receipt says that nothing owns them any more. Deciding whether to keep or drop them is a
+git question and it is the user's.
+
+The **next** invocation is the one that prints a banner, and it prints an ordinary one — a fresh run
+at step 0, with the carried `configuration.*` reading source `state`, because that is the tier those
+values have. Nothing needs to say a reset happened: the seeded `history` entry says it, in the user's
+own words, and a banner line repeating it would be a second copy that can disagree.
+
+### In flight — the write that goes *before* a delegation
+
+Immediately before launching a step, append its entry to `in_flight:`; on the receipt, remove it.
+
+```bash
+# before the launch — one --json per entry, so a parallel pair is one write
+node scripts/workflow-state.mjs append <TICKET-ID> in_flight \
+  --json '{"step":"2.1a","agent":"aqa-api-test-creator","at":"2026-08-09T09:12:04Z"}' \
+  --json '{"step":"2.1b","agent":"aqa-ui-test-creator","at":"2026-08-09T09:12:04Z"}'
+
+# on each receipt, before the step summary
+node scripts/workflow-state.mjs clear-in-flight <TICKET-ID> --agent aqa-ui-test-creator
+```
+
+`clear-in-flight` takes `--agent`, `--step`, or both, and refuses to run with neither — an
+interrupted delegation losing its witness to a blanket clear is the failure this field exists to
+prevent. Clearing an entry that is already gone prints `unchanged`, so a resume may run it blind.
+
+This is the one field written ahead of the work rather than after it, and it is the only witness a
+human reads when a session dies mid-agent. The metrics hook keeps its own launch record, so a resume
+has two independent witnesses; **where they disagree, report the disagreement rather than picking
+one** — the hook side can fail, and so can this one.
+
+### Resuming an interrupted delegation
+
+A resume that finds a non-empty `in_flight:` announces it — the step, the agent and the launch time —
+and then decides per entry. Re-running blind is the wrong default:
+
+| What the step's *Produces* artifact looks like | Do |
+|---|---|
+| Present and complete | This is the `already_done` row. Record it, `clear-in-flight` that entry, advance. **Do not re-run** |
+| Absent | The step produced nothing. `clear-in-flight` that entry, `append history` with `result: INTERRUPTED` and `tokens: unavailable`, re-delegate. Safe, because every agent is a pure function of its parameters |
+| Present but half-written | Do not guess. Manual mode asks; auto mode escalates with `status: escalated` naming the artifact |
+
+Clear **that entry**, by `--agent` or `--step`, never the list — the sibling of a parallel pair may
+still be running, and its entry is the only thing that will say so if this session dies too.
+
+The cost of an interrupted agent is gone in every one of those cases — the harness computes a token
+total when a subagent stops, and one that never stopped never produced one. The run appears in the
+cost table as an `interrupted` row with a start time and no figures. That is the honest record; see
+`references/run-cost.md`.
 
 ## Step registry
 
@@ -165,21 +352,44 @@ disk, which is what keeps its context small and its result reproducible.
 |---|---|---|---|---|
 | 1.1 | `qa-requirements-collector` | `ticket_id`, `endpoint_hints`, `endpoint_hints_approver`, `api_surface_mode` | `QA_REQUIREMENTS_COLLECTOR_RESULT`, `API_SURFACE`, `SURFACE_PROVENANCE`, `MATCH_BASIS`, `MATCHED_OPERATIONS`, `SPEC_GAPS` | `requirements/<TICKET-ID>-requirements.md` incl. `# API Surface`, Jira -> In Progress |
 | 1.2 | `qa-requirements-reviewer` — skipped when `review_requirements: false` | `ticket_id`, `requirements_path` | `QA_REQUIREMENTS_REVIEWER_RESULT`, `API_SURFACE_EVIDENCE` | five QA sections appended to the same file |
-| 1.3 | `qa-scenario-generator` | `ticket_id`, `requirements_path`, `review_findings`, `approved_values` | `QA_SCENARIO_GENERATOR_RESULT`, `UNAPPROVED_UNKNOWNS`, `BLOCKED_SCENARIOS`, `APPROVED_ASSUMPTIONS` | `test-design/<TICKET-ID>-test-design.md` |
-| 1.4 | `qa-scenario-classifier` | `ticket_id`, `test_design_path`, `review_findings`, `scenario_ids` | `QA_SCENARIO_CLASSIFIER_RESULT`, `E2E_JOURNEYS`, `E2E_KEPT`, `E2E_DEMOTED` | `Assigned Level:` + `Level Rationale:` per scenario |
+| 1.3 | `qa-scenario-generator` | `ticket_id`, `requirements_path`, `requirement_ids`, `review_findings`, `approved_values`, `confirm_ui` | `QA_SCENARIO_GENERATOR_RESULT`, `LINT`, `UNAPPROVED_UNKNOWNS`, `BLOCKED_SCENARIOS`, `APPROVED_ASSUMPTIONS` | `test-design/<TICKET-ID>-test-design.md` |
+| 1.4 | `qa-scenario-classifier` | `ticket_id`, `test_design_path`, `review_findings`, `scenario_ids` | `QA_SCENARIO_CLASSIFIER_RESULT`, `E2E_JOURNEYS`, `E2E_KEPT`, `E2E_DEMOTED`, `E2E_FOLDED`, `E2E_TESTS_IMPLIED`, `REQUIREMENT_GAPS` | `Assigned Level:` + `Level Rationale:` + `Folds Into:` per scenario |
 | 1.5 | `qa-scenario-reviewer` | `ticket_id`, `test_design_path`, `requirements_path`, `previous_findings` | `Review Status:` | verdict + `[DESIGN-*]` findings |
 | 2.1a | `aqa-api-test-creator` — skipped when `automation.api.status: not_applicable` | `ticket_id`, `test_design_path`, `requirements_path`, `iteration`, `review_findings`, `finding_ids`, `run_tests` | `API_SDET_RESULT` | `tests/api/**`, `.workflow/reports/<TICKET-ID>-api-implementation.md` |
-| 2.1b | `aqa-ui-test-creator` | same, plus `explore_app` | `UI_SDET_RESULT` | `tests/ui/**`, `pages/**`, `.workflow/reports/<TICKET-ID>-ui-implementation.md` |
+| 2.1b | `aqa-ui-test-creator` — skipped when `automation.ui.status: not_applicable` | same, plus `explore_app` | `UI_SDET_RESULT` | `tests/ui/**`, `pages/**`, `.workflow/reports/<TICKET-ID>-ui-implementation.md` |
 | 2.2a | `aqa-api-test-reviewer` — skipped when `automation.api.status: not_applicable` | `ticket_id`, `implementation_report_path`, `test_design_path`, `requirements_path`, `previous_findings` | `Review Status:` | verdict + `[API-*]` findings |
-| 2.2b | `aqa-ui-test-reviewer` | same | `Review Status:` | verdict + `[UI-*]` findings |
+| 2.2b | `aqa-ui-test-reviewer` — skipped when `automation.ui.status: not_applicable` | same | `Review Status:` | verdict + `[UI-*]` findings |
 | 3 | `qa-ship-tests` **skill** | `ticket_id`, `api_review`, `ui_review`, `branch_name`, `base_branch`, `dry_run` | `QA_SHIP_TESTS_RESULT` | branch, commit, push, pull request |
-| 4 | `qa-jira-transition` | `ticket_id`, `pr_url`, `branch_name`, `scenarios`, `target_status` | `QA_JIRA_TRANSITION_RESULT` | PR comment on the ticket, Jira -> In Review |
+| 4 | `qa-jira-transition` | `ticket_id`, `target_status` (**required**), `pr_url`, `branch_name`, `scenarios` | `QA_JIRA_TRANSITION_RESULT` | PR comment on the ticket, Jira -> `jira_target_status` |
 
 Steps 2.1a/2.1b run **in parallel** — two Agent calls in one message. Same for 2.2a/2.2b. The two streams
 write to disjoint paths by design, so concurrency here is a scheduling choice with no correctness cost.
 
+**Every row of that table is delegated in the same three moves, and the first one comes before the
+launch:**
+
+1. `append <TICKET-ID> in_flight --json '{"step":"<step>","agent":"<agent>","at":"<UTC>"}'` — one
+   `--json` per agent, so a parallel pair is one write and not two.
+2. Launch the step.
+3. On the receipt, `clear-in-flight <TICKET-ID> --agent <agent>`, then parse, then persist the rest.
+
+Steps 1 and 3 are stated again at each phase below, because a rule that lives only in the state
+section is one indirection away from the place it has to be obeyed. A step launched without its
+`in_flight` entry is invisible to a resume: the session dies, and the next one cannot tell an
+interrupted delegation from one that never started.
+
 Every prompt carries `ticket_id` — it is the first parameter of every row above, and it is also what files
-the run's cost under the right ticket. See *Run cost*.
+the run's cost under the right ticket. See `references/run-cost.md`.
+
+**Every prompt also carries `run_mode:`, naming the mode you expect that step to resolve to** — one of
+`first_run`, `EXISTS`, `revision`, `regenerate`, `full_review`, `re_review`, `reclassify`,
+`surface_revision`. It changes nothing about how the step behaves: each agent still resolves its own mode
+from the parameters and the files on disk, and a disagreement between the two is a finding about the
+delegation, not an instruction to the agent. It exists so the run's cost can be read per mode, because a
+revision touching two scenarios and a first run producing forty are the same agent at wildly different
+cost and the log could not tell them apart. Declare it rather than leaving it to be inferred from which
+parameters are present: `previous_findings` usually means a revision, and *usually* is what makes an
+inferred field worse than an absent one. A prompt without the line records as `undeclared`.
 
 ## Reading a receipt
 
@@ -210,46 +420,22 @@ code makes a human re-derive it.
 
 ## Run cost — the metrics log
 
-Every agent run costs tokens and wall time, and **no agent can report its own**. The numbers are produced
-by the harness after the subagent has already stopped, so an agent that printed them would be guessing.
-They arrive from outside instead: the `PostToolUse` hook on the `Task` tool
-(`.claude/hooks/agent-metrics.mjs`, registered in `.claude/settings.json`) reads the harness's own
-accounting and does two things.
+Every agent run costs tokens and wall time, and **no agent can report its own** — the harness computes the
+figures after the subagent has stopped, and three hooks put them where this skill can read them. An
+`AGENT_RUN_METRICS:` line lands in the transcript right after each receipt; treat it as the receipt's last
+field, echo `agent`, `mode`, `duration` and `tool_uses` in the step summary, and copy them into `history`.
 
-1. Appends one JSON line per run to `.workflow/metrics/<TICKET-ID>.jsonl` — the ticket is taken from the
-   prompt, which is why **every delegation must name the ticket id in its prompt**. Miss it and the run
-   lands in `unassigned.jsonl`.
-2. Emits an `AGENT_RUN_METRICS:` line into the transcript immediately after that agent's own output:
+**Read `references/run-cost.md` before the first delegation of a session**, and again before the terminal
+return — it holds the hook table, the line's format, `metrics-report.mjs`, what the numbers actually
+measure, and what an interrupted run does and does not report. Three rules from it stay here, because they
+are the ones that cost something real when forgotten:
 
-   ```text
-   AGENT_RUN_METRICS: seq=3 ticket=SCRUM-139 agent=qa-scenario-generator status=completed
-   model=claude-opus-5 duration=109.0s tokens_total=63563 in=2 out=5872 cache_read=50682
-   cache_write=7007 tool_uses=26 log=.workflow/metrics/SCRUM-139.jsonl
-   ```
-
-Treat that line as the last field of the receipt. Read it after every step, echo `agent`, `duration` and
-`tokens_total` in the step summary, and copy `tokens` and `duration_s` into the `history` entry you were
-writing anyway. It costs one line of state and makes an expensive loop visible while it is still running
-rather than after the bill.
-
-Everything else stays in the log file. Do not aggregate by hand and do not re-print the per-run lines you
-already echoed — at the end of the run, render the table with
-
-```bash
-node .claude/hooks/metrics-report.mjs <TICKET-ID>
-```
-
-which prints one row per run **in completion order**, an `n/N` run counter per agent so a three-iteration
-review loop reads as three rows, a `Σ` total, and the wall clock. The wall clock is shorter than the sum
-whenever 2.1a/2.1b or 2.2a/2.2b ran in parallel; that gap is the parallelism, not an error.
-
-Two rules about these numbers:
-
-* **Never invent, estimate or extrapolate one.** A missing `AGENT_RUN_METRICS` line means the hook is not
-  installed or the run predates it — say `metrics unavailable`, never a plausible figure.
-* **Cost is a report, never a routing input.** An expensive stream is not thereby a failing one, and no
-  iteration is skipped, no review shortened and no cap lowered because the token count looked high. Routing
-  reads verdicts only.
+* **Never invent, estimate or extrapolate a cost number.** No `AGENT_RUN_METRICS` line means
+  `metrics unavailable`; a dash on an interrupted row is the answer, not a gap to fill in.
+* **`end_context` is not spend.** It is the agent's final message — how much context it was carrying when
+  it stopped. The harness exposes no cumulative figure. Report it under that name; `tool_uses` is the
+  honest measure of how much work a run did.
+* **Cost is a report, never a routing input.** Routing reads verdicts only.
 
 ## Routing a finding
 
@@ -280,6 +466,20 @@ reviewer that passes has already ruled that they do not block.
 Sequence: 1.1 -> 1.2 (optional) -> **Checkpoint A** -> 1.3 -> 1.4 -> **Checkpoint B** -> 1.5 -> design
 decision.
 
+Every delegation in this phase is preceded by its `in_flight` append and followed by its
+`clear-in-flight`, exactly as the step registry says — 1.3 included, once per batch.
+
+### Before 1.3 — read `references/phase-1-design.md`
+
+**Read it before the first 1.3 delegation of the run.** It holds the two things this phase decides that
+are not in the step registry: how a test basis larger than `batch_threshold` is split into batches, and
+what happens to a value the requirements never stated. Both are decisions no agent below may take —
+the generating step is barred from choosing its own scope and from approving its own assumption — so
+the rules live with the routing rather than with the work.
+
+Two consequences that shape this phase's sequence, and are spelled out there: **batching is never a
+review iteration**, and **1.4 and 1.5 run once, over the whole document**, never over a partial design.
+
 ### The API surface — two checkpoints
 
 An E2E API scenario needs an operation to call. Step 1.1 maps one from the application's OpenAPI document
@@ -304,8 +504,33 @@ Print the reason the section gives, then `AskUserQuestion`:
 Auto mode does not stop at A. It already received `api_endpoints` and `api_surface` at the start of the run
 if the user wanted them, and it cannot yet know whether API coverage is wanted.
 
-**Checkpoint B — after 1.4, both modes. This is the binding gate.** Count the scenarios carrying
-`Assigned Level: E2E API`, then:
+**Checkpoint B — after 1.4, both modes. This is the binding gate.** Take the counts from the design
+manifest rather than by reading the document:
+
+```bash
+node scripts/test-design-lint.mjs test-design/<TICKET-ID>-test-design.md --emit-manifest
+```
+
+`scenarios_by_level["E2E API"]` and `scenarios_by_level["E2E UI"]` are the two lists this gate turns on,
+and `classified` is the field that makes them safe to read. **A design nobody has classified reports zero
+at every level**, which is a true statement about the document and the exact opposite of what this gate
+would conclude from it — so `classified: false` is never a `not_applicable`, it is 1.4 not having run.
+Check it first; `counts.unassigned` says how many scenarios are waiting.
+
+**A level count is not a test count.** `scenarios_by_level` is what this gate turns on, because the
+question here is whether a stream has work at all. How many *tests* that work becomes is
+`e2e_tests_implied`, which is the same list minus the scenarios carrying `folds_into` — a scenario the
+design folded is executed inside another scenario's test rather than in one of its own. A stream with
+scenarios is never `not_applicable`, however many of them fold: folding reduces tests, never coverage,
+and a stream where every scenario folds into another is impossible, since something has to be folded
+into. Pass neither figure down as a scope — the implementing step selects on the `Folds Into:` lines
+itself, and a `scenario_ids` list built here from `scenarios_by_level` would hand it folded ids to
+implement separately, undoing at the gate what the classification step decided.
+
+Counting the levels by hand is what this replaces. It is arithmetic, the script already does it, and a
+gate that settles a whole stream is the last place to re-derive a number from prose.
+
+### The API stream
 
 | E2E API scenarios | `artifacts.api_surface.status` | Outcome |
 |---|---|---|
@@ -313,6 +538,31 @@ if the user wanted them, and it cannot yet know whether API coverage is wanted.
 | >= 1 | `mapped` or `partial` | Proceed. Spec gaps are already `unknown:` in the design and need nothing here |
 | >= 1 | `ignored` | `not_applicable` in **both** modes, reason `the API surface was ignored by <decided_by> on <decided_at>`. Print the consequence. Do not re-ask and do not escalate — a person already decided this, and asking again spends their time to reach the answer they gave |
 | >= 1 | `none` or `absent` | **manual**: the Checkpoint A options without *Retry*. **auto**: obey `on_missing_api_surface` — `escalate` stops with `status: escalated`, `final_decision: escalate`, `NEXT_ACTION` naming the feature-to-endpoint mapping a human must confirm; `ignore` sets `not_applicable` and prints the consequence |
+
+### The UI stream
+
+**Zero `E2E UI` scenarios settles the UI stream the same way**: `automation.ui.status: not_applicable`,
+reason `the classified design assigns no scenarios to E2E UI`, skip 2.1b and 2.2b. Not an escalation, and
+no surface question applies — the API surface has nothing to do with whether a UI test is wanted.
+
+This half was missing. The state schema has always permitted `automation.ui.status: not_applicable`, but
+nothing here ever set it, so a design assigning no UI work still launched both UI steps — and on the one
+ticket anyone has measured those were the two most expensive steps in the run. A stream with nothing to
+test is a stream with nothing to review.
+
+Both streams `not_applicable` is a design with no automatable E2E work at all. That is not a failure
+either, but it means there is nothing for phase 2 to do: record both reasons, skip to the terminal return
+with `status: completed`, and say plainly in `NEXT_ACTION` that the design produced no E2E coverage and
+why. Never open a pull request for it — there is nothing in it.
+
+### Both streams
+
+A `Requirement Gap` scenario is never an `E2E API` or `E2E UI` scenario, so it never counts towards this
+gate — the manifest excludes it from both lists and from `counts.executable`. When a stream reaches zero
+because its scenarios were classified as requirement gaps, the reason line says so — `the classified
+design assigns no scenarios to E2E API; N scenarios are blocked on requirement gaps` — and the gap ids go
+in `requirement_gaps`. Still `not_applicable`, still not an escalation, but a reason a reader can act on
+rather than one that suggests the feature has no API surface.
 
 Choosing *Describe the endpoints* at B re-runs 1.1, then **1.3 and 1.4 in sequence** — a new surface changes
 which values are assertable, so the design is regenerated rather than patched. Bump `iterations.design`; the
@@ -349,38 +599,26 @@ below.
 ### Unapproved assumptions — the one decision no agent may make
 
 Step 1.3 returns `UNAPPROVED_UNKNOWNS`, `BLOCKED_SCENARIOS` and `APPROVED_ASSUMPTIONS`. Record all three
-in `test_design`. A value the requirements never stated is **not assertable** — the design leaves it out
-of `Expected:` and names it as an unknown, and both SDETs refuse to assert it. The only thing that changes
-that is a human saying so.
+in `test_design` and **handle a non-zero `UNAPPROVED_UNKNOWNS` at this gate, before Accept** — the
+options per mode are in `references/phase-1-design.md`, which you have already read by this point.
 
-Handle a non-zero `UNAPPROVED_UNKNOWNS` at this gate, before Accept:
+The rule that does not move: an orchestrator that approves an agent's assumption on the user's behalf is
+the same defect as an agent that approves its own. Never synthesise an approver name, never infer
+approval from a general "yes, continue", and never carry an approval forward from another ticket.
 
-* **Manual mode.** List each unknown with the scenario it blocks and what is missing, marking the ones in
-  `BLOCKED_SCENARIOS` — those scenarios have no assertion left at all. Then offer:
-
-  | Option | Effect |
-  |---|---|
-  | **Approve some** | collect value, basis, approver and date for each; re-run 1.3 with `approved_values`; append them to `test_design.approved_assumptions` |
-  | **Leave unapproved** (recommended when the value is genuinely undecided) | Accept as-is. Blocked scenarios ship as `Manual only`, and that is an honest design, not a degraded one |
-  | **Escalate** | the ticket needs an answer before design can finish. Record in `open_questions` and stop |
-
-  Approving is a decision the user makes with their own name attached, so collect the approver rather than
-  filling it in yourself. `approved_values` entries are one per line:
-  `SCN-013: 409 — matches existing POST behaviour — @dneprokos — 2026-08-06`.
-
-* **Auto mode never approves.** Record every unknown in `test_design.open_questions`, note them in
-  `history`, and continue to Phase 2 with the design as written. The one exception is escalation: if an
-  unapproved unknown left the **only** scenario covering an in-scope FR or AC in `BLOCKED_SCENARIOS`, that
-  requirement now has no automatable coverage — stop with `status: escalated`, `final_decision: escalate`,
-  and name the requirement.
-
-An orchestrator that approves an agent's assumption on the user's behalf is the same defect as an agent
-that approves its own, and the fact that the value is probably right is not the point: nobody with the
-authority to be wrong about it has taken responsibility for it. Never synthesise an approver name, never
-infer approval from a user's general "yes, continue", and never carry an approval forward from another
-ticket.
+**`on_blocked_alternative_flow` is a setting about stopping, not about approving.** Auto mode escalates
+when an unapproved unknown leaves an in-scope requirement with no automatable coverage at all; `continue`
+narrows that to **main-flow** requirements, leaving an alternative-flow one recorded and the run going.
+The main-flow test, the mixed-set rule and what still gets printed are in the reference above. It
+approves nothing, asserts nothing and changes no scenario — a requirement it lets past is exactly as
+uncovered afterwards as it was before, and the difference is only whether a human is fetched now or
+reads the open question later.
 
 ## Phase 2 — Test automation
+
+Both launches below are preceded by one `in_flight` append carrying **both** entries — one `--json` per
+stream, one write — and each receipt is followed by its own `clear-in-flight --agent <name>` before the
+receipt is parsed. When only one stream is live, both commands name only that one.
 
 1. Launch 2.1a and 2.1b in parallel. Record each stream's receipt fields — `IMPLEMENTED_SCENARIOS`,
    `CREATED_TESTS`, `EXECUTION`, `TYPECHECK`, `DEFECT_SUSPECTED`, `SHARED_CHANGE_REQUESTED` — into
@@ -393,7 +631,11 @@ state file already says. Treat the stream as settled, carry `not_applicable` and
 final decision and the PR body, and never let it hold up its sibling. `not_applicable` is a finished state,
 not a pending one: it never blocks Accept, and it is never counted as a failure.
 
-The parallelism is unchanged when only one stream is live. Launch the live one on its own.
+The parallelism is unchanged when only one stream is live. Launch the live one on its own. **Either
+stream can be the settled one** — Checkpoint B sets `not_applicable` on the API stream when the design
+assigns no `E2E API` scenarios and on the UI stream when it assigns no `E2E UI` scenarios, and nothing
+here treats one as the default. With both settled there is no phase 2: skip to the terminal return
+rather than opening a pull request with nothing in it.
 3. Per-stream revision loop, with **independent counters**. A stream at `Pass` is finished and is not
    re-run because its sibling is looping.
 4. Final decision when both streams have settled — Accept / Request Revision / Create Follow-Up Work /
@@ -416,13 +658,22 @@ Non-E2E scenarios from the classifier's `Handed Off As Follow-Up Work` table are
 `follow_up_tickets` as a list of what needs creating, and carried into the PR body. This skill creates no
 Jira ticket.
 
+Scenarios under the classifier's `## Blocked / Requirement Gaps` subsection — receipt line
+`REQUIREMENT_GAPS` — are recorded **separately**, in `requirement_gaps`, and carried into the PR body under
+that heading. They are not automation work at any level: each one says the requirements never stated an
+outcome the scenario could assert, so what it needs is a specification, not a test at a lower level. Never
+fold them into `follow_up_tickets`, never count them towards a stream's scenario counts, and never treat a
+stream as short of coverage because of one. A ticket whose design is entirely requirement gaps still ships
+whatever the other scenarios produced, and the gaps go in `NEXT_ACTION`.
+
 ## Manual mode — the default
 
 After **every** step, before any further delegation:
 
 1. Persist state.
 2. Print a compact summary: the parsed receipt fields only — result, artifact path, counts, finding ids,
-   and the step's cost as `<duration> / <tokens_total> tokens` off the `AGENT_RUN_METRICS` line.
+   and the step's cost as `<mode> / <duration> / <tool_uses> tool calls / <end_context> end context`
+   off the `AGENT_RUN_METRICS` line.
    Never paste an agent's full output into the transcript. The agents keep their returns short on purpose;
    re-expanding them here throws that away.
 3. Ask for the transition with `AskUserQuestion`. Build the options from the step registry and the receipt:
@@ -446,32 +697,13 @@ somebody just made would be theatre.
 
 **Every `AskUserQuestion` this skill asks carries a Decline option, in both modes, without exception.**
 List it last, after Pause. A question with no way out is not a question; it is a prompt to pick which
-way to proceed, and a user who wants none of the offered paths is left with nothing to click.
+way to proceed, and a user who wants none of the offered paths is left with nothing to click. A decline
+is not an error and not an escalation — it is a legitimate end state, and it reports *more* carefully
+than a completed run, not less.
 
-A decline is not an error and not an escalation. It is the user saying *stop here, this is far enough*,
-and it is a legitimate end state for a run.
-
-On a decline:
-
-1. Persist `status: declined`, `final_decision: decline`, and fill in `declined:` — the step you were
-   standing on, the question you asked, and the user's reason **in their own words**, or the literal
-   string `no reason given` when they gave none. Never invent a reason on their behalf.
-2. Change nothing else. Do not roll back an artifact, do not delete a branch, do not revert a Jira
-   transition, do not re-run the step to "leave things tidy". Everything produced before the decline
-   stays exactly as it is — a declined run's artifacts are still work product, and the user may resume
-   from them with `/qa-workflow <TICKET-ID>` at any time.
-3. Return `QA_WORKFLOW_RESULT: DECLINED` with **the full receipt block and both trailing sections**,
-   exactly as any other terminal return. `NEXT_ACTION` names what was left undone and how to resume.
-
-That last point is the one that matters. A run that stopped early still spent the tokens, still took the
-wall clock, and still left files on disk — so a decline reports *more* carefully, not less. Silently
-returning "cancelled" throws away the entire record of what the run produced and what it cost, which is
-precisely the information the user needs in order to decide whether to resume, restart or abandon.
-
-**Auto mode declines too.** It asks no routing questions, but the ship phase's git confirmations reach
-the user directly, and a user who declines a commit, a push or a pull request there has declined the
-run's remaining work. Record it the same way, with `at_step: "3"`, and return `DECLINED` — never treat a
-declined git confirmation as a phase failure, and never retry it in a loop hoping for a different answer.
+What to persist and what to return is in `references/terminal-return.md`, alongside the return block
+itself. **Read that file when a run is about to end, in any way at all** — a decline, a pause, an
+escalation, or the ordinary `OK`.
 
 ## Auto mode — `--auto`
 
@@ -486,6 +718,12 @@ No `AskUserQuestion` between agents. Route on the normalized outcome:
   and what a human must decide. Never loop past the cap, and never lower the bar to clear it.
 * `escalate` -> stop immediately with the code.
 
+Two gates in this mode are settings rather than rules, and both default to stopping:
+`on_missing_api_surface` at Checkpoint B, and `on_blocked_alternative_flow` at the design gate. Each
+prints what it relaxed at the point it relaxes it, and the run-parameters banner has already named both
+before the first delegation — an unattended run whose gate was widened has to say so twice, because the
+one thing nobody can reconstruct afterwards is why it did *not* stop.
+
 Confidence is read off the verdict, not guessed at. A reviewer that returns `Pass` has ruled that quality is
 met; that is the signal to proceed, and there is no second opinion to form here. A `Pass` carrying Minor
 findings still advances.
@@ -494,124 +732,81 @@ Still announce each step as it starts and each receipt as it lands, cost include
 prints nothing until it finishes is unauditable, and an unattended loop is exactly where a token count
 climbing per iteration is worth seeing before the cap is reached.
 
-## Step 3 — Ship
+## Steps 3 and 4 — ship, then hand back
 
-The git workflow runs in both modes, and it is followed by Step 4 whenever it produced a pull request.
+**On reaching phase `ship`, read `references/ship-and-handback.md`** before delegating step 3. It holds
+both steps end to end: the gate, what step 3 composes, which git confirmations survive auto mode,
+`skip_ship` and `dry_run`, the `target_status` rule, the four hand-back outcomes and their state writes.
 
-Invoke the **`qa-ship-tests`** skill with `ticket_id`, `api_review`, `ui_review`, and any `branch_name`,
-`base_branch` or `dry_run`. That skill runs its five-condition gate against the files on disk, composes the
-branch name, the commit message and the PR body from the two implementation reports and the test design,
-and then delegates all four git phases — branch, commit, push, pull request — to
-**`git-workflow-orchestrator`** (agent-driven path, section A).
+Three things belong here, next to the routing they constrain:
 
-The Git Workflow Orchestrator is what creates the branch, commits, pushes and opens the PR. `qa-ship-tests`
-supplies the gate and the naming. Do not reach around it to the git skills or to raw `git`: the gate reads
-the reports rather than trusting a caller's claim that both reviews passed, and skipping it removes the one
-check that a claimed review actually happened.
-
-**Auto mode does not remove the human confirmations in the ship phase.** `git-commit-creator` asks whether
-to stage unstaged files and requires an explicit `OK` on the message; `git-pr-creator` asks when a PR with
-the same ticket prefix already exists. Auto mode automates agent-to-agent routing only — the irreversible
-git actions keep their confirmation. An auto run therefore pauses at least twice near the end, by design.
-
-`skip_ship` stops after the final decision. `dry_run` passes through, and `qa-ship-tests` stops after
-composition having run no git command.
-
-Record `pull_request` from the receipt's `PR_URL`, then go to Step 4. The run is not done at the pull
-request — the ticket still says `In Progress`.
-
-## Step 4 — Hand back to Jira
-
-A pull request that nobody linked to the ticket is invisible to everyone who works from the board. The
-last step puts it back where the run started: delegate to **`qa-jira-transition`** with `ticket_id`, the
-`pr_url` from Step 3, the `branch_name` and `scenarios` off the ship receipt, and `jira_target_status`
-as `target_status`.
-
-Run it when **all** of these hold, and skip it silently otherwise:
-
-* Step 3 returned `OK` with `pr=SUCCESS`, and
-* `PR_URL` is a real URL — not `none`, not empty, and
-* `dry_run` and `skip_jira_handback` are both unset.
-
-Never synthesise the URL, never pass a URL from another ticket's run, and never hand back after a
-`dry_run` — the agent aborts `INVALID_PR_URL` on a placeholder anyway, but arriving there is a wasted
-delegation and a confusing receipt.
-
-Route the outcome:
-
-| Receipt | State written | Then |
-|---|---|---|
-| `OK` | `jira.status: In Review`, `handback_status: done`, `comment` from the receipt | `phase: done`, `status: completed` |
-| `EXISTS` | `handback_status: done`, `comment: already_present` | same — the ticket was already linked and moved |
-| `PARTIAL` | `handback_status: partial`, plus what did not happen | `phase: done`, `status: completed`, and `NEXT_ACTION` names the half a human must finish |
-| `ABORT` | `handback_status: failed` with the code | `phase: done`, `status: completed` — see below |
-
-**A failed hand-back does not fail the run.** The tests are written, reviewed and pushed; the pull request
-exists. A Jira status is a bookkeeping fact about work that already shipped, so record the failure, put the
-manual step in `NEXT_ACTION` — "move SCRUM-139 to In Review by hand; PR is `<url>`" — and still return `OK`
-for the workflow. Do not retry the step in a loop, and do not roll back or close the pull request.
-
-**Both modes run Step 4, and it needs no confirmation in either.** It is reversible in one click on the
-board, unlike every git phase before it. Manual mode still prints the step and its receipt like any other.
-
-`skip_jira_handback` is for a re-run over a ticket already moved by hand, or a demo that must not touch
-Jira. Say in the summary that it was skipped, so nobody reads a silent absence as a success.
+* **The run does not end at the pull request.** Record `pull_request` from the ship receipt's `PR_URL`,
+  then run step 4 — the ticket still says `In Progress` until it does.
+* **A failed hand-back does not fail the run.** The pull request is the deliverable; the Jira status is
+  bookkeeping. Record the failure, put the manual step in `NEXT_ACTION`, and still return `OK`.
+* **Never hand back on a pull request this run did not create** — a `dry_run`, a skipped ship phase, a
+  `PR_URL` of `none`, or a URL carried over from another ticket.
 
 ## Return
 
-```text
-QA_WORKFLOW_RESULT: OK | ESCALATED | BLOCKED | PAUSED | DECLINED
-TICKET: SCRUM-139
-MODE: manual | auto
-PHASE: test_design | test_automation | ship | done
-STATE: .workflow/SCRUM-139.yaml
-REQUIREMENTS: requirements/SCRUM-139-requirements.md
-TEST_DESIGN: test-design/SCRUM-139-test-design.md
-DESIGN_REVIEW: Pass | Needs Revision | Blocked | pending   ITERATIONS: 1/2
-API: implemented=SCN-012,SCN-014 review=Pass iterations=1/2
-UI: implemented=SCN-021 review=Pass iterations=0/2
-PR_URL: <url or "none">
-JIRA: In Progress -> In Review   COMMENT: added | already_present | skipped
-FOLLOW_UP: <ids or "none">
-OUTSTANDING_FINDINGS: <ids or "none">
-NEXT_ACTION: <what a human must do, or "none">
-NOTES: <one line, or "none">
-AGENT_RUNS: 9   TOKENS: 412,908   AGENT_TIME: 731.4s   WALL_CLOCK: 512.0s
-METRICS: .workflow/metrics/SCRUM-139.jsonl
-```
-
-On `ESCALATED` or `BLOCKED`, `NEXT_ACTION` is the point of the whole block — name the decision, not the
-symptom. On `DECLINED`, add a `DECLINED_AT:` line naming the step and the question, and let
-`NEXT_ACTION` say how to resume.
-
-The receipt block is followed by two sections, in this order, on **every** terminal return — `OK`,
-`ESCALATED`, `BLOCKED`, `PAUSED` and `DECLINED` alike. A run that stopped early still cost what it cost
-and still left files behind; that is exactly when a human needs to see both. **A declined or interrupted
-run reports its statistics just like a completed one** — dropping them because the run did not finish
-destroys the only record of what was spent and produced.
-
-1. **Artifacts produced** — every path this run created or modified, grouped and each marked with the step
-   that produced it and whether it was written this run or already existed: the requirements document, the
-   test design, both implementation reports, every file listed in `automation.<stream>.created_tests`, the
-   state file, the metrics log. Paths only, no summaries of their contents.
-2. **Agent run cost** — the verbatim output of `node .claude/hooks/metrics-report.mjs <TICKET-ID>`, run
-   from the project root. One row per run in completion order, so the second and third pass of a review
-   loop appear as their own rows against the same agent, then the `Σ` total. Print what the script
-   returns; do not reformat, re-sum or trim it.
-
-If the metrics log is missing, print `Agent run cost: metrics unavailable (hook not installed for this
-run)` and nothing else under that heading.
+Terminal returns have one shape, in `references/terminal-return.md`: the receipt block, then **Artifacts
+produced**, then **Agent run cost** — on `OK`, `ESCALATED`, `BLOCKED`, `PAUSED` and `DECLINED` alike.
+**Read that file when the run is ending**, before composing the return, and follow it exactly. A run that
+stopped early still cost what it cost and still left files behind, which is precisely when the record
+matters most.
 
 ## Must not
 
 - Perform requirements analysis, scenario generation, classification, review or test implementation itself.
   Every step is a delegation; doing the work here is the failure this role exists to prevent.
 - Write or edit anything under `requirements/`, `test-design/`, `tests/`, `pages/`, `services/`,
-  `fixtures/`, or any implementation report. It writes exactly one file: `.workflow/<TICKET-ID>.yaml`.
-  `.workflow/metrics/<TICKET-ID>.jsonl` is the hook's file — read it, never edit or delete it.
+  `fixtures/`, or any implementation report. Exactly one file holds its state: `.workflow/<TICKET-ID>.yaml`.
+  `.workflow/metrics/` is the hooks' directory — read it, never edit or delete anything in it, and let
+  `metrics-report.mjs` do the reconciling. A `reset` renames files in two of those directories and is
+  the one exception, but it is not an exception to *this*: the command moves them, never you. `mv`,
+  `Move-Item`, `git mv` and a rename through any other tool stay forbidden.
+- Reset a state file by hand — rename it, delete it, or `init` over it — or run `reset` on the
+  strength of a `check-artifacts` exit `4`, a decline, a failed step or a cap being reached. The
+  command is the only way, a human asks for it by name, and it runs only after a `--dry-run` they saw
+  and a question they answered.
+- Read a reset as a rollback. The archived files stay on disk under their new names, every
+  `created_tests` file stays exactly where it was, and the metrics log is never touched.
+- **Delegate anything in an invocation that carried `--reset`.** The reset is the whole request; the
+  fresh document reading as a run with nothing to resume is not permission to start one. Nine
+  unattended delegations is not what somebody asked for by typing one flag, and the fact that routing
+  onward would need no special-casing is the reason to write the rule down rather than the reason to
+  skip it.
 - Report a token count, duration or cost that did not come from an `AGENT_RUN_METRICS` line or from
   `metrics-report.mjs`, or let any of those numbers influence a routing, iteration or review decision.
+  A dash on an interrupted row is the answer, not a gap to fill in.
+- Describe `end_context` as the run's token spend, or sum it into a figure called a cost. It is the final
+  message, the harness offers nothing cumulative, and the sum of thirteen end-of-run context sizes is not
+  a bill.
+- Launch a step without `run_mode:` in its prompt, or read an `undeclared` mode on a metrics row as
+  `first_run`. An unrecorded mode must look unrecorded.
+- Hand-write, hand-edit or `Edit` the state file. Every change goes through `scripts/workflow-state.mjs`;
+  a file some other hand touched is repaired with `normalize`, not with another hand edit.
+- Persist state without running `node scripts/workflow-state.mjs validate <TICKET-ID>` after it, or
+  delegate the next step while that command still exits non-zero. Reach for `--force` without recording
+  in `history` why the document had to be written in a state that does not validate.
+- Write a key the schema does not define anywhere but under a `notes:` map, or write the same key twice
+  in one section. The second value is the only one anybody reads.
+- Launch any step without appending its `in_flight` entry first, or parse a receipt before clearing it.
+  A delegation with no entry is invisible to the resume that has to decide whether it ran.
+- Re-run a step found in `in_flight:` without first checking whether its artifact is already there.
+- Resume a run without `check-artifacts`, or route on a recorded phase while a path the state file names
+  is missing from disk and unannounced. The file is a record of what happened, not of what still exists.
+- Read a `check-artifacts` exit `4` as a document to repair, or `--force` a state file over it. The
+  document is fine; the disk is not, and the routing decision is this skill's, not the script's.
+- Delegate the first step of a session without having read `references/run-cost.md`, or the first 1.3
+  without having read `references/phase-1-design.md`.
+- Delegate step 3 without having read `references/ship-and-handback.md` this session.
+- Return a terminal result — `OK`, `ESCALATED`, `BLOCKED`, `PAUSED` or `DECLINED` — without having read
+  `references/terminal-return.md` this session. A reference the orchestrator forgets to read does not
+  make the run verbose; it makes the rule silently stop applying.
 - Loop past `max_review_iterations` in auto mode, or raise the cap mid-run to clear a stuck loop.
+- Count a 1.3 batch as a review iteration, run two batches in parallel, or start 1.4 while any batch is
+  still outstanding. Batching splits one design across several delegations; it does not split the design.
 - Run a git phase, or reach around `qa-ship-tests` to `git-workflow-orchestrator` or raw `git`, before both
   stream reviews are `Pass`.
 - Re-run an agent that returned `EXISTS`, or pass a regenerate token to force a rewrite of an artifact a

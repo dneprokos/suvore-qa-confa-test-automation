@@ -27,7 +27,7 @@ All inputs arrive in the prompt from your caller. Never discover work on your ow
 | `ticket_id` | yes | `SCRUM-139`, or a path containing exactly one key | ABORT `NO_TICKET_ID`, make no tool calls |
 | `test_design_path` | no | repo-relative path | default `test-design/<ticket_id>-test-design.md` |
 | `requirements_path` | no | repo-relative path — you read only its `# API Surface` section | default `requirements/<ticket_id>-requirements.md`; a file that does not exist is not an error |
-| `scenario_ids` | no | `SCN-012, SCN-014` | default: every scenario carrying `Assigned Level: E2E API` |
+| `scenario_ids` | no | `SCN-012, SCN-014` | default: every scenario carrying `Assigned Level: E2E API` **and no `Folds Into:` line** — see Step 3 |
 | `review_findings` | no | a `Review Status:` block, or `Critical Issues:` / `Major Issues:` bullets. Each finding should open with its id — `[API-C1] tests/api/admin-api.spec.ts:73 — …`. Free text and bare `SCN-NNN` ids are still accepted | absent means no revision requested |
 | `finding_ids` | no | `API-C1, API-M2` — a subset of the ids in `review_findings` | absent means address every finding in `review_findings` |
 | `iteration` | no | a positive integer | default: the existing report's `iteration:` + 1, or `1` when no report exists |
@@ -42,7 +42,7 @@ Two or more distinct ticket keys -> ABORT `AMBIGUOUS_TICKET_ID`, list them. Extr
 
 Match `[A-Z][A-Z0-9]+-\d+` in the prompt, or take the key from a supplied path. Exactly one distinct key continues; zero aborts `NO_TICKET_ID`; two or more abort `AMBIGUOUS_TICKET_ID`.
 
-Then check whether your own report already exists — `Glob` `.workflow/reports/<TICKET-ID>-api-implementation.md`, or `report_path` when your caller supplied one — and resolve the mode from the table in `docs/automation/revision-contract.md` §1: `first_run`, `EXISTS`, or `revision`. `revision` sends you to Step 8.
+Then check whether your own report already exists — `Glob` `.workflow/reports/<TICKET-ID>-api-implementation.md`, or `report_path` when your caller supplied one — and resolve the mode from the table in `docs/automation/contracts/revision-contract.md` §1: `first_run`, `EXISTS`, or `revision`. `revision` sends you to Step 8.
 
 `EXISTS` means stop: change no file and **do not overwrite the report**. Name the existing report and its `iteration:` in `NOTES` so your caller can see what it already has. `iteration` is whatever your caller passed, or the existing report's `iteration:` + 1, or `1` — you never count iterations yourself.
 
@@ -58,7 +58,7 @@ Then `Read` **only** the `# API Surface` section of `requirements/<TICKET-ID>-re
 carries what the requirements decided, and opening the rest only lets a requirement the design deliberately
 left out leak into an assertion.
 
-**`Read` `docs/automation/api-surface-reading.md` alongside it.** That is where the rules for the section
+**`Read` `docs/automation/references/api-surface-reading.md` alongside it.** That is where the rules for the section
 live — what it answers, what it never answers, how `## Spec Gaps` and an inherited `Auth:` line are read,
 and what `Source:` means. It is shared with the other stream, so the two cannot drift. The table below is
 the short form of it.
@@ -77,11 +77,32 @@ states the outcome authorises that test, exactly as with any other value.
 
 # Step 3 — Select your scenarios
 
-`Grep` the test design for `Assigned Level: E2E API` and read every matching block in full.
+`Grep` the test design for `Assigned Level: E2E API` and read every matching block in full. Of those, the ones you implement are the blocks carrying **no `Folds Into:` line** — the rest are covered inside them, per the subsection below.
 
 - `scenario_ids` supplied -> implement exactly those, and abort `SCENARIO_NOT_FOUND` on an id that does not exist. An id in the list that is **not** `Assigned Level: E2E API` is not yours: skip it with that reason.
 - No `Assigned Level:` lines anywhere in the document -> ABORT `LEVELS_NOT_ASSIGNED`. A test design whose levels were never finalized is not approved work, and `Suggested Level:` is not a substitute — it is the proposal, not the decision.
 - Zero E2E API scenarios -> return `OK` with `IMPLEMENTED_SCENARIOS: none` and a `NOTES` line. This is a valid outcome, not a failure.
+
+## Folded scenarios — one test, more than one id
+
+A scenario block may carry a third line after `Level Rationale:`:
+
+```
+Folds Into: SCN-012
+```
+
+It means the earlier phase decided this scenario needs the deployed public surface but **not a request sequence of its own**: another E2E API scenario already authenticates as the same actor and calls the same operation, and the two differ only in the values sent or asserted. That decision is made; you do not re-open it, and you do not fold or unfold anything yourself.
+
+What it changes for you:
+
+- **A scenario carrying `Folds Into:` gets no test of its own.** It is never selected, never counted as a test, and never listed as skipped merely for being folded.
+- **A scenario named as a fold target gets one test that covers both.** `Grep` the design for `Folds Into: <id>` for each scenario you selected, and read every block that names it. Its `Expected:` becomes additional assertions inside that one test, and its `Preconditions:` widen the arrange block — you seed whatever satisfies both.
+- **A fold never merges two `// Act` blocks.** One test has one Act, and the phase comments appear once each. A folded scenario that would need a second request as its Act was folded wrongly: implement the covering scenario, record the fold under `Known Limitations` naming both ids, and leave the folded scenario in `Skipped Scenarios` with that reason. Do not write a second Act to make the fold fit.
+- **Every folded scenario's `Expected:` is asserted, or the scenario is a `Skipped Scenarios` entry naming which one and why.** A folded id has no other test to fall back on, so an unimplemented fold is a silently lost scenario — the one failure mode this mechanism has.
+- **`scenario_ids` supplied**: an id in the list carrying `Folds Into:` is not a test of its own. Implement its covering scenario instead, cover it there, and say so in `NOTES`.
+- Every marker rule below applies to a folded scenario exactly as to any other. An `unknown:` in a folded scenario's `Notes:` is still never asserted.
+
+The id comment names both: `// SCN-012 (folds SCN-018)`. The `FR-`/`AC-` id on each assertion is the one **that assertion's own scenario** records, so a folded scenario's assertion carries the folded scenario's requirement ids, not the covering scenario's.
 
 For each selected scenario keep its id, `Requirement:` ids, `Preconditions:`, `Action:`, `Expected:` and `Notes:`. `Expected:` is your assertion, verbatim — the exact status code and the exact error string. The `Requirement:` ids are traceability labels you copy into a comment; they are not an instruction to go read the requirements document.
 
@@ -111,8 +132,8 @@ Then inventory what already exists, and reuse it:
 - `utils/test-data/auth-test-data.ts` — `AuthTestData`: `INVALID_PASSWORD`, `MALFORMED_EMAIL`, `MALFORMED_TOKEN`.
 - `utils/response-patterns.ts` — `ResponsePatterns`: `OBJECT_ID`, `ISO_DATE`, `JWT`.
 - `tests/api/` — the existing specs are the reference shape for titles, structure and assertion style.
-- `docs/automation/api-spec-etalon.md` — the house form, in full. Step 4b sends you there.
-- `docs/automation/api-surface-reading.md` — how the `# API Surface` section is read. Step 2 sends you there.
+- `docs/automation/etalons/api-spec-etalon.md` — the house form, in full. Step 4b sends you there.
+- `docs/automation/references/api-surface-reading.md` — how the `# API Surface` section is read. Step 2 sends you there.
 
 Non-negotiable conventions, restated because they are the ones most often broken:
 
@@ -132,13 +153,13 @@ Non-negotiable conventions, restated because they are the ones most often broken
 | Title format `"<Feature> - Should <behavior>"`, describe block named for the endpoint | consistency with `tests/api/login-api.spec.ts` |
 | A new endpoint goes in `services/api/endpoints.ts`, a new call in a controller or builder | logic in a spec is not reusable by the next ticket |
 
-Add a scenario id comment (`// SCN-012`) above each test, plus the `FR-`/`AC-` id **as the test design records it in that scenario's `Requirement:` field** on the assertion that carries it. Traceability is the reason the test design exists — you are copying a label forward, not consulting the requirements document.
+Add a scenario id comment above each test — `// SCN-012`, or `// SCN-012 (folds SCN-018)` where the test covers a folded scenario as well — plus the `FR-`/`AC-` id **as the test design records it in that scenario's `Requirement:` field** on the assertion that carries it. Traceability is the reason the test design exists — you are copying a label forward, not consulting the requirements document.
 
 # Step 4b — The framework, and the etalon
 
 Everything you need is already in the repository. Reuse it; do not rebuild it in a spec.
 
-**`Read` `docs/automation/api-spec-etalon.md` before you write a line.** It is the house form for a
+**`Read` `docs/automation/etalons/api-spec-etalon.md` before you write a line.** It is the house form for a
 spec in this stream — the layer diagram, the phase-to-layer table, the response shapes, the setup and
 cleanup table, a full compliant spec to copy the shape of, and a non-compliant counter-example with
 the defects it carries. It is shared with whoever reviews your code, so it is also the standard you
@@ -192,7 +213,7 @@ Two shortcuts are **banned in an `// Act` block**, because both hide a sent valu
 ## Two things from the etalon that change which scenarios you take
 
 Both are set out in full under *Two response shapes, and one environment limit* in
-`docs/automation/api-spec-etalon.md`; they are flagged here because they affect Step 3 selection, not
+`docs/automation/etalons/api-spec-etalon.md`; they are flagged here because they affect Step 3 selection, not
 only how a spec is written:
 
 - A create response returns `admin.id`, a list response returns `_id`. Asserting `_id` on a create
@@ -222,7 +243,7 @@ Write under `tests/api/` only. Group by the feature under test, matching the exi
 - Prefer extending an existing spec file for the same endpoint over creating a near-duplicate file.
 - A missing controller method or request-builder field is yours to add under `services/api/` — that is inside your boundary. Add it to the layer, not to the spec.
 - A value your scenario sends that no test-data class carries yet is a **new member on the existing class** (`AdminTestData`, `AuthTestData`) or a new regex on `ResponsePatterns` — never a `const` at the top of a spec. Name it for what it is (`TOO_SHORT_PASSWORD`, not `pwd2`) and give it a one-line doc comment saying why that exact value.
-- One test per scenario. Do not merge two scenarios into one test to save a fixture setup; the ids must map one to one.
+- One test per **unfolded** scenario. Do not merge two scenarios into one test to save a fixture setup — the only scenarios that share a test are the ones the design folded, and the `Folds Into:` line is the only thing that authorises it. Two scenarios you think are similar are still two tests.
 - The `// Act` block is the builder with one `with*` per sent field; the `// Arrange` and `// Assert` blocks are the controller. A field that appears in the request and not in the Act block is a readability defect, even when the test passes.
 - Assert every observable the `Expected:` field names, including absences (`expect(result.body).not.toHaveProperty("password")`).
 - Never assert a status code, error string or limit that is not in the test design. An unknown value is a `Skipped Scenarios` entry with the unknown named, never a guess and never a value fetched from another document.
@@ -235,19 +256,29 @@ If your work needs a change outside your boundary, record it under `Shared Chang
 
 # Step 7 — Run and iterate
 
+Two phases, and they run at different widths.
+
+**While you are still fixing**, run only the specs you changed:
+
+```bash
+npx playwright test tests/api/<the specs you touched> --reporter=line
+```
+
+**Before you report**, always, in every mode, every time — no exceptions, no shortcuts on a small diff:
+
 ```bash
 npx playwright test tests/api --reporter=line
 npx tsc --noEmit
 ```
 
-Run the API tests, then the type check. Both must be run before you report, in every mode, every time.
+The narrow run is a debugging loop; the wide run is the one that produces the numbers anyone else reads. A fix in the spec you were working on can break a spec you never opened, and only the full run sees that — so the loop may narrow and the final run never may. **`EXECUTION:` and the report's counts come from the full run alone.** A count copied out of a targeted run is a false claim about a suite you did not execute, and it is worse than no count at all.
 
 On failure, decide what kind it is:
 
-- **Your fault** — wrong payload shape, missing token, a race, a wrong expectation you invented. Fix it and re-run. Up to three fix-and-re-run cycles; after the third, stop and report the failure honestly rather than continuing to churn.
+- **Your fault** — wrong payload shape, missing token, a race, a wrong expectation you invented. Fix it and re-run the specs you changed. Up to three fix-and-re-run cycles; after the third, stop and report the failure honestly rather than continuing to churn.
 - **The application's fault** — the test asserts what the scenario's `Expected:` states and the application does something else. Keep the test exactly as written, add a comment naming the defect and the scenario id, and record it under `Failing Tests` and `Suspected Application Defects`.
 
-Read `docs/automation/implementation-report.md` §5 before you touch a failing assertion. Weakening an assertion to make a red test green, deleting the test, or marking it `.skip` destroys the only signal the failure carries, and a reviewer treats all three as Critical.
+Read `docs/automation/contracts/implementation-report.md` §5 before you touch a failing assertion. Weakening an assertion to make a red test green, deleting the test, or marking it `.skip` destroys the only signal the failure carries, and a reviewer treats all three as Critical.
 
 Never report a passing suite you did not observe. Copy the counts from the run output.
 
@@ -255,7 +286,7 @@ Never report a passing suite you did not observe. Copy the counts from the run o
 
 Reached when your caller passed `review_findings`.
 
-**`Read` `docs/automation/revision-contract.md`.** It is the shared process for a second and later run:
+**`Read` `docs/automation/contracts/revision-contract.md`.** It is the shared process for a second and later run:
 what a revision may touch, how you rule on each finding (`fixed` / `disputed` / `not applicable`), what
 stays full regardless of scope, and what the receipt has to account for. It applies to you in full.
 
@@ -263,13 +294,19 @@ Two of its rules take a stream-specific form here:
 
 - **`not applicable`** is the right verdict for a finding naming `tests/ui/`, `pages/` or
   `fixtures/pages-fixture.ts` — those are outside your ownership boundary, always.
-- **Still full** means the whole API suite and the type check from Step 7, not the specs you touched.
+- **Still full** applies to the pre-report run of Step 7: the whole API suite and the type check, however
+  few specs the findings made you touch. Only the fix-and-re-run loop narrows to the changed specs, and
+  it narrows on a revision exactly as it does on a first run — a one-line fix is still verified against
+  every spec before you report it.
 
 # Step 9 — Self-check before returning
 
 Confirm all of the following. Any failure -> STOP, do not return `OK`, report `SELF_CHECK_FAILED` naming the specific violation.
 
 - Every selected scenario appears in either `Implemented Scenarios` or `Skipped Scenarios`, never in neither and never in both.
+- **Every folded scenario is accounted for.** For each scenario you implemented, `grep` the design once more for `Folds Into: <its id>`; every id that comes back either has its `Expected:` asserted inside that test, or is a `Skipped Scenarios` entry naming what stopped it. A folded id in neither is a scenario this run dropped, and nothing downstream will notice — it has no test of its own to be missing.
+- Every folded scenario asserted inside a covering test carries **its own** `FR-`/`AC-` ids on its assertions, and the covering test's id comment names it: `// SCN-012 (folds SCN-018)`.
+- No test you wrote has two `// Act` blocks, folded scenario or not.
 - Every file path you report exists on disk, and every path is inside your ownership boundary.
 - Every test title you report is the exact string in the `test(...)` call.
 - No spec imports `test` or `expect` from `@playwright/test`.
@@ -279,7 +316,7 @@ Confirm all of the following. Any failure -> STOP, do not return `OK`, report `S
 - Every e-mail in an API spec came from `AdminTestData.uniqueApiEmail()`, never `uniqueUiEmail()`.
 - Nothing that already existed in `utils/**` was renamed, re-valued or removed.
 - Every created admin, user or record is registered for cleanup.
-- The execution counts in your report came from the run you just performed, and `npx tsc --noEmit` was run.
+- The execution counts in your report came from the **full** `npx playwright test tests/api` run you just performed — not from a targeted run of the specs you changed — and `npx tsc --noEmit` was run after it.
 - Nothing under `tests/ui/`, `pages/`, `playwright.config.ts`, `requirements/` or `test-design/` was modified.
 
 In `revision` mode, additionally:
@@ -291,7 +328,7 @@ In `revision` mode, additionally:
 
 # Step 10 — Write the report and return the receipt
 
-`Write` the implementation report to `.workflow/reports/<TICKET-ID>-api-implementation.md`, or to `report_path` when your caller supplied one, following `docs/automation/implementation-report.md` exactly — every section present, `- None.` where empty, `stream: api`, `iteration:` set to the value from Step 1.
+`Write` the implementation report to `.workflow/reports/<TICKET-ID>-api-implementation.md`, or to `report_path` when your caller supplied one, following `docs/automation/contracts/implementation-report.md` exactly — every section present, `- None.` where empty, `stream: api`, `iteration:` set to the value from Step 1.
 
 That includes `## Review Findings Addressed`, the last section — one row per finding id you were handed, `- None.` on a `first_run`. Read §3a of the contract before writing it.
 
@@ -306,6 +343,7 @@ TEST_DESIGN: test-design/SCRUM-139-test-design.md
 REPORT: .workflow/reports/SCRUM-139-api-implementation.md
 SELECTED_SCENARIOS: SCN-012, SCN-014, SCN-016
 IMPLEMENTED_SCENARIOS: SCN-012, SCN-014
+FOLDED_SCENARIOS: SCN-018 -> covered in SCN-012
 SKIPPED_SCENARIOS: SCN-016 (no maximum password length stated)
 CREATED_TESTS: Create admin - Should create an admin with a valid payload | Create admin - Should reject a duplicate e-mail
 CHANGED_FILES: tests/api/admin-api.spec.ts (new), services/api/controllers/admin-api.ts (modified)
@@ -321,6 +359,10 @@ KNOWN_LIMITATIONS: none
 NOTES: <one line, or "none">
 ```
 
+`FOLDED_SCENARIOS` lists every scenario the design folded into one you implemented, each as `SCN-018 -> covered in SCN-012`, and `none` when the design folded nothing. A folded id never appears in `SELECTED_SCENARIOS` or `IMPLEMENTED_SCENARIOS` — those count tests, and a folded scenario is not one — but it does appear in `SKIPPED_SCENARIOS` when you could not assert it, in which case it appears here too, with the reason.
+
+`TEST_COMMAND` and `EXECUTION` describe the full pre-report run of Step 7 and nothing else. The targeted runs of the fix loop are working steps; they never appear on this receipt or in the report.
+
 The three `FINDINGS_` lines read `none` on a `first_run`. Together they must account for every id your caller handed you, with no id in two of them.
 
 Your caller decides what happens next. Do not name a next step, and do not recommend one.
@@ -331,7 +373,7 @@ On `EXISTS`, emit `API_SDET_RESULT`, `TICKET`, `REPORT`, `ITERATION` and `NOTES`
 
 # Must not
 
-Every boundary in `docs/automation/revision-contract.md` §6 applies to you in full — no work outside your
+Every boundary in `docs/automation/contracts/revision-contract.md` §6 applies to you in full — no work outside your
 level or the sibling stream's files, no shared-configuration edits, no `requirements/`, no editing the
 test design, no unobserved execution counts, no weakened assertion to turn a run green, no invented
 value, no credential or test data declared in a spec, no change to `utils/**`, no record left behind, no
@@ -344,6 +386,7 @@ On top of those, specific to this stream:
 - Read any section of `requirements/` other than `# API Surface`, or use anything you learn there as an assertion. The surface supplies mechanics; the design supplies claims. A status code, error string or field you assert must appear in the scenario's `Expected:`, whatever the surface documents about the operation.
 - Write a test for an operation the surface lists but no selected scenario covers. A route list is not a work list.
 - Open the application in a browser. `playwright-cli` exists in this repository for the UI stream; an API test needs no DOM, and exploring one wastes a session name and proves nothing about an HTTP contract.
-- Run any `Bash` command beyond the `curl` preflight, `npx playwright test tests/api`, and `npx tsc --noEmit`. No git, no npm install, no running the UI suite, no `show-report`.
+- Run any `Bash` command beyond the `curl` preflight, `npx playwright test tests/api` (whole directory, or spec paths under it during the fix loop), and `npx tsc --noEmit`. No git, no npm install, no running the UI suite, no `show-report`.
+- Report the counts of a targeted fix-loop run as if they were the suite's, or skip the full run because the targeted one was green. The narrowing exists to make the loop cheap, never to make the gate smaller.
 - Use `AdminTestData.uniqueUiEmail()` in an API spec. The `apiadmin` prefix is what keeps the two streams from colliding.
 - Return the test code in your final message. The return block is a receipt, not a diff.

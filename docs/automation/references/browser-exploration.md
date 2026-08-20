@@ -36,7 +36,8 @@ playwright-cli -s=<agent-name> snapshot
 playwright-cli -s=<agent-name> close
 ```
 
-Use your own agent slug as the session name (`-s=aqa-ui-test-creator`, `-s=env-explorer`). The API and UI streams
+Use your own agent slug as the session name (`-s=<your own agent slug>`, or a purpose name like
+`-s=env-explorer`). The API and UI streams
 run in parallel; an unnamed session is shared state and the two runs will overwrite each other's page.
 
 `close` is not optional, and it is not deferred to the end of your run. Close the session the moment
@@ -111,6 +112,45 @@ The ladder is not a licence to guess. An element with no stable hook **at any ti
 to escalate, not a problem to solve with a selector you hope holds. Say so in the report so the app team
 can add a `data-testid`.
 
+## 4b. Reading mechanics
+
+A locator says *where* an observable is. It does not say **how the page gets there**, and a test that
+locates perfectly still races if it waits on the wrong thing. Those are the **mechanics**, and they are
+the second thing an exploration run reads.
+
+Only five questions are mechanics. The list is closed — anything not on it is either a locator (§4) or a
+value, and a value is not yours to take from the app:
+
+| # | Question | What it decides in the test |
+|---|---|---|
+| 1 | Does this action fire a network request, and which method and route? | whether the action is wrapped in `Promise.all([page.waitForResponse(...), action])`, and what the pattern matches |
+| 2 | If it fires none, what proves the re-render finished? | a client-side render has no response to wait on, so the wait is the locator API — `await previousElement.waitFor({ state: "detached" })` |
+| 3 | What **shape** is the empty or error state — a live region, an inline element, an empty table body? | which locator the absence assertion is written against, and whether a positive pairing is even reachable |
+| 4 | What actually triggers the action — a submit, an `Enter`, a debounce on typing? | whether `fill` alone is the act, or `fill` + `press`, and whether the wait starts before or after the delay |
+| 5 | Does the action raise a native dialog? | a `window.confirm` handler must be registered **before** the click, or Playwright auto-dismisses and the request never fires |
+
+Read them by doing the thing and looking at what happened:
+
+```bash
+playwright-cli -s=<agent-name> fill e7 "mario"
+playwright-cli -s=<agent-name> network
+playwright-cli -s=<agent-name> snapshot
+```
+
+`network` lists the requests the page made; `console` catches the client-side error that explains a
+request that never went out. Both are read-only and neither commits anything.
+
+**Mechanics answer how to reach and wait for an observable. They never answer what it says.** A rendered
+string, a count, a status message you read off the screen is an invented value the moment it reaches an
+assertion, whatever this map records — expected values come from the test design's `Expected:` and from
+nowhere else. So the map records a *shape* (`role=status` live region) and a *route*
+(`GET /api/games`), never the text inside the region and never the number of rows that came back.
+
+`# API Surface` in the requirements document and this map answer different halves of the same question
+and neither is an assertion source: the surface says the route exists and what it answers, the map says
+whether **this control calls it**. A route documented in one and never observed in the other is a route
+this UI may not touch at all.
+
 ## 5. Output contract
 
 An exploration run ends with a **selector map**, not prose:
@@ -129,9 +169,44 @@ An exploration run ends with a **selector map**, not prose:
 One table per page or route. Every row must trace to something you actually observed in a snapshot, and
 every row whose `Tier` is not 1 must also appear under `LOCATOR_GAPS`.
 
+A run that read mechanics ends with a second map beside it — the **mechanics map**, one row per action a
+scenario performs:
+
+```markdown
+### /games
+| Action | Request | Trigger | Result shape | Dialog |
+|---|---|---|---|---|
+| Type into search field | GET /api/games?search=&lt;term&gt; | on value change; no submit control exists | card grid re-renders in place | — |
+| Search matching nothing | GET /api/games?search=&lt;term&gt; | on value change | empty-state block (`data-testid="no-results"`) replaces the grid: heading + message inside it | — |
+
+### /owner
+| Action | Request | Trigger | Result shape | Dialog |
+|---|---|---|---|---|
+| Click "Delete Admin" | DELETE /api/admin/users/:id | on confirm accept | row detaches from the rowgroup | `window.confirm` |
+```
+
+Every row traces to an action you performed in this session and a `network` or `snapshot` output you
+read afterwards. `Request` is `none` when the action fired nothing and `—` when the row describes a
+state rather than an action. A mechanic you needed and could not observe is reported as unobserved, not
+filled in from what seems likely — the wait written on a guess is the flake this map exists to prevent.
+
+**No cell of this map holds a rendered string, a count, or any other value a test could assert.** A
+`Result shape` of `role=status live region` is a mechanic; the words inside it are not.
+
+The rows above are the mechanics actually observed on `/` for this repository, and the two of them
+decide the whole shape of `tests/ui/search-games.spec.ts`: the act is `fill` alone because nothing else
+triggers the request, the wait matches the `search` parameter's *value* because the same route fires on
+mount with an empty one, and the absence assertion is written against the empty-state block rather than
+against the card grid. Read that spec and `pages/home-page.ts` next to this table to see a mechanics map
+spent.
+
 ## 6. Must not
 
 - Report a selector that did not appear in a snapshot you ran in this session.
+- Report a mechanic you did not observe — a request you did not see in `network`, a trigger you did not
+  perform, a dialog you did not raise. An unobserved mechanic is reported as unobserved.
+- Put a rendered string, a count or any other assertable value into the mechanics map. It records how an
+  observable is reached and waited for, never what the observable says.
 - Drop below tier 1 without having `eval`ed the higher tiers, or without the three receipts in §4.
 - Use an XPath, a generated class name, or a text match on product copy at any tier. Those are not
   tier 4; they are outside the ladder.

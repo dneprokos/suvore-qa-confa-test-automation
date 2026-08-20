@@ -131,6 +131,7 @@ E2E <STREAM> Scenarios in Test Design: SCN-012, SCN-014, SCN-016
 Scenarios Claimed: SCN-012, SCN-014
 Scenarios Verified: SCN-012, SCN-014
 Scenarios Unverified: none
+Scenarios Folded: SCN-018 -> SCN-012 (asserted in that test)
 Scenarios Missing: SCN-016 (not implemented, not listed as skipped)
 
 Critical Issues:
@@ -162,6 +163,7 @@ Rules for the report:
   the id, `accepted` or `rejected`, and why in one clause.
 - `New Findings` is a **roll-up, not a separate list**: exactly the ids that appear in the sections below
   and not in `Previous Findings`. An id in one and not the other is a contradiction within one report.
+- `Scenarios Folded` lists every scenario the test design marks `Folds Into: <id>`, each as `SCN-018 -> SCN-012` with a parenthetical saying whether the covering test actually asserts it. It reads `none` when the design folded nothing. Take the ids from the **design**, never from the report: a folded scenario has no test of its own, so an id the report forgot is invisible to `Scenarios Missing` — there is no missing test to notice. A folded id whose `Expected:` no test asserts belongs in the findings, not merely in a parenthetical here.
 - Every finding cites `file:line`, and a coverage finding also names the scenario id. "Assertions could
   be stronger" is not a finding.
 - A missing-scenario finding cites the scenario id and the test design instead of a `file:line`, since
@@ -204,12 +206,16 @@ Rules for the report:
   review, not to yours, and **a value documented there but absent from the design's `Expected:` is an
   invented assertion**, which is a finding against the code and not against the document. How that
   section is read — and how far a stream whose subject is not the HTTP request may use it — is in
-  `docs/automation/api-surface-reading.md`.
+  `docs/automation/references/api-surface-reading.md`.
 - **Do not judge the test design** — a scenario that would have been designed differently, a case
   thought missing, a level assignment disagreed with. The code is reviewed against the design, not the
   design against an opinion.
 - **Do not open the application in a browser.** Exploring the app to check what it does reproduces the
   implementer's work instead of reviewing it, and what the app currently does is not the standard.
+  What the implementing stream observed while working out how to reach an observable is reported to you
+  instead — the locators it saw and the mechanics it read — and that report is the whole of your evidence
+  about the running system. Rule on whether the code matches it and whether it accounts for every wait
+  and locator committed; a gap there is a finding, and so is a value that reached an assertion from it.
 - **Do not touch Jira.** No Atlassian tools are granted, deliberately.
 - **Do not ask the user a clarifying question mid-run.** An unanswerable question becomes a
   `Suggested Improvements` line, or `Blocked` if it makes the review undecidable.

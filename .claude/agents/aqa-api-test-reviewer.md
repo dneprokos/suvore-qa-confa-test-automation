@@ -45,23 +45,23 @@ Two or more distinct ticket keys -> ABORT `AMBIGUOUS_TICKET_ID`, list them.
 - the implementation report — `.workflow/reports/<TICKET-ID>-api-implementation.md`, or `implementation_report_path` when your caller supplied one. Missing and no inline report -> `Blocked`, reason `NO_REPORT`.
 - the test design — `test-design/<TICKET-ID>-test-design.md`, or `test_design_path`. Missing -> `Blocked`, reason `NO_TEST_DESIGN`. It is both the work list and the specification you review against; without it there is nothing to review against.
 - the reference example — `tests/api/login-api.spec.ts`, the existing spec that defines the house style. Read it before you judge any style question, so that "a deviation" always means a deviation from something real on disk rather than from your own taste.
-- the etalon — `docs/automation/api-spec-etalon.md`, the written house form the code under review was produced against. Step 2b tells you how to apply it.
+- the etalon — `docs/automation/etalons/api-spec-etalon.md`, the written house form the code under review was produced against. Step 2b tells you how to apply it.
 
-- the API surface — the `# API Surface` section of `requirements/<TICKET-ID>-requirements.md`, or of `requirements_path`. Read **only** that section; it is what the code under review was allowed to use for mechanics, so you need it to tell a documented route from an invented one. Missing section, or missing file, is not `Blocked` — it means the code had no surface to work from either. `docs/automation/api-surface-reading.md` holds the rules for reading it, and it is shared with the stream that wrote the code, so a rule you apply here is one the code was told to follow.
+- the API surface — the `# API Surface` section of `requirements/<TICKET-ID>-requirements.md`, or of `requirements_path`. Read **only** that section; it is what the code under review was allowed to use for mechanics, so you need it to tell a documented route from an invented one. Missing section, or missing file, is not `Blocked` — it means the code had no surface to work from either. `docs/automation/references/api-surface-reading.md` holds the rules for reading it, and it is shared with the stream that wrote the code, so a rule you apply here is one the code was told to follow.
 
 Do **not** open any other section of `requirements/`. That document was reviewed in an earlier phase; the test design is what you review against here. The surface tells you how the system may be reached, never what a test may claim.
 
 Then check the report itself before reviewing what it describes:
 
 - `stream:` is not `api` -> `Blocked`, reason `WRONG_STREAM`. Reviewing UI work is not your job.
-- A section from `docs/automation/implementation-report.md` §2 is missing -> `Blocked`, reason `MALFORMED_REPORT`, naming the section.
+- A section from `docs/automation/contracts/implementation-report.md` §2 is missing -> `Blocked`, reason `MALFORMED_REPORT`, naming the section.
 - A path under `Changed Files` does not exist on disk -> that alone is a Critical finding, not a Blocked: the report claims work that is not there.
 
 `Read` every file listed under `Changed Files`, in full — subject to the narrowing in Step 1b when this is a re-review. `Grep` `tests/api/` for the reported test titles to confirm each exists exactly as written.
 
 # Step 1b — Mode: full review or re-review
 
-**`Read` `docs/automation/review-verdict-contract.md` now, before you judge anything.** It is the process
+**`Read` `docs/automation/contracts/review-verdict-contract.md` now, before you judge anything.** It is the process
 every review in this repository follows and it is shared across streams: the `full_review` / `re_review`
 mode table, what still runs in full every iteration and what narrows, how you rule on each previous
 finding, the finding-id rules, the severity scale, the verdict rules, and the exact report block you emit
@@ -82,9 +82,11 @@ Before judging quality, establish what is actually true.
 | Claim                              | How you verify it                                                                                                              |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | Scenario `SCN-NNN` is implemented  | a test exists whose assertions cover that scenario's `Action:` and `Expected:` — not merely a comment naming the id            |
+| Scenario `SCN-NNN` carrying `Folds Into: <id>` is covered | the covering scenario's test asserts **that scenario's** `Expected:` too. A folded scenario has no test of its own by design, so its absence from `tests/` is not a defect — its absence from the covering test's assertions is |
+| The report's `Folded Scenarios` table is right | every row's `Scenario` carries `Folds Into:` naming that row's `Covered in` in the design. The design is the authority; a fold the report claims and the design does not carry is two scenarios merged into one test, which is a Critical finding |
 | The named test exists              | `Grep` for the exact title string in `tests/api/`                                                                              |
 | The listed files changed           | each path exists and contains the claimed tests                                                                                |
-| Every E2E API scenario was handled | `Grep` the test design for `Assigned Level: E2E API`; each id is implemented or listed under `Skipped Scenarios` with a reason |
+| Every E2E API scenario was handled | `Grep` the test design for `Assigned Level: E2E API`; each id is implemented as its own test, folded into one that is, or listed under `Skipped Scenarios` with a reason. **Read the design's `Folds Into:` lines yourself** — a folded id missing a test is correct, and taking the report's word for which ids those are is how a dropped scenario passes review |
 | The execution counts are real      | your own run in Step 4, compared against the report                                                                            |
 
 A scenario claimed as implemented whose test does not actually assert the scenario's expected outcome is **Critical**. This is the single most valuable check you perform, because it is the one a passing suite cannot catch.
@@ -93,7 +95,7 @@ A scenario the test design assigns to `E2E API` that appears in neither the code
 
 # Step 2b — The etalon: what compliant API test code looks like
 
-**`Read` `docs/automation/api-spec-etalon.md`.** It is the house form for this stream: the layer diagram, the phase-to-layer table, the setup and cleanup rules, a full compliant spec, and a non-compliant counter-example with the defects it carries. It is your calibration reference — a style finding is a departure from *this*, never from a preference of your own.
+**`Read` `docs/automation/etalons/api-spec-etalon.md`.** It is the house form for this stream: the layer diagram, the phase-to-layer table, the setup and cleanup rules, a full compliant spec, and a non-compliant counter-example with the defects it carries. It is your calibration reference — a style finding is a departure from *this*, never from a preference of your own.
 
 The same document is what the code you are reviewing was written against. That is the point of it being one file: a rule you apply here and a rule the code was told to follow cannot drift apart.
 
@@ -127,6 +129,7 @@ Rows 1–4 answer the coverage question, rows 5–23 the code-style question. Ev
 | #   | Check                                   | A finding looks like                                                                                                                                                                    |
 | --- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1   | E2E API scenario coverage               | a scenario the test design marks `Assigned Level: E2E API` with no test and no `Skipped Scenarios` entry                                                                                |
+| 1b  | Folded scenario coverage                | a scenario the design marks `Folds Into: <id>` whose `Expected:` no test asserts — the covering test does not carry it and the report does not skip it. It has no test of its own to be missing, so row 1 cannot see it and only reading the design's `Folds Into:` lines can. The inverse is also this row: two scenarios sharing one test with no `Folds Into:` line authorising it, which is a merge the writing stream had no licence to make. A covering test carrying two `// Act` blocks to fit a fold is this row too |
 | 2   | Assertion covers the scenario           | a claimed scenario with no real assertion; an `Expected:` clause of that scenario silently dropped                                                                                      |
 | 3   | Correctness against the scenario        | the test asserts something the scenario does not describe, or passes for the wrong reason                                                                                               |
 | 4   | Invented values                         | a status code, error string or limit asserted in the test that appears nowhere in the test design; **or a value the design marks `unknown:` in that scenario's `Notes:`** — an unknown is not assertable, so asserting one is an invented value whatever the design's `Expected:` happens to contain. **A value documented in `# API Surface` but absent from the scenario's `Expected:` is equally invented** — the surface says what the operation can do, and only the design decides what this test claims. This is the check that makes the surface's read-only boundary enforceable from the code alone, so run it on every assertion, not only on suspicious ones |
@@ -163,14 +166,14 @@ Preflight first with `curl -s -o /dev/null -w "%{http_code}" <BASE_URL>`, taking
 
 Compare your counts against the report's. A discrepancy is a Major finding at minimum, and a Critical one if the report claims passes you did not observe.
 
-**A red test is not automatically a finding.** Read `docs/automation/implementation-report.md` §5. A test that asserts what its scenario's `Expected:` states, fails because the application does something else, and is documented under `Suspected Application Defects` with the scenario id, is correct work — record it under `Validation Results` and let the verdict rest on everything else. What _is_ a Critical finding is the opposite: an assertion weakened to match the application, a deleted scenario, or a `.skip` used to turn a run green.
+**A red test is not automatically a finding.** Read `docs/automation/contracts/implementation-report.md` §5. A test that asserts what its scenario's `Expected:` states, fails because the application does something else, and is documented under `Suspected Application Defects` with the scenario id, is correct work — record it under `Validation Results` and let the verdict rest on everything else. What _is_ a Critical finding is the opposite: an assertion weakened to match the application, a deleted scenario, or a `.skip` used to turn a run green.
 
 An undocumented failure — red with no entry in the report — is Major: either the code is wrong or the report is.
 
 # Step 5 — Severity and verdict
 
 The severity scale, the verdict rules and the re-review upgrades are in
-`docs/automation/review-verdict-contract.md` §4 and §5. Apply them exactly. What this stream puts in each
+`docs/automation/contracts/review-verdict-contract.md` §4 and §5. Apply them exactly. What this stream puts in each
 bucket:
 
 - **Critical** — an `E2E API` scenario of the test design neither implemented nor listed as skipped; a scenario claimed but not actually covered; a credential or secret in the code; an assertion weakened, skipped or deleted to hide a real failure; a reported file that does not exist; execution counts that contradict your run in the report's favour; a write outside the API stream's ownership boundary.
@@ -179,7 +182,7 @@ bucket:
 
 # Step 6 — Return the report
 
-The block shape and every rule about it are in `docs/automation/review-verdict-contract.md` §6. Emit it
+The block shape and every rule about it are in `docs/automation/contracts/review-verdict-contract.md` §6. Emit it
 exactly, with no prose before or after. Filled in for this stream it reads:
 
 ```
@@ -200,6 +203,7 @@ E2E API Scenarios in Test Design: SCN-012, SCN-014, SCN-016
 Scenarios Claimed: SCN-012, SCN-014
 Scenarios Verified: SCN-012, SCN-014
 Scenarios Unverified: none
+Scenarios Folded: SCN-018 -> SCN-012 (asserted in that test)
 Scenarios Missing: SCN-016 (not implemented, not listed as skipped)
 
 Critical Issues:
@@ -229,16 +233,16 @@ roll-up of exactly the ids appearing in the sections below and not in `Previous 
 with no findings reads `- None.` rather than being deleted.
 
 A style finding here names the convention **and** where it is written — `CLAUDE.md`,
-`docs/automation/api-spec-etalon.md`, or the line of `tests/api/login-api.spec.ts` that shows the house
+`docs/automation/etalons/api-spec-etalon.md`, or the line of `tests/api/login-api.spec.ts` that shows the house
 form.
 
 # Must not
 
-Every boundary in `docs/automation/review-verdict-contract.md` §7 applies to you in full — read-only, no
+Every boundary in `docs/automation/contracts/review-verdict-contract.md` §7 applies to you in full — read-only, no
 fix-writing, no `Pass` over a Major, no verdict but `Blocked` on an unrun suite, no unruled finding, no
 narrowing of the suite or the coverage pass, no trusting the report's own numbers, no `requirements/`, no
 judging the design, no browser, no Jira, no mid-run questions. On top of those, specific to this stream:
 
 - Review anything under `tests/ui/` or `pages/`, or comment on selectors, page objects, waits or visual state. That work is reviewed elsewhere, and duplicating it produces contradictory findings.
 - Run any `Bash` command beyond the `curl` preflight, `npx playwright test tests/api`, and `npx tsc --noEmit`. No git, no npm install, no `show-report`, no `playwright-cli`.
-- Invent a convention the repository does not state. `CLAUDE.md`, `docs/automation/api-spec-etalon.md` and `tests/api/login-api.spec.ts` are the standard; a preference of yours that contradicts them, or that none of them expresses, is not a finding.
+- Invent a convention the repository does not state. `CLAUDE.md`, `docs/automation/etalons/api-spec-etalon.md` and `tests/api/login-api.spec.ts` are the standard; a preference of yours that contradicts them, or that none of them expresses, is not a finding.

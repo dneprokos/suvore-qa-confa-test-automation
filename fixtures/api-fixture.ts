@@ -2,6 +2,7 @@ import { test as base } from "@playwright/test";
 import { ApiFacade } from "@services/api/api-facade";
 import { AdminUser, ListAdminsResponse } from "@services/api/types/admin";
 import { LoginResponse } from "@services/api/types/auth";
+import { CreateGameRequest } from "@services/api/types/games";
 
 /**
  * One resource to remove after the test.
@@ -14,12 +15,29 @@ export type CleanupTask = {
   run: () => Promise<void>;
 };
 
+/** A game seeded as a precondition, with its removal already registered. */
+export type SeededGame = {
+  id: string;
+  name: string;
+  /** The create call's status, for a scenario whose `Expected:` names it. */
+  status: number;
+};
+
+/**
+ * Creates one game over the API and returns it ready to act on.
+ *
+ * Throws when the seed produced no usable record, so a caller never branches
+ * on whether it worked.
+ */
+export type SeedGame = (payload: CreateGameRequest) => Promise<SeededGame>;
+
 type ApiFixtures = {
   api: ApiFacade;
   ownerToken: string;
   createdAdminEmails: string[];
   cleanupTasks: CleanupTask[];
   uncleanableResources: string[];
+  seedGame: SeedGame;
 };
 
 export const test = base.extend<ApiFixtures>({
@@ -141,6 +159,62 @@ export const test = base.extend<ApiFixtures>({
     for (const label of labels) {
       console.warn(`[cleanup] NOT CLEANED UP: ${label} - no delete endpoint`);
     }
+  },
+
+  /**
+   * Seeds one game over the API and registers its removal before returning,
+   * so a failing assertion later in the test cannot jump over the
+   * registration.
+   *
+   * It throws rather than handing back a result to inspect, for the same
+   * reason `ownerToken` does: a seed that produced no usable record is a
+   * broken precondition, not a finding about the behaviour under test. That
+   * is what keeps the `// Arrange` block free of an `id === undefined` branch
+   * and a `as string` cast at every call site - five of them across this
+   * suite, each a copy of the same twenty lines.
+   *
+   * The two failure modes are different facts and are reported differently.
+   * A create that did not succeed made nothing: there is no record to remove
+   * and none to report as unremovable, so it only throws. A create that
+   * succeeded but whose id could not be read back *did* make a record this
+   * run cannot remove, so its label goes to `uncleanableResources` first and
+   * the throw follows. Conflating the two is how a rejected 400 came to be
+   * printed as an unremovable leak.
+   */
+  seedGame: async (
+    { api, ownerToken, cleanupTasks, uncleanableResources },
+    use,
+  ) => {
+    await use(async (payload: CreateGameRequest) => {
+      const { result, id } = await api.games.createGameAndGetId(
+        ownerToken,
+        payload,
+      );
+
+      if (!result.ok) {
+        throw new Error(
+          `Seeding game "${payload.name}" failed with status ${result.status}: ${JSON.stringify(result.body)}`,
+        );
+      }
+
+      if (id === undefined) {
+        uncleanableResources.push(
+          `game "${payload.name}" - created (status ${result.status}) but its id could not be read back from the response, see services/api/controllers/games-api.ts extractGameId`,
+        );
+        throw new Error(
+          `Seeded game "${payload.name}" but could not read its id back from the ${result.status} response: ${JSON.stringify(result.body)}`,
+        );
+      }
+
+      cleanupTasks.push({
+        label: `game ${id} (${payload.name})`,
+        run: async () => {
+          await api.games.deleteGame(ownerToken, id);
+        },
+      });
+
+      return { id, name: payload.name, status: result.status };
+    });
   },
 });
 

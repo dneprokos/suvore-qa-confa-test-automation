@@ -9,6 +9,8 @@
     "test:headed": "playwright test --headed",
     "test:debug": "playwright test --debug",
     "report": "playwright show-report",
+    "test:scripts": "node --test \"scripts/__tests__/*.test.mjs\"",
+    "test:lint": "node --test \"scripts/__tests__/*.test.mjs\"",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [],

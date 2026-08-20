@@ -6,8 +6,9 @@ calibrates against it. A style finding is a departure from *this*, never from a 
 the spot.
 
 **The files on disk outrank this sketch.** `tests/ui/owner.spec.ts` and `pages/owner-page.ts` are the
-canonical in-repo references; where the repository and this document disagree, the repository is right
-and the difference is not a finding.
+canonical in-repo references, and `tests/ui/search-games.spec.ts` with `pages/home-page.ts` for a
+control that acts on value change and for an empty state; where the repository and this document
+disagree, the repository is right and the difference is not a finding.
 
 ## The fixture chain
 
@@ -70,12 +71,30 @@ Cleanup is the fixture's job — no manual UI deletion in a teardown, and never 
 
 `createdAdminEmails` covers one resource type. Anything else registers a removal step on
 `cleanupTasks`, and the route it calls comes from the `# API Surface` section of the requirements
-document — see `docs/automation/api-surface-reading.md`, which is the only part of `requirements/`
+document — see `docs/automation/references/api-surface-reading.md`, which is the only part of `requirements/`
 this stream opens and is read for **arrange and cleanup mechanics only, never for an assertion**.
+
+**Reach for the entity's seeding fixture first.** Where one exists it does all of this already —
+creates the record, registers its removal before returning, and throws when the seed produced nothing
+usable, so the arrange is one line and carries no branch, no cast and no status assertion:
 
 ```ts
 // Arrange - the game is a precondition, not the scenario
-const createResult = await api.games.createGame(ownerToken, GameTestData.createGamePayload());
+const game = await seedGame(GameTestData.uniqueGamePayload());
+// ... later: game.id, game.name, game.status
+```
+
+The rules that fixture follows, and the two failure modes it separates, are written once in
+`docs/automation/etalons/api-spec-etalon.md` — "A seeded record is one line, and the fixture owns the rest".
+Both streams seed the same way, so both read the same words. **This stream may not add a seeding
+fixture itself**: `fixtures/api-fixture.ts` is closed to it, so a scenario needing one reports a shared
+change rather than hand-writing the block back into a spec.
+
+Where no fixture exists for the entity, register the removal yourself, at creation:
+
+```ts
+// Arrange - the game is a precondition, not the scenario
+const createResult = await api.games.createGame(ownerToken, GameTestData.createGamePayload(gameName));
 expect(createResult.status).toBe(201); // a broken precondition must fail loudly
 
 // Registered here, not after the assertions: fixture teardown runs whether the
@@ -248,6 +267,146 @@ async allGameNames(): Promise<string[]> {
 }
 ```
 
+## A folded scenario — one test, two scenario ids
+
+Most tests map one to one onto a scenario. The exception is a scenario whose block carries a third
+classification line:
+
+```
+Assigned Level: E2E UI
+Level Rationale: … folded into SCN-001 by the minimum-set pass — same actor, same entry, same route, a larger dataset over the one traversal SCN-001 already makes.
+Folds Into: SCN-001
+```
+
+That scenario gets no test of its own. It is asserted inside SCN-001's test, which is the only place it
+is asserted at all — so an unimplemented fold is a scenario lost silently, with no missing test anywhere
+to notice. Three things change in the covering test and nothing else does:
+
+1. **The id comment names both** — `// SCN-001 (folds SCN-018)`.
+2. **The arrange block seeds the wider precondition.** The folded scenario needs more data than the
+   covering one; you seed what satisfies both. A catalogue past the page-size threshold still satisfies
+   "two or more games", so the covering scenario's own assertions stay truthful against it — that is
+   what made the fold legal in the first place.
+3. **The folded scenario's `Expected:` becomes assertions in the same `// Assert` block**, carrying the
+   folded scenario's own `FR-`/`AC-` ids, not the covering scenario's.
+
+```ts
+// SCN-001 (folds SCN-018)
+test("Games management table - Should list every game returned by GET /api/games with all FR-10.1 fields rendered", async ({
+  page,
+  adminGamesManagementPage,
+  seedGameBatch,
+}) => {
+  // Arrange - SCN-001 asks for two or more games; SCN-018 asks for a catalogue past
+  // the public listing's page size. One seed satisfies both, which is why SCN-018 is
+  // folded here rather than kept as a second traversal of the same screen.
+  const seeded = await seedGameBatch(
+    GameTestData.createGamePayloadBatch(GameTestData.LARGE_CATALOGUE_BATCH_SIZE),
+  );
+
+  // Act
+  const [listResponse] = await Promise.all([
+    page.waitForResponse(
+      (response) =>
+        response.url().includes(Endpoints.games.list) &&
+        response.request().method() === "GET",
+    ),
+    adminGamesManagementPage.goto(),
+  ]);
+
+  // Assert - AC-1/FR-10.1 (SCN-001): the table lists every game GET /api/games returned
+  expect(listResponse.status()).toBe(200); // Act gate
+  const body = (await listResponse.json()) as ListGamesResponse;
+  const uiNames = await adminGamesManagementPage.gameNames();
+  expect([...uiNames].sort()).toEqual([...body.games.map((g) => g.name)].sort());
+
+  // Assert - FR-10.2 (SCN-018): nothing was truncated at the public listing's page
+  // size, on either side. Folded scenario, so this carries its own requirement id.
+  expect(body.games.length).toBe(body.pagination.totalGames);
+  await expect(adminGamesManagementPage.gameRows).toHaveCount(body.pagination.totalGames);
+  expect(body.games.map((g) => g.name)).toEqual(expect.arrayContaining(seeded.names));
+});
+```
+
+What a fold is **not**: a licence to merge two tests you find similar. Only a `Folds Into:` line
+authorises one test to carry two ids, and it is written by the classification step, never here. Two
+scenarios sharing a test without one is a Critical review finding, and so is a fold that grew a second
+`// Act` block to fit — one test has one Act, folded or not. A folded scenario whose assertion cannot be
+written goes to `Skipped Scenarios` with the reason; it never just disappears.
+
+## A control with no submit button, and the empty state it produces
+
+A filter or search control breaks two assumptions the delete flow above never tests: **the action is a
+value change rather than a click**, and **the result of the action can be the absence of everything**.
+`tests/ui/search-games.spec.ts` and the `searchFor` member of `pages/home-page.ts` are the in-repo
+reference for both.
+
+**Filling the box is the whole Act.** Whether the control needs a submit press, a debounce or neither is
+a *mechanic* — §4b of `docs/automation/references/browser-exploration.md` — and it is observed, never assumed. Where
+the listing re-requests on change, an `Enter` press or a click on a nearby button in the `// Act` is an
+invented step, and a test that adds one passes for the wrong reason.
+
+**Key the response matcher to the value, not to the route.** A listing that searches on change fires the
+same route on mount with an empty term, so a matcher testing only the pathname resolves against the
+*initial* load and the test asserts on the unfiltered page:
+
+```ts
+private static isGamesSearchResponse(response: Response, term: string): boolean {
+  const url = new URL(response.url());
+
+  return (
+    url.pathname === Endpoints.games.list &&
+    response.request().method() === "GET" &&
+    url.searchParams.get("search") === term
+  );
+}
+
+async searchFor(term: string): Promise<Response> {
+  const [response] = await Promise.all([
+    this.page.waitForResponse((response) =>
+      HomePage.isGamesSearchResponse(response, term),
+    ),
+    this.searchInput.fill(term),
+  ]);
+
+  return response;
+}
+```
+
+The page object returns the `Response` and asserts nothing on it, exactly as `gotoAndWaitForGames` does;
+the status gate is a line in the spec.
+
+**Where the environment supplies the data, the response is the oracle.** A catalog that varies by machine
+has no fixed result set to name, so the rendered cards are compared against the names *that response*
+carried — and the comparison is gated on a web-first count first, because `waitForResponse` resolves when
+the response arrives, not when the page has rendered it:
+
+```ts
+await expect(homePage.gameNameHeadings).toHaveCount(matchedNames.length);
+const renderedNames = await homePage.gameNamesOnCurrentPage();
+expect([...renderedNames].sort()).toEqual([...matchedNames].sort());
+```
+
+Seed the record the scenario searches for. A term read off the catalog's first page is data another spec
+may delete mid-test — the same isolation rule as everywhere else in this document, and the reason the
+compliant spec calls `seedGame` before it navigates.
+
+**An empty state is a presence/absence pairing.** `toHaveCount(0)` and `toBeHidden()` both pass on a page
+that rendered nothing at all, so the presence half carries a hard assertion on the value:
+
+```ts
+// Presence half of the presence/absence pairing: hard, since the absence
+// assertion below passes just as well on a page that rendered nothing.
+await expect(homePage.noResultsHeading).toHaveText("No Games Found");
+await expect.soft(homePage.noResultsMessage).toHaveText("Try adjusting your search or filters ...");
+await expect.soft(homePage.gameNameHeadings).toHaveCount(0);
+```
+
+The empty-state locators are scoped to the block that owns them (`getByTestId("no-results")`, then the
+heading and paragraph inside it), so neither can resolve against the page banner. Reading the block's
+*shape* — that it is a heading plus a message — is a mechanic; the strings above are values the design
+supplies, and lifting them off the running app instead is the invented-value defect, not a shortcut.
+
 ## Compliant — the spec
 
 ```ts
@@ -361,7 +520,7 @@ particular admin would be — its position depends on which other tests are runn
 | E6 | `ownerPage` used for the session — no UI login, no manual token write |
 | E7 | tier-1 locators throughout, declared as `readonly Locator` fields in the constructor, with a documented missing-`data-testid` gap — no tier drop was needed, so no `LOCATOR-FALLBACK` comment appears |
 | E8 | zero `expect` in the page object; the spec calls page-object members, never `page.getByRole` directly |
-| E9 | the network-triggering click wrapped in `Promise.all([page.waitForResponse(...), action])`, with both the response status and the rendered result asserted |
+| E9 | the network-triggering click wrapped in `Promise.all([page.waitForResponse(...), action])`, with both the response status and the rendered result asserted. **That the click triggers a request at all is an observation, not a deduction** — the route in the pattern comes from a mechanic somebody watched fire (`docs/automation/references/browser-exploration.md` §4b) and is reported alongside the code; a pattern written on an assumption is a race that stays green until it does not, and an action that quietly calls the server with no wait around it is the same defect with nothing on the page to notice |
 | E10 | the `window.confirm` handler registered **before** the click |
 | E11 | an absence assertion (`toBeHidden`) **paired with the `toBeVisible` on the same locator in `// Arrange`** — that pairing is what proves the locator resolves at all, since `toBeHidden` passes on a locator matching nothing — plus an API cross-check |
 | E12 | `// Arrange` / `// Act` / `// Assert`, a `// SCN-` id per test, an `FR-`/`AC-` id on the assertion carrying it, and one of the two accepted title forms |
@@ -417,5 +576,5 @@ stream actually got a test, and whether that test asserts what the scenario says
 | `"<Subject> - Should <behavior>"` | a rendering or state check, where the role is incidental | `"Games management table - Should list every game with all fields rendered"` |
 
 Pick the one the scenario fits and keep a file consistent. `tests/ui/owner.spec.ts` uses the first,
-`tests/ui/games-management.spec.ts` the second; both are the house form, and neither is a finding.
+`tests/ui/search-games.spec.ts` the second; both are the house form, and neither is a finding.
 Anything that is neither — `"delete admin"` — is a Minor.
