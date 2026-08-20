@@ -1,12 +1,37 @@
 {
   "hooks": {
-    "PostToolUse": [
+    "PreToolUse": [
       {
-        "matcher": "Task",
+        "matcher": "Task|Agent",
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/agent-metrics.mjs"
+            "timeout": 5,
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/agent-metrics.mjs\" --pre"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Task|Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 10,
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/agent-metrics.mjs\" --post"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Task|Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 10,
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/agent-metrics.mjs\" --failed"
           }
         ]
       }

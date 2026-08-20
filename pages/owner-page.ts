@@ -13,7 +13,7 @@ const AdminColumn = {
  * Owner Panel (/owner).
  *
  * The page ships no `data-testid` attributes, so every locator here is
- * role-based. Reported as an app gap - see docs/automation/browser-exploration.md.
+ * role-based. Reported as an app gap - see docs/automation/references/browser-exploration.md.
  */
 export class OwnerPage {
   readonly pageTitle: Locator;

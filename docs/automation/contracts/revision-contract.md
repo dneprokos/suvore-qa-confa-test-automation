@@ -74,9 +74,13 @@ contract exists to prevent, and a review treats it as Critical.
 
 A revision is scoped in what it *changes*, never in what it *verifies*.
 
-- **Re-run the whole stream suite and the type check** — not only the tests touched. A revision that was
-  not re-run is not a revision, and a fix in one spec that breaks another is exactly what a full run
-  catches.
+- **Re-run the whole stream suite and the type check before you report** — not only the tests touched. A
+  revision that was not re-run is not a revision, and a fix in one spec that breaks another is exactly
+  what a full run catches.
+- **The fix loop is the one thing that narrows.** While you are still debugging a red test you may run
+  just the specs you changed; that loop is a working step, not a result. The run that produces the counts
+  you report is always the full one, on a revision exactly as on a first run. Never report a targeted
+  run's counts as the suite's, and never let a green targeted run stand in for the full one.
 - **Overwrite the report file** and set `iteration:` to the resolved value.
 - **The report describes the current state of the code, not this iteration's diff.** Every section other
   than `Review Findings Addressed` is rebuilt in full, so `Implemented Scenarios` still lists every
@@ -120,14 +124,18 @@ Each stream emits its own receipt block with its own leading key. Three rules ho
   any other section of the file remains out of bounds. A stream whose subject is not the HTTP request
   narrows the exemption further — it reads the surface for arrange and cleanup mechanics and nothing
   else, and a route it documents is never a reason to write a test for that route. The section's own
-  rules are in `docs/automation/api-surface-reading.md`, including what to do when it is absent.
+  rules are in `docs/automation/references/api-surface-reading.md`, including what to do when it is absent.
 - **Do not edit the test design.** It is an input, and it belongs to whoever produced it.
 - **Do not report an execution result you did not observe**, and never carry counts over from a previous
   iteration.
 - **Do not weaken, delete or `.skip` an assertion so a run turns green.** A test that asserts the
   specification and fails is finished work, and it is reported as a suspected application defect.
 - **Do not invent a value the test design does not state** — a status code, message, field name, limit or
-  rendered string. A value the design marks `unknown:` is not assertable at all.
+  rendered string. A value the design marks `unknown:` is not assertable at all. This holds against the
+  running system as hard as against another document: what a stream observes while working out **how** to
+  reach an observable — a route an action calls, the shape of a region, what triggers a re-render — is
+  mechanics, and mechanics never become assertions. A stream that can see the app is one step from
+  asserting what it saw, and an assertion sourced that way can only ever agree with the application.
 - **Do not put a credential, token or secret literal in a spec.** Everything comes from `Config`.
 - **Do not declare test data inside a spec.** It already exists under `utils/`, and a second copy drifts
   from the first without anything failing. A helper that drives or reads the system under test belongs in

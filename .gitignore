@@ -18,6 +18,9 @@ node_modules/
 # QA workflow state and implementation reports
 /.workflow/
 
+# Generated architecture-review output (agentic-workflow-review skill's default --out)
+/docs/review.md
+
 # Claude Code local layer - machine-specific permissions and enabled MCP servers.
 # .claude/agents/, .claude/skills/ and .mcp.json stay tracked.
 .claude/settings.local.json

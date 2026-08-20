@@ -6,8 +6,10 @@ departure from *this*, never from a preference formed on the spot.
 
 **The files on disk outrank this sketch.** `tests/api/admin-api.spec.ts` and
 `tests/api/login-api.spec.ts` are the canonical in-repo references for file layout, titles and
-assertion style; where the repository and this document disagree, the repository is right and the
-difference is not a finding.
+assertion style, and `tests/api/games-search-api.spec.ts` for a query-parameter filter over a shared
+collection — self-seeded match data, the response's own metadata as the count oracle, and a defect
+asserted against the specification; where the repository and this document disagree, the repository is
+right and the difference is not a finding.
 
 One rule survives that precedence, because it post-dates the specs on disk: **the `// Act` is always
 the builder, one `with*()` call per field sent.** An older spec that acts through a controller method
@@ -92,15 +94,49 @@ fixture uses.
 | the test needs an admin that already exists | seed it with `api.admin.createAdmin` in `// Arrange`, assert the seed status, push the e-mail to `createdAdminEmails` |
 | the create call *is* the Act | push the e-mail to `createdAdminEmails` **before** the call, so cleanup runs even when the assertion fails |
 | the delete call is the Act | still push it — `findAdminIdsByEmail` returns nothing afterwards and cleanup becomes a no-op |
-| an entity `createdAdminEmails` does not cover | delete it over the API in `test.afterEach`; never leave a record behind |
+| an entity `createdAdminEmails` does not cover | seed it through that entity's **seeding fixture** — `seedGame` for a game — which registers the removal before it returns |
+| a seeding fixture does not exist for the entity | register the removal on `cleanupTasks` at the moment the record exists, before any assertion |
 | the request under test must fail before anything is created | no registration needed, and say so in a comment |
 
 Never arrange through a second HTTP client, a database call, or a UI flow. `createdAdminEmails` cleanup
 runs through the owner token the fixture already holds.
 
+### A seeded record is one line, and the fixture owns the rest
+
+`createdAdminEmails` is a *fixture*, not a pattern to hand-write per entity. The equivalent for any
+other resource is a seeding fixture in `fixtures/api-fixture.ts` — `seedGame` is the worked example —
+which creates the record, registers its removal **before returning**, and **throws** when the seed
+produced nothing usable:
+
+```ts
+// Arrange - two games, so the removed one is not the catalogue's only entry
+const keptGame = await seedGame(GameTestData.uniqueGamePayload());
+const removedGame = await seedGame(GameTestData.uniqueGamePayload());
+```
+
+It throws for the same reason `ownerToken` throws on a failed login: **a seed that produced no usable
+record is a broken precondition, not a finding about the behaviour under test.** That is what keeps the
+branch, the status assertion and the `as string` cast out of every `// Arrange` block — and there is no
+information lost, because the returned object carries `id`, `name` and `status` for a scenario whose
+`Expected:` names one of them.
+
+Two failure modes, reported differently, once, inside the fixture:
+
+| The seed | The fixture does |
+|---|---|
+| did not succeed | throws. Nothing was created, so there is nothing to clean up **and nothing to report as uncleanable** |
+| succeeded, id unreadable | pushes the label to `uncleanableResources`, **then** throws — a record exists that this run cannot remove |
+
+Collapsing those two into one `if (id)` branch is how a rejected `400` came to print
+`NOT CLEANED UP: game "..." - created (status 400)` for a record that never existed.
+
+**Adding a seeding fixture is inside this stream's write boundary** — `fixtures/api-fixture.ts` is
+otherwise closed to the UI stream, so a UI run that needs one reports it as a shared change rather than
+writing it. Prefer extending an existing fixture over repeating its body in a spec.
+
 ## Reading the API surface
 
-**`Read` `docs/automation/api-surface-reading.md`.** The `# API Surface` section of a requirements
+**`Read` `docs/automation/references/api-surface-reading.md`.** The `# API Surface` section of a requirements
 document — what it answers, what it never answers, how `## Spec Gaps` and an inherited `Auth:` line are
 read, what `Source:` means, and what to do when the section is missing — lives there, because both
 streams read the same section and a second copy of those rules would drift from the first.
@@ -174,6 +210,141 @@ Rules for the sugar:
   filled in from a route list.
 - A parameter omitted from the chain is a parameter the request does not send. That is a meaningful test
   input — the default-paging case is `sendListGames()` with an empty chain, not `withPage(1)`.
+
+## Filtering a shared collection
+
+A filter parameter (`search`, and any `?field=` narrowing a collection) asks a question the rest of this
+document does not: **the endpoint answers about records this test did not create.** The catalog is
+shared, `fullyParallel` is on, and another spec is seeding and deleting rows in it while this one reads.
+Four rules follow, all of them visible in `tests/api/games-search-api.spec.ts`.
+
+**Search on a token the test seeded itself.** A term borrowed from the environment — the first row of
+the collection, a shipped title — is data another spec may delete mid-test, and the failure reads as a
+broken filter. Seed the matches, name them from a run-unique token, and the filtered set is closed:
+
+```ts
+// Arrange - two seeds under different tokens, so a term matching only one of
+// them proves filtering rather than an empty catalog
+const token = GameTestData.uniqueSearchToken();
+const matchingGame = await seedGame(GameTestData.createSearchSeedPayload(token));
+const otherGame = await seedGame(
+  GameTestData.createSearchSeedPayload(GameTestData.uniqueSearchToken()),
+);
+```
+
+The token belongs in `utils/test-data/`, like every other sent value, and it is **free of regex
+metacharacters** — a term is a filter input, and a generator that emits `.` or `(` into one makes the
+test's own data the variable under test.
+
+**Read the count off the response, never off the environment.** A filtered page's `pagination` block
+counts the whole match set, so it rules out a second match that landed off-page — which asserting on
+`games.length` alone cannot:
+
+```ts
+expect(body.games.map((game) => game.name)).toEqual([matchingGame.name]);
+expect(body.pagination.totalGames).toBe(1);
+```
+
+The same reasoning bars `expect(totalGames).toBe(21)`: a literal catalog size is a fact about one
+machine at one moment. Where the scenario is paging, assert the metadata's internal consistency
+(`totalPages`, `hasNextPage`, `currentPage`) and the union of the pages against the seeded ids.
+
+**An empty result needs a positive control.** `games` coming back empty proves the filter excluded the
+record *or* that the seed never landed, and those are opposite verdicts. Pair the empty assertion with a
+second read that must return the same record — through the **controller**, since it is `// Assert`
+plumbing and not the request under test:
+
+```ts
+// Act - the term is the description's token, which no name carries
+const result = await api.games.gamesBuilder().withBearerToken(ownerToken)
+  .withSearch(descriptionToken).withLimit(...).withPage(1).sendListGames();
+
+// Assert
+expect((result.body as ListGamesResponse).games).toEqual([]);
+
+const byName = await api.games.listGames(ownerToken, { search: nameToken, ... });
+expect((byName.body as ListGamesResponse).games.map((game) => game._id))
+  .toEqual([seededGame.id]);
+```
+
+One `// Act` still means one request under test. A second *builder* chain in the same test is a second
+Act and belongs in a second test — the genre and description cases are two tests for exactly that
+reason.
+
+**Choose absence-of-id over an empty page when a legitimate match could exist.** Searching for a genre
+word must not reach the seed, but a shipped title carrying that word in its *name* is a correct match;
+asserting an empty page would fail on somebody else's data. Assert what the scenario claims — that this
+id is not in the result — and say in a comment why the stronger form would be wrong.
+
+**A term that crashes the endpoint is asserted against the specification.** Where the filter is
+interpolated into a pattern without escaping, a metacharacter term returns `500`. The test asserts the
+outcomes the specification allows and lets the defect stand red, with a comment naming it:
+
+```ts
+// Assert - either outcome is defensible; a 500 is not one of them
+expect([200, 400]).toContain(result.status);
+```
+
+Both defensible outcomes are named because the surface documents neither — inventing a single expected
+status would be a guessed mechanic. Weakening this to `not.toBe(500)`, or to whatever the app currently
+returns, deletes the report; the red test **is** the deliverable.
+
+## A folded scenario — one test, two scenario ids
+
+Most tests map one to one onto a scenario. The exception is a scenario whose block carries a third
+classification line:
+
+```
+Assigned Level: E2E API
+Level Rationale: … folded into SCN-012 by the minimum-set pass — same actor, same operation, a second value over the one request SCN-012 already makes.
+Folds Into: SCN-012
+```
+
+That scenario gets no test of its own. It is asserted inside SCN-012's test, which is the only place it
+is asserted at all — so an unimplemented fold is a scenario lost silently, with no missing test anywhere
+to notice. Three things change in the covering test and nothing else does:
+
+1. **The id comment names both** — `// SCN-012 (folds SCN-018)`.
+2. **The arrange block seeds whatever satisfies both preconditions.** The folded scenario asks for more
+   or different data than the covering one; you seed the union. The covering scenario's own assertions
+   have to stay truthful against it — that is what made the fold legal in the first place.
+3. **The folded scenario's `Expected:` becomes assertions in the same `// Assert` block**, carrying the
+   folded scenario's own `FR-`/`AC-` ids, not the covering scenario's.
+
+```ts
+// SCN-012 (folds SCN-018)
+test("List games - Should return the requested page with its pagination metadata", async ({
+  api,
+  ownerToken,
+  cleanupTasks,
+}) => {
+  // Arrange - SCN-012 needs a populated catalogue; SCN-018 needs one large enough
+  // that page 2 is non-empty. One seed satisfies both, which is why SCN-018 folds
+  // here rather than repeating the same GET as a second test.
+  const seeded = await seedGames(api, ownerToken, cleanupTasks, GameTestData.PAGED_BATCH_SIZE);
+
+  // Act - one with*() per parameter the request sends
+  const result = await api.games.builder().withLimit(10).withPage(2).sendListGames();
+
+  // Assert - FR-10.2 (SCN-012): the page is returned with its metadata
+  expect(result.status).toBe(200);
+  const body = result.body as ListGamesResponse;
+  expect(body.games).toHaveLength(10);
+  expect(body.pagination.page).toBe(2);
+
+  // Assert - FR-10.4 (SCN-018): totalGames counts the whole catalogue, not the page.
+  // Folded scenario, so this carries its own requirement id.
+  expect(body.pagination.totalGames).toBeGreaterThanOrEqual(seeded.length);
+  expect(body.pagination.totalPages).toBe(Math.ceil(body.pagination.totalGames / 10));
+});
+```
+
+What a fold is **not**: a licence to merge two tests you find similar. Only a `Folds Into:` line
+authorises one test to carry two ids, and it is written by the classification step, never here. Two
+scenarios sharing a test without one is a Critical review finding. So is a covering test that grew a
+**second `// Act`** to fit the fold — one test sends one request under test, and a folded scenario that
+needs a request of its own was folded wrongly: implement the covering scenario, and record the folded
+one under `Skipped Scenarios` with that reason rather than bending the phase structure around it.
 
 ## Compliant — the shape a new spec is expected to have
 
@@ -369,6 +540,7 @@ test.describe("POST /api/admin/users", () => {
 | E11 | a comment stating why a case is asserted loosely, when the design left the value open |
 | E12 | title `"<Feature> - Should <behavior>"`, describe block named for the endpoint |
 | E13 | no URL string, no credential literal, no `waitForTimeout` |
+| E14 | a seeded precondition is a single `await seedGame(...)` line — no `if (id)` branch, no `as string` cast, no per-call-site `uncleanableResources` push, and no status assertion the fixture already makes by throwing |
 
 ## Non-compliant — the same intent, and the defects it carries
 
@@ -412,3 +584,34 @@ test("should create admin", async ({ request }) => {           // (3)
 The credential is the only Critical here. Everything else is Major or Minor — and none of the six is a
 **coverage** finding, which is the separate and more valuable question: whether every scenario the test
 design assigned to this stream actually got a test, and whether that test asserts what the scenario says.
+
+### The hand-written seed block — a seventh defect, from a real spec
+
+The example above does not carry this one, because it seeds an admin and `createdAdminEmails` already
+covers that. It appeared the moment a spec needed a resource with no fixture of its own, and it appeared
+**five times in two files** before anybody named it:
+
+```ts
+const seed = await api.games.createGameAndGetId(          // (7)
+  ownerToken,
+  GameTestData.createGamePayload(gameName),
+);
+if (seed.id) {                                            // (8)
+  const id = seed.id;
+  cleanupTasks.push({ label: `game ${id}`, run: async () => { await api.games.deleteGame(ownerToken, id); } });
+} else {
+  uncleanableResources.push(`game "${gameName}" - created but its id could not be read back`);
+}
+expect(seed.result.status).toBe(201);
+const gameId = seed.id as string;                         // (9)
+```
+
+| # | Defect | Severity |
+|---|---|---|
+| 7 | twenty lines of arrange repeated per seeded record; the reader reaches the `// Act` four screens down | Major |
+| 8 | branches on `id` rather than on whether the create succeeded, so a rejected request is reported as an unremovable leak — a false claim in the run output | Major |
+| 9 | `as string` asserting away a case the line above proves is possible | Minor |
+
+All three are one finding with one fix: **a seeding fixture**. A reviewer seeing this shape reports it
+against E14 and points at `seedGame`; it is not a style preference, because (8) makes the cleanup report
+untrue.

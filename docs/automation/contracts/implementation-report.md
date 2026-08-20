@@ -31,15 +31,24 @@ predates the contract.
 Every section below appears in every report, in this order, even when empty. An empty section reads
 `- None.` — a missing section is a malformed report, and a reviewer treats it as `Blocked`.
 
-One section is stream-specific: **`Explored Locators` is required of the `ui` stream and absent from the
-`api` stream.** An API run opens no browser, so the section would always be empty there; a UI report that
-omits it is malformed. It sits between `Reused Framework` and `Execution Result`.
+Two sections are stream-specific: **`Explored Locators` and `Observed Mechanics` are required of the
+`ui` stream and absent from the `api` stream.** An API run opens no browser, so both would always be
+empty there; a UI report that omits either is malformed. They sit in that order between
+`Reused Framework` and `Execution Result`.
+
+They answer different questions and neither substitutes for the other. `Explored Locators` says **where**
+an observable is, and is the evidence behind every locator committed to `pages/`. `Observed Mechanics`
+says **how the page gets there** — whether an action fires a request, what proves a re-render finished,
+what shape an empty state takes, what triggers the action, whether it raises a dialog — and is the
+evidence behind every wait and every dialog handler committed to `tests/ui/`. A suite of perfectly
+observed tier-1 locators can still be raced by one guessed wait, which is why the second map is not a
+column of the first.
 
 ````markdown
 ---
 ticket: SCRUM-139
 stream: api
-generated_by: aqa-api-test-creator
+generated_by: <your own agent slug>
 generated_at: 2026-08-06T14:22:00Z
 iteration: 1
 test_design_source: test-design/SCRUM-139-test-design.md
@@ -54,6 +63,12 @@ scenarios_implemented: 2
 |---|---|---|
 | SCN-012 | Create admin - Should create an admin with a valid payload | tests/api/admin.spec.ts |
 | SCN-014 | Create admin - Should reject a duplicate e-mail | tests/api/admin.spec.ts |
+
+## Folded Scenarios
+
+| Scenario | Covered in | Test title |
+|---|---|---|
+| SCN-018 | SCN-012 | Create admin - Should create an admin with a valid payload |
 
 ## Skipped Scenarios
 
@@ -110,7 +125,7 @@ Type check: npx tsc --noEmit — pass
 | API-M1 | disputed | see Known Limitations |
 ````
 
-The `ui` stream's extra section takes this shape, between `Reused Framework` and `Execution Result`:
+The `ui` stream's two extra sections take this shape, between `Reused Framework` and `Execution Result`:
 
 ````markdown
 ## Explored Locators
@@ -121,6 +136,14 @@ The `ui` stream's extra section takes this shape, between `Reused Framework` and
 | Admin table body | rowgroup | — | 1 | page.getByRole("table").getByRole("rowgroup").nth(1) |
 | Delete button (per row) | button "Delete Admin" | — | 1 | rowFor(email).getByRole("button", { name: "Delete Admin" }) |
 | Toast | status | — | 1 | page.getByRole("status") |
+
+## Observed Mechanics
+
+### /owner
+| Action | Request | Trigger | Result shape | Dialog |
+|---|---|---|---|---|
+| Click "Delete Admin" | DELETE /api/admin/users/:id | on confirm accept | row detaches from the rowgroup | `window.confirm` |
+| Submit the create form | POST /api/admin/users | on submit | new row appended, toast in the `status` region | — |
 ````
 
 ## 3. Section rules
@@ -128,10 +151,12 @@ The `ui` stream's extra section takes this shape, between `Reused Framework` and
 | Section | Rule |
 |---|---|
 | Implemented Scenarios | One row per scenario id actually covered by a test that exists. The test title is the exact string passed to `test(...)`, not a paraphrase. |
-| Skipped Scenarios | Every selected scenario that produced no test, with a reason. A selected scenario appearing in neither table is a contract violation. |
+| Folded Scenarios | One row per scenario the test design folded into one this report implements. The design's `Folds Into:` line is the authority — the writing stream never decides to fold or unfold anything. `Covered in` is the covering scenario id, and the title is that scenario's test. A folded scenario has no test of its own, so this table is the only record that it was covered at all: an id the design folded and this report names in neither table is a scenario the run dropped, and no coverage check downstream can see it, because there is no missing test to notice. `- None.` when the design folded nothing. |
+| Skipped Scenarios | Every selected scenario that produced no test, with a reason. A selected scenario appearing in neither table is a contract violation. A folded scenario belongs here only when its `Expected:` could not be asserted, and then it appears in both tables — once for the fold, once for the reason. |
 | Changed Files | Repo-relative paths with `new` or `modified` and a one-clause summary. Every path must exist on disk. |
 | Reused Framework | What already existed and was used. An empty list on a repo that has fixtures is a reuse failure, not an empty section. |
-| Explored Locators | **`ui` stream only.** The selector map from `docs/automation/browser-exploration.md` §5 — one table per route, including its `Tier` column, every row traceable to a snapshot taken in this run **or carried forward from a previous iteration's report for a locator still in `pages/`**. Every row whose tier is not 1 also appears under `LOCATOR_GAPS` in the receipt. `- None.` only when the map is genuinely empty, with a clause saying why (`every locator already existed in pages/`). Never a snapshot ref (`e5`). |
+| Explored Locators | **`ui` stream only.** The selector map from `docs/automation/references/browser-exploration.md` §5 — one table per route, including its `Tier` column, every row traceable to a snapshot taken in this run **or carried forward from a previous iteration's report for a locator still in `pages/`**. Every row whose tier is not 1 also appears under `LOCATOR_GAPS` in the receipt. `- None.` only when the map is genuinely empty, with a clause saying why (`every locator already existed in pages/`). Never a snapshot ref (`e5`). |
+| Observed Mechanics | **`ui` stream only.** The mechanics map from `docs/automation/references/browser-exploration.md` §5 — one row per action a test in this report performs, `Action \| Request \| Trigger \| Result shape \| Dialog`, every row traceable to an action performed and a `network` or `snapshot` output read in this run **or carried forward from a previous iteration for an action the specs still perform**. Every `waitForResponse` pattern and every dialog handler in the diff traces to a row here or to a `Known Limitations` entry saying the mechanic was not observed; the inverse also holds — a row recording a request with no wait in the code is the same defect from the other end. **No cell holds a rendered string, a count or any other assertable value**: this map records how an observable is reached, never what it says. `- None.` only when there was genuinely nothing to read, with a clause saying why. Never a snapshot ref (`e5`). |
 | Execution Result | The real command and the real counts, copied from the run. Never estimated, never carried over from a previous iteration. |
 | Failing Tests | Test title, `file:line`, expected vs actual, and why it still ships. |
 | Suspected Application Defects | A failure believed to be the application's fault, tied to a scenario id, quoting the `Expected:` value the test asserts. |
@@ -163,10 +188,12 @@ Rules:
 
 This is the one section that describes the iteration rather than the code. Every other section — §1's
 rule — describes the current state, so a revision rebuilds them in full rather than reducing them to
-what it touched. `Explored Locators` is the sharp edge: a revision that opened no browser still carries
-the previous map forward for every locator still present in `pages/`, because that map is the only
-evidence anyone downstream has that a committed locator was ever observed. Blanking it to `- None.`
-because this pass explored nothing destroys the record and forces the next run to re-explore from zero.
+what it touched. The two exploration maps are the sharp edge: a revision that opened no browser still
+carries `Explored Locators` forward for every locator still present in `pages/`, and
+`Observed Mechanics` forward for every action the specs still perform, because those maps are the only
+evidence anyone downstream has that a committed locator was ever observed and that a committed wait
+matches a request somebody watched fire. Blanking either to `- None.` because this pass explored nothing
+destroys the record and forces the next run to re-explore from zero.
 
 ### 3b. Cleanup Gaps
 

@@ -2,7 +2,7 @@
 name: qa-requirements-reviewer
 description: Reviews an existing requirements/<TICKET-ID>-requirements.md for testing-relevant gaps — ambiguity, missing validation/error/permission/boundary/integration/data/observability detail, missing API surface evidence, risks, assumptions, open questions — and appends five QA review sections to the file. Use when a structured requirements document exists and needs a testing-focused critique before test scenarios are designed from it, or when asked to "review the requirements for <TICKET-ID>", "run qa-requirements-reviewer", or "QA-review this requirements file".
 tools: Read, Edit, Glob
-model: opus
+model: sonnet
 color: yellow
 ---
 
@@ -55,13 +55,13 @@ If the section says `_None stated in the ticket._` for either FRs or ACs, record
 
 Also read `# API Surface` and classify it once, because Step 5's thirteenth check and your receipt both depend on it:
 
-| Evidence | The section shows |
-|---|---|
-| `mapped` | one or more operations, every one carrying `Source: openapi`, and `## Spec Gaps` is `- None.` |
-| `partial` | one or more operations, and `## Spec Gaps` lists at least one gap |
-| `none` | `_No API surface identified._` with a reason that is not `ignored by request` |
-| `ignored` | `_No API surface identified._` with `Reason: ignored by request.` |
-| `absent` | the heading is not in the document at all |
+| Evidence  | The section shows                                                                             |
+| --------- | --------------------------------------------------------------------------------------------- |
+| `mapped`  | one or more operations, every one carrying `Source: openapi`, and `## Spec Gaps` is `- None.` |
+| `partial` | one or more operations, and `## Spec Gaps` lists at least one gap                             |
+| `none`    | `_No API surface identified._` with a reason that is not `ignored by request`                 |
+| `ignored` | `_No API surface identified._` with `Reason: ignored by request.`                             |
+| `absent`  | the heading is not in the document at all                                                     |
 
 An operation block carrying `Source: user-supplied` or `Source: openapi + user-supplied` is a fact a person vouched for rather than one the application documents. It must name an approver and a date. Check every one.
 
@@ -94,14 +94,14 @@ A requirement whose behavior is observable over HTTP but whose document names no
 API test: there is no route to call and no status code to assert. Grade the evidence you classified in
 Step 4, and grade it once for the document, not once per FR:
 
-| Evidence | Severity | Finding |
-|---|---|---|
-| `none` | `[REQ-C*]` | No operation was mapped and nobody chose to skip it. Name the reason the section gives |
-| `absent` | `[REQ-M*]` | The document predates the section. Say so plainly; this is a re-run, not a defect in the ticket |
-| `ignored` | `[REQ-M*]` | A person chose this. Record the consequence and move on — never escalate a decision that has already been made, and never argue with it |
-| `partial` | `[REQ-M*]` **only** when a listed Spec Gap touches an in-scope FR or AC | Name the FR and the gap together: "AC-1 asserts a rejection message, and no matched operation documents an error response body" |
-| `partial` | none | Gaps that touch nothing in scope are noise. Say nothing |
-| `mapped` | none | ✅ |
+| Evidence  | Severity                                                                | Finding                                                                                                                                 |
+| --------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `none`    | `[REQ-C*]`                                                              | No operation was mapped and nobody chose to skip it. Name the reason the section gives                                                  |
+| `absent`  | `[REQ-M*]`                                                              | The document predates the section. Say so plainly; this is a re-run, not a defect in the ticket                                         |
+| `ignored` | `[REQ-M*]`                                                              | A person chose this. Record the consequence and move on — never escalate a decision that has already been made, and never argue with it |
+| `partial` | `[REQ-M*]` **only** when a listed Spec Gap touches an in-scope FR or AC | Name the FR and the gap together: "AC-1 asserts a rejection message, and no matched operation documents an error response body"         |
+| `partial` | none                                                                    | Gaps that touch nothing in scope are noise. Say nothing                                                                                 |
+| `mapped`  | none                                                                    | ✅                                                                                                                                      |
 
 Two further defects, checked whichever evidence you found:
 
@@ -160,6 +160,15 @@ Rules:
 - Quote the problematic phrase from the source text when flagging Clear/Verifiable issues — "this requirement is unclear" is not an acceptable finding.
 - If a requirement genuinely has no issues, write `✅ No issues found.` under its heading rather than omitting the heading — every FR and AC must be shown as checked.
 - Never write a full 8×N grading table into the file. This is a findings document, not a scorecard — the rubric in Step 5 is your internal tool, not your output shape.
+- **A gap that lands on three or more FR/AC units is one finding, not three.** Write it once as a single bullet under `# Missing Information`, with one id, naming every unit it touches:
+
+  ```
+  - **[REQ-M2] Boundary conditions** — no minimum or maximum is stated for any input length. Applies to FR-11.1, FR-11.2, FR-11.4, AC-3.
+  ```
+
+  Under `# QA Review Notes`, each affected unit then carries a one-line pointer — `- ⚠️ **[REQ-M2]** — see # Missing Information` — and never a restatement of the finding. Two units or fewer stays per-unit, written out in place as usual.
+
+  This is the same instinct as the rule above it. The same missing boundary rule copied under eight headings is a scorecard wearing a findings document's clothes: it reads as eight defects, it is cited downstream as eight, and every reader who acts on it expands it eightfold. One finding with eight ids attached says strictly more and costs a fraction.
 
 # Step 7 — Diff-safety self-check
 
@@ -167,6 +176,8 @@ Before returning, confirm:
 
 - Every line that existed above `# QA Review Notes` before your edit is byte-identical after it. If you cannot make this guarantee, STOP — do not return a result — and report `EDIT_UNSAFE` with what you attempted instead.
 - On a regenerate run, the five headings appear exactly once each in the final file.
+- No two findings say the same thing about different units. Every gap that reaches three or more FR/AC units appears once, under `# Missing Information`, with the units listed on it — and the units themselves carry a pointer to that id, not a copy of its text.
+- Every FR and AC still appears under `# QA Review Notes`, whether its findings are written out in place or pointed at. Grouping shortens the finding; it never drops the unit.
 
 # Step 8 — Return summary
 
@@ -202,6 +213,8 @@ On `ABORT` or `EXISTS`, emit `QA_REQUIREMENTS_REVIEWER_RESULT`, `TICKET`, `REASO
 - Invent an acceptance criterion, or promote a Dependency/Affected-Component bullet into one — that gap belongs in `# Missing Information`, not a silent fix.
 - Ask the user a clarifying question mid-run, or wait for one. Every question you have becomes a line in `# Open Questions` instead.
 - Grade with a numeric score or emit an 8-characteristic table. The rubric in Step 5 is your internal tool; a scorecard is not your output shape.
+- Restate one document-wide gap under every FR and AC it touches. Running the rubric over every unit is the job; writing the same sentence out eight times is not the report of it.
+- Narrow the Step 5 passes because of that. Grouping is about the shape of the output. Every FR and AC still goes through both passes and all thirteen checks, and a unit you did not examine cannot be one of the ids on a grouped finding.
 - Touch Jira in any way — you have no Jira tools for a reason.
 - Add, correct or extend the `# API Surface` section. You grade the evidence in it; producing it is somebody else's job, and a reviewer that fills its own gap has removed the finding that would have got it fixed properly.
 - Return findings in your final message instead of the file. The return block is a receipt, not a report.
