@@ -88,6 +88,7 @@ framework/          Joi-validated Config
 utils/              AdminTestData, AuthTestData, ResponsePatterns — every value a spec sends or matches
 docs/automation/    etalons/ contracts/ references/ — what the agents read at run time (see its README)
 docs/conference/    agent_build_plan.md — the concept: roster, phases, and why it is shaped this way
+                    full-workflow.png, presentation-plan.md — the diagram above and the talk built on it
 requirements/       <TICKET-ID>-requirements.md, written by the collector agent
 test-design/        <TICKET-ID>-test-design.md, written by the generator agent
 ```
@@ -127,9 +128,22 @@ failure is the report.
 
 ## The agent workflow
 
-`docs/conference/agent_build_plan.md` is the concept — the roster, the phases and the reasoning — and
-`docs/automation/README.md` indexes what the agents actually read while running. Eleven subagents in
-`.claude/agents/` split into two phases, each phase a create → review → revise loop:
+![The QA agent workflow, end to end](docs/conference/full-workflow.png)
+
+One Jira ticket in, one reviewed pull request out, and the same ticket moved to `In Review` with the pull
+request linked on it. Solid arrows advance; dashed arrows are a review sending work back by finding id.
+Every arrow on that picture is drawn by the orchestrator — no agent knows what runs after it.
+
+Where to read next, depending on the question:
+
+| Question | File |
+|---|---|
+| why the workflow is shaped this way — roster, phases, reasoning | `docs/conference/agent_build_plan.md` |
+| the same picture in text, with the gates, the loop cap, the state write and every terminal state | `.claude/skills/qa-workflow/references/workflow-map.md` |
+| who runs when, and with which parameters | `.claude/skills/qa-workflow/SKILL.md` — the step registry |
+| what the agents read while running | `docs/automation/README.md` |
+
+Eleven subagents in `.claude/agents/` split into two phases, each phase a create → review → revise loop:
 
 | Phase | Agent | Reads | Writes |
 |---|---|---|---|
@@ -154,6 +168,19 @@ you first: `git-branch-creator`, `git-commit-creator`, `git-push-creator`, `git-
 `git-workflow-orchestrator`, and `qa-ship-tests`, which wraps the whole ship phase for a ticket. Note the
 split — `git-change-analyst` is an **agent** that reads and proposes; only the `git-*` **skills** stage,
 commit, push or open a pull request.
+
+The one that drives the rest is `qa-workflow`:
+
+```
+/qa-workflow SCRUM-139            # manual — it asks what happens next after every step
+/qa-workflow SCRUM-139 --auto     # routes on each verdict, capped at 2 review rounds per stream
+/qa-workflow SCRUM-139 --reset    # archive this ticket's artifacts by rename, then start over
+```
+
+It is a skill rather than an agent for a mechanical reason: a subagent cannot spawn subagents and cannot
+see skills, so anything that routes has to run on the main thread. It owns the state file
+`.workflow/<TICKET-ID>.yaml`, the iteration counters and the routing — and does none of the work itself.
+Manual mode is the default, and every question it asks carries a Decline option.
 
 Design rules that hold across `.claude/agents/`:
 

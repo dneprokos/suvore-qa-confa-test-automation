@@ -31,6 +31,13 @@ agent could call nothing it coordinates. It also invokes other skills, which a s
 `NEXT:` field, precisely so that all routing knowledge concentrates here. Adding a routing hint to an agent
 file breaks that contract; add it to the step registry below instead.
 
+`references/workflow-map.md` draws the whole run — steps, gates, review loops, the state write around each
+delegation, and every terminal state — in step ids, never agent names. **Read it when the shape of the run
+is the question**: explaining the workflow to a user, orienting after a resume that landed somewhere
+unexpected, or checking that a routing change has somewhere to go. It is a picture and is canonical for
+nothing: it carries no parameter and no receipt line, and where it disagrees with the step registry below,
+the registry is right and the map is out of date. Do not read it before an ordinary delegation.
+
 ## Inputs
 
 | Parameter | Required | Form | If absent |

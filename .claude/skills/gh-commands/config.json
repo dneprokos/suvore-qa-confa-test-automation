@@ -1,0 +1,59 @@
+{
+  "defaultOwner": "dneprokos",
+  "ghBinary": "gh",
+  "paths": {
+    "registry": "registry.json",
+    "renderedRegistry": "references/registry.md",
+    "learnedDir": "scripts/learned",
+    "cloneCache": ".gh-commands-cache"
+  },
+  "match": {
+    "reuseThreshold": 0.6,
+    "confirmThreshold": 0.3,
+    "topN": 3,
+    "duplicateIntentThreshold": 0.8,
+    "stopWords": [
+      "the", "a", "an", "and", "or", "of", "in", "on", "for", "to", "with", "that", "this",
+      "my", "me", "give", "show", "list", "get", "all", "any", "some", "please", "what",
+      "which", "are", "is", "do", "does", "have", "has", "contains", "containing", "from"
+    ]
+  },
+  "gh": {
+    "allowedCommands": [
+      "repo list",
+      "repo view",
+      "api",
+      "search code",
+      "search repos",
+      "search issues",
+      "search prs",
+      "search commits",
+      "search users",
+      "pr list",
+      "pr view",
+      "pr diff",
+      "issue list",
+      "issue view",
+      "release list",
+      "release view",
+      "run list",
+      "run view",
+      "workflow list",
+      "workflow view",
+      "label list",
+      "gist list",
+      "cache list",
+      "ruleset list",
+      "secret list",
+      "variable list",
+      "auth status",
+      "org list",
+      "browse"
+    ],
+    "deniedApiMethods": ["POST", "PUT", "PATCH", "DELETE"]
+  },
+  "clone": {
+    "depth": 1,
+    "concurrency": 8
+  }
+}

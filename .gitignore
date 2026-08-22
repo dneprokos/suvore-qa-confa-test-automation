@@ -45,3 +45,9 @@ pnpm-debug.log*
 # OS
 .DS_Store
 Thumbs.db
+
+# Jira bug drafts (regenerated on every run)
+/.jira-bug/
+
+# Bug leakage export, metrics and dashboard (regenerated on every run)
+/.bug-leakage/
