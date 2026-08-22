@@ -1,0 +1,169 @@
+{
+  "version": 1,
+  "commands": [
+    {
+      "id": "env-file-inventory",
+      "intent": "Report which repositories track a real environment file and which only ship an example",
+      "aliases": [
+        "which repos have env files committed",
+        "do any of my repos track a .env",
+        "environment variable file inventory",
+        "find committed dotenv files",
+        "which projects contain environment variables"
+      ],
+      "tags": [
+        "env",
+        "dotenv",
+        "inventory",
+        "hygiene",
+        "sweep"
+      ],
+      "script": "scripts/learned/env-file-inventory.js",
+      "params": [
+        {
+          "name": "--owner",
+          "required": false,
+          "description": "GitHub login; defaults to config.json defaultOwner"
+        },
+        {
+          "name": "--cache",
+          "required": false,
+          "description": "clone cache directory"
+        },
+        {
+          "name": "--include-forks",
+          "required": false,
+          "description": "include forks, which are excluded by default"
+        },
+        {
+          "name": "--json",
+          "required": false,
+          "description": "machine-readable output"
+        }
+      ],
+      "example": "--json",
+      "gh_calls": [
+        "gh repo list <owner> --limit 500 --json name,isFork,visibility,defaultBranchRef"
+      ],
+      "output": "table",
+      "ok_exit_codes": [
+        0,
+        3
+      ],
+      "read_only": true,
+      "notes": "Separates a tracked .env from a .env.example plus a gitignore rule, which is the same convention working correctly. Shallow clones, because code search misses dotfiles and throttles.",
+      "created": "2026-08-22",
+      "last_verified": "2026-08-22",
+      "runs": 0
+    },
+    {
+      "id": "repos-by-name-pattern",
+      "intent": "List the repositories of an owner whose name matches a pattern",
+      "aliases": [
+        "give me repos containing playwright in name",
+        "which repositories have X in the name",
+        "find my repos named something",
+        "list repos matching a pattern",
+        "repos whose name contains"
+      ],
+      "tags": [
+        "repos",
+        "name",
+        "filter",
+        "inventory"
+      ],
+      "script": "scripts/learned/repos-by-name-pattern.js",
+      "params": [
+        {
+          "name": "--pattern",
+          "required": true,
+          "description": "case-insensitive regex matched against the repository name"
+        },
+        {
+          "name": "--owner",
+          "required": false,
+          "description": "GitHub login; defaults to config.json defaultOwner"
+        },
+        {
+          "name": "--include-forks",
+          "required": false,
+          "description": "include forks, which are excluded by default"
+        },
+        {
+          "name": "--json",
+          "required": false,
+          "description": "machine-readable output"
+        }
+      ],
+      "example": "--pattern playwright",
+      "gh_calls": [
+        "gh repo list <owner> --limit <n> --json name,description,visibility,isFork,isArchived,pushedAt,primaryLanguage,stargazerCount,url"
+      ],
+      "output": "table",
+      "ok_exit_codes": [
+        0,
+        3
+      ],
+      "read_only": true,
+      "notes": "gh search repos matches description and README too, so it answers a different question; this filters on the name itself.",
+      "created": "2026-08-22",
+      "last_verified": "2026-08-22",
+      "runs": 0
+    },
+    {
+      "id": "secret-scan",
+      "intent": "Sweep every repository of an owner for credentials that look real",
+      "aliases": [
+        "do any of my repos contain secrets",
+        "scan my github for leaked keys",
+        "find hardcoded api keys and tokens",
+        "check repositories for credentials",
+        "secret leak audit across my projects"
+      ],
+      "tags": [
+        "secrets",
+        "security",
+        "audit",
+        "sweep",
+        "credentials"
+      ],
+      "script": "scripts/learned/secret-scan.js",
+      "params": [
+        {
+          "name": "--owner",
+          "required": false,
+          "description": "GitHub login; defaults to config.json defaultOwner"
+        },
+        {
+          "name": "--cache",
+          "required": false,
+          "description": "clone cache directory"
+        },
+        {
+          "name": "--contextual",
+          "required": false,
+          "description": "also report low-confidence keyword hits, which are usually test data"
+        },
+        {
+          "name": "--json",
+          "required": false,
+          "description": "machine-readable output"
+        }
+      ],
+      "example": "--json",
+      "gh_calls": [
+        "gh repo list <owner> --limit 500 --json name,isFork,visibility,defaultBranchRef"
+      ],
+      "output": "table",
+      "ok_exit_codes": [
+        0,
+        5
+      ],
+      "read_only": true,
+      "notes": "Vendor-prefixed tokens are reported as high confidence; keyword-plus-literal hits are suppressed unless asked for. Files whose job is to detect secrets are suppressed separately. Working tree only at clone depth 1 - git history is not scanned.",
+      "created": "2026-08-22",
+      "last_verified": "2026-08-22",
+      "runs": 0
+    }
+  ]
+}
