@@ -636,3 +636,105 @@ guess, because an assertion sourced from the app can only ever agree with the ap
 map holds a rendered string or a count, and a mechanic that could not be observed is recorded as
 unobserved — on `MECHANICS_OBSERVED:` and under `Known Limitations` — rather than filled in with what
 seems likely.
+
+## Slack bug triage
+
+A second workflow, sharing the house rules and none of the state. `/slack-bug-triage` reads a Slack
+bug-reports channel, drafts a bug from each new message, checks SCRUM for an existing ticket, and either
+files a new one or points the reporter at the match — replying in thread and marking the message each time.
+The orchestrator is `.claude/skills/slack-bug-triage/SKILL.md`, the only file that names its five
+`triage-*` agents together; its `references/run-shape.md` and `references/slack-mcp.md` carry the run
+mechanics, and `docs/automation/contracts/slack-bug-intake.md` and `triage-verdict-contract.md` are the two
+shared contracts, each read by the two steps that must agree on it.
+
+- **Emoji cannot be the state, so a ledger is.** The design asks for messages "not already marked with an
+  eye or a tick", which needs reactions to be *readable*. The official Slack MCP server does not return
+  them from its read tools (slackapi/slack-skills-plugin#26, open since 2026-04-05) and the third-party one
+  does not document whether it does. A reaction may be write-only — settable and never visible again, and
+  therefore never removable by a run that died, which would strand a claimed message forever. So
+  `.slack-triage/journal.jsonl` is primary and reactions are a union applied only when the channel read
+  reports `REACTIONS_READABLE: yes`, resolved per run from the response itself so a server that starts
+  returning them switches the rule on by itself. When it reports `no`, a human's hand-applied tick is *not*
+  honoured, and the run says so in its return block rather than describing a guarantee it does not have.
+  The ledger is **tracked in git** (`merge=union` in `.gitattributes`), unlike `.workflow/` and
+  `.jira-bug/`: it is the only durable statement that a Slack message already became a ticket, and
+  ignoring it means a second machine refiles everything.
+- **`scripts/slack-triage-journal.mjs` is the fourth script here and owns the skip filter as code.**
+  `plan` prints one row per message with `in_scope` and a reason — `new`, `resume`, `lease_expired`,
+  `thin_answered`, `terminal` and seven others — so no agent and no orchestrator ever judges what is already
+  done. **`--limit` is where the work cap lives, and the reason it is here rather than on the channel read
+  is that the reading step holds no ledger tool**: a cap applied there returns the same oldest messages
+  every run, all of them terminal after the first, with the backlog sitting untouched behind them. Applied
+  to the rows `plan` has already ruled in scope, the budget is spent only on untracked work, so run one
+  takes the oldest five and run two takes the next five — which is the whole of "run it again and nothing
+  is missed". `plan` and `claim` both take it, always the same value, and both read it through the one
+  function that builds the rows, so the set claimed cannot differ from the set worked. What falls outside
+  is reported as `deferred_over_limit` rather than dropped: it is the only reason that says nothing about
+  the message, and the same message is `new` next run with nothing about it changed.
+  Ten `ST-E<nn>` codes; exits `4` for the two refusals that are policy rather than malformation:
+  re-stating a terminal row as a different outcome, and claiming a message another run holds live. It is
+  append-only rather than the whole-document re-emit `workflow-state.mjs` uses, because the defect that
+  motivated re-emitting — a duplicate key in one YAML mapping — cannot occur in a one-record-per-line log,
+  while rewriting a long ledger would reintroduce a full-file clobber on the one file whose loss costs the
+  most. Claims carry a **lease**, so a dead run releases its messages by expiry rather than by cleanup.
+- **Nine required bug fields, four of which a chat message can supply.** `lib.js` demands `summary`,
+  `phase`, `priority`, `version`, `initialCondition`, `steps`, `expected`, `actual` and `affectedTests`,
+  and `missingFields()` treats all nine alike — so left alone, every message is thin and nothing is ever
+  filed. Only `summary`, `steps`, `expected` and `actual` are reporter-supplied and can make a report thin;
+  the other five come from run parameters, land on the draft's `inferred` list, and are printed in the
+  banner, because a board silently filling with `Development` bugs found in production is the failure that
+  split is written against. A thin report gets **one** threaded question per distinct missing set — the set
+  is hashed, so the same question is never asked twice, which is what stops a bot pinging a reporter until
+  they mute the channel.
+- **Idempotency is doubled on purpose.** The ledger protects against a crash between creating a ticket and
+  recording it; a `slack-<channel>-<ts>` label on every filed bug, searched before any create, protects
+  against a lost ledger, a second machine and a fresh checkout. The reply and the reactions are journaled
+  as **separate fields**, so a response that posted the reply and failed the mark is finishable without
+  posting a second reply.
+- **Five agents, split by tool grant and failure mode, not by concept.** Slack read, drafting (zero MCP —
+  which is what lets `--dry-run` exercise the real pipeline), Jira read, Jira create, Slack write. Every
+  Slack write lives in one agent so the two server-gated tools have one home and a `PARTIAL` stays
+  actionable; the channel read stays pure so it is re-runnable after any crash. The responding step's first
+  call is a probe reaction, because read and write permissions differ and discovering that after filing
+  five tickets nobody can be told about is the worst available outcome.
+- **`run_id` is `BUGTRIAGE-<YYYYMMDD>-<NN>` and must be the first line of every delegation prompt.** It
+  matches the metrics hook's `[A-Z][A-Z0-9]+-\d+`, and three of the six steps carry `SCRUM-` keys in their
+  parameters — a key appearing first files the whole run's cost against somebody else's ticket, silently,
+  with a receipt that looks correct.
+- **Auto mode acts on a `high`-confidence duplicate and nothing weaker.** `medium` and `low` escalate: no
+  reply, no ticket, claim mark left on. A duplicate verdict never closes, comments on or transitions the
+  ticket it matched, so a wrong call is recovered by removing an emoji. `max_files` (default 5) caps what
+  an unattended run can create, and `max_triage` (default 5) caps how many messages it takes on at all.
+- **Barrier 2 is one delegation carrying every claimed ts, not one per message — and that is batching, not
+  fan-out.** Marking a message is a single API call, so a subagent launch each made the cheapest step in
+  the run its most expensive: measured, ~23k tokens and 14s per call. The marks still go on one at a time
+  inside that delegation, because the reaction endpoint takes roughly one call a second and the responding
+  step must stop after one retry rather than loop — concurrency here buys a rate limit, not speed. The
+  responding step therefore has two modes: single, the only one that may reply, and batch, reaction-only
+  and refused outright if a `reply_text` comes with it. A batch reports every message it was given, and
+  `not_attempted` stays distinct from `failed`: nobody tried the first, so the next run takes it unchanged.
+
+`SLACK_MCP_XOXB_TOKEN`, `SLACK_TRIAGE_CHANNEL_ID` and `SLACK_TRIAGE_SELF_USER_ID` are **OS environment
+variables, not `.env` keys** — `${VAR}` in `.mcp.json` expands from the process environment, and this
+repo's `.env` is read only by `framework/configuration/config.ts`. Posting and reacting are off unless
+`SLACK_MCP_ADD_MESSAGE_TOOL` and `SLACK_MCP_REACTION_TOOL` are set (one variable gates both reaction
+tools), and `.mcp.json` scopes each to the single channel id rather than `true`. The credential is a
+**bot** token (`xoxb-`), so the app must be invited to the channel once by hand. A bot reads no channel it
+is not a member of, public ones included, so the omission surfaces as `not_in_channel` on the channel read
+— before anything is drafted, searched or filed, which is the cheap direction for it to fail in.
+
+**The same workflow also ships as a plugin, and the repository copy is the canonical one.**
+`plugins/slack-bug-triage/` mirrors the skill, its references and assets, the five `triage-*` agents, and
+the scripts they run — `slack-triage-journal.mjs` plus a copy of `draft-bug.js`, `lib.js`, `config.json`
+and the description template, so a plugin installed in a repository that has never heard of
+`/jira-bug-creator` still drafts a bug. `.claude-plugin/marketplace.json` at the root publishes it, and
+`claude --plugin-dir ./plugins/slack-bug-triage` loads it without installing. Three things differ inside
+the copy and nowhere else: every path is written `${CLAUDE_PLUGIN_ROOT}/…`, the two scripts resolve their
+output root from `CLAUDE_PROJECT_DIR` (falling back to the working directory) instead of walking up from
+their own location — a plugin install is not the repository it writes a ledger for — and the step registry
+names its agents `slack-bug-triage:triage-…`, because a plugin agent is addressed by its namespaced slug
+and the bare one reaches this repository’s copy instead. **Two copies means every edit lands twice**:
+change the file under `.claude/` or `scripts/`, then apply the same change to the mirror, or the plugin
+quietly ships the old behaviour. The plugin bundles no `.mcp.json` — the agents’ tool grants name
+`mcp__slack__*` and `mcp__atlassian__*` literally, and a plugin-provided server is exposed under a scoped
+name that would not match; its README carries the snippet a host project needs instead.

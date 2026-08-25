@@ -214,3 +214,22 @@ both; if you hand-assembled the payload instead, it will not.
 **The duplicate search returns nothing for an obvious duplicate** — it searches
 distinctive words from the summary's subject half over the last 180 days. Widen
 it by hand, or search on the rule-id label.
+
+## These scripts are also driven headlessly
+
+`scripts/draft-bug.js` and `scripts/lib.js` are consumed by the Slack bug-triage
+workflow as libraries, without this file. That is structural rather than a
+loophole: no agent in this repository has `Skill` in its `tools:` list, so a
+subagent cannot reach these instructions at all. The approval rule above governs
+a human running this skill; an automated caller carries its own gate, and the
+triage workflow's default mode asks per bug exactly as step 4 does.
+
+Two consequences worth knowing:
+
+- **`.jira-bug/draft.json` is one fixed path, overwritten on every run.** A caller
+  filing several bugs copies it out after each build, in the same command. Do not
+  run this skill by hand while a triage run is in flight — the two clobber each
+  other and the second bug is filed with the first bug's steps.
+- **A headless caller supplies every field.** `--manual` with a complete `--set`
+  set exits 0 and emits a ready `createPayload`; exit 2 and its `MISSING` block are
+  how that caller detects a report it cannot file yet.
