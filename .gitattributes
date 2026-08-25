@@ -1,0 +1,4 @@
+# The triage ledger is append-only, one JSON record per line, and two people running
+# the workflow on different machines both append to the end of it. Union-merge is what
+# that shape wants: keep both sides' lines rather than raising a conflict on every run.
+.slack-triage/journal.jsonl merge=union

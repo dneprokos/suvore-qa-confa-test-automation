@@ -182,6 +182,24 @@ see skills, so anything that routes has to run on the main thread. It owns the s
 `.workflow/<TICKET-ID>.yaml`, the iteration counters and the routing — and does none of the work itself.
 Manual mode is the default, and every question it asks carries a Decline option.
 
+A second, independent workflow triages a Slack channel into Jira:
+
+```
+/slack-bug-triage                 # manual — asks before every ticket
+/slack-bug-triage --auto          # routes on the duplicate verdict, capped at 5 tickets a run
+/slack-bug-triage --dry-run       # touches neither Slack nor Jira nor the ledger
+```
+
+It reads `#bug-reports`, drafts a bug from each new message, checks SCRUM for an existing ticket, and
+either files a new one or replies with the match — marking the message each time. It needs a Slack MCP
+server and three OS environment variables (`SLACK_MCP_XOXB_TOKEN`, `SLACK_TRIAGE_CHANNEL_ID`,
+`SLACK_TRIAGE_SELF_USER_ID`), plus a one-time `/invite` of the app into the triaged channel;
+`.claude/skills/slack-bug-triage/references/slack-mcp.md` has the setup, the OAuth scopes and the two
+gates that are off by default. What it does *not* rely on is the emoji: reactions
+may be write-only on the installed server, so `.slack-triage/journal.jsonl` is the state and the marks are
+decoration. That ledger is tracked in git — it is the only durable record that a Slack message already
+became a ticket.
+
 Design rules that hold across `.claude/agents/`:
 
 - **No agent may name another agent**, anywhere in its file. Each is a pure function of its parameters and

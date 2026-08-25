@@ -3,6 +3,15 @@
     "atlassian": {
       "type": "sse",
       "url": "https://mcp.atlassian.com/v1/sse"
+    },
+    "slack": {
+      "command": "npx",
+      "args": ["-y", "slack-mcp-server@latest", "--transport", "stdio"],
+      "env": {
+        "SLACK_MCP_XOXB_TOKEN": "${SLACK_MCP_XOXB_TOKEN}",
+        "SLACK_MCP_ADD_MESSAGE_TOOL": "${SLACK_TRIAGE_CHANNEL_ID}",
+        "SLACK_MCP_REACTION_TOOL": "${SLACK_TRIAGE_CHANNEL_ID}"
+      }
     }
   }
 }

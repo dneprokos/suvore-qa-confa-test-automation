@@ -1,0 +1,23 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "suvore-qa-confa",
+  "description": "Claude Code plugins extracted from the Suvora QA conference test-automation repository.",
+  "owner": {
+    "name": "Kostiantyn Teltov",
+    "url": "https://github.com/dneprokos"
+  },
+  "plugins": [
+    {
+      "name": "slack-bug-triage",
+      "description": "Turn a Slack bug-reports channel into Jira tickets — ledger-backed, idempotent, capped, with a threaded reply on every message it touches.",
+      "source": "./plugins/slack-bug-triage",
+      "category": "workflow",
+      "keywords": [
+        "slack",
+        "jira",
+        "bug-triage",
+        "qa"
+      ]
+    }
+  ]
+}

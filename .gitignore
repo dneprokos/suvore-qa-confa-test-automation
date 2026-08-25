@@ -51,3 +51,10 @@ Thumbs.db
 
 # Bug leakage export, metrics and dashboard (regenerated on every run)
 /.bug-leakage/
+
+# Slack triage per-run scratch (regenerated on every run).
+# NOT .slack-triage/journal.jsonl — that ledger is tracked, because it is the only
+# durable record that a Slack message already became a SCRUM ticket. Ignoring it
+# means a second machine refiles every bug the first machine filed.
+/.slack-triage/runs/
+/.slack-triage/*.bak

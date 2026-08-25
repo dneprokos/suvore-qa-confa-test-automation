@@ -37,6 +37,8 @@ docs/automation/
     revision-contract.md             mode resolution and revision scoping for a second run
     review-verdict-contract.md       narrowing, finding ids, severity, verdict
     implementation-report.md         the report shape the two streams hand over
+    slack-bug-intake.md              which bug fields a chat reporter owns, and which are defaulted
+    triage-verdict-contract.md       duplicate-or-new, the confidence bands, what a zero result means
   references/
     api-surface-reading.md           how far each stream may use the `# API Surface` section
     browser-exploration.md           browsing the running app: sessions, locator tiers, mechanics
@@ -55,6 +57,8 @@ Stated by role, never by agent — see the rule at the bottom.
 | `contracts/revision-contract.md` | both streams' implementing steps, on a revision |
 | `contracts/review-verdict-contract.md` | both streams' review steps |
 | `contracts/implementation-report.md` | both streams — written by the implementing step, parsed by the review step |
+| `contracts/slack-bug-intake.md` | a triage run's drafting step **and** its responding step |
+| `contracts/triage-verdict-contract.md` | a triage run's duplicate-search step **and** the routing that acts on it |
 | `references/api-surface-reading.md` | all four Phase 2 steps |
 | `references/browser-exploration.md` | any step that drives a browser |
 | `references/test-basis-modelling.md` | a design step that will **derive** a scenario |
