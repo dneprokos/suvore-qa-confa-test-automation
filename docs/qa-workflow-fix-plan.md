@@ -243,6 +243,8 @@ Branch: `feat/design-pipeline`
   Target: Phase 1 ≤ 5 delegations including one review round, agent time ≤ 35 min.
 - Decide D3 on the evidence: if `Requirement Gap` blocks are still > 20% of scenarios after 1.6 and
   3.1, schedule R11 as batch 5.
+- **Blocked, and the target is restated.** The 2026-09-09 attempt escalated at Checkpoint A1 before
+  a design existed; agent time is not observable in this harness. See *Measurement* at the end.
 
 ---
 
@@ -291,6 +293,8 @@ Branch: `feat/ship-path`
   Record the metrics table in the PR and update the baseline table in `docs/review.md` §1.
 - Target vs SCRUM-132: delegations 18 → ≤ 13; Phase 2 reviewer tool uses < 20 each; PR body
   complete.
+- **Reviewer tool uses is not observable in this harness**; `prompt_chars` is the substitute. See
+  *Measurement* at the end.
 
 ---
 
@@ -483,3 +487,44 @@ retire; `requirement_gaps` in the state file becomes the list of `GAP-` ids.
 
 Update the *Status* column as batches merge. Re-run `/agentic-workflow-review` after batch 4 and
 diff against `docs/review.md`.
+
+Every remaining item turns on one live run, and the 2026-09-09 attempt did not reach a design:
+`/qa-workflow SCRUM-115 --auto` escalated at Checkpoint A1 on two `[REQ-C*]` findings against
+`AC-1`. Two of those items also ask for a figure this harness cannot produce — see *Measurement*
+below.
+
+---
+
+## Measurement — what this harness can and cannot show
+
+Recorded 2026-09-09, after an attempted `/qa-workflow SCRUM-115 --auto`. Three of the outstanding
+checks ask for a number this harness build does not produce, so they are restated here rather than
+left as targets nothing can meet.
+
+**What happened.** The run reached Checkpoint A1 and escalated: step 1.2 returned two `[REQ-C*]`
+findings, both against `AC-1` — `REQ-C1` detail-page render evidence, `REQ-C2` game-not-found
+behaviour — which is auto mode's one stop, and no setting relaxes it. Two delegations ran (1.1, 1.2),
+both `OK`. The design was never generated, so 3.3, 4.4, D3 and batch 5 all stay open.
+
+**The measurement gap.** Every `Agent` call in this build returns at launch. `PostToolUse` therefore
+fires on the launch, not the completion; the real completion arrives as a task notification, which is
+not a tool call and fires no hook. That is the documented `async_uncosted` path behaving correctly —
+the pending record is kept, an `async_launch_no_cost` diagnostic is written, and the run reaches the
+table as `async_uncosted` rather than as a false `interrupted`. The consequence for this plan is that
+`duration`, `tool_uses` and every token column are dashes for all fifteen rows in
+`.workflow/metrics/SCRUM-115.jsonl`, this run's two included. No estimate may be substituted:
+`references/run-cost.md` forbids it, and a plausible figure is the one failure mode a cost table
+cannot survive.
+
+**Restated checks.** Each keeps its intent and drops the unobtainable half:
+
+| Step | Target as written | Restated to what is observable here |
+|---|---|---|
+| 3.3 | Phase 1 ≤ 5 delegations, agent time ≤ 35 min | delegation count — countable from `history` and from the metrics rows, which exist even when uncosted. **Agent time: unobtainable.** Record wall clock of the session instead, marked as such, or leave it blank |
+| 4.4 | delegations 18 → ≤ 13; Phase 2 reviewer tool uses < 20 each | delegation count stands. **Reviewer tool uses: unobtainable.** Substitute `prompt_chars`, which the pre-hook records at launch and which is present on every row, as the proxy for how much a reviewer was handed — it measures the delegation prompt only, never what the step read on its own |
+| 4.2 | a one-line revision reads < 800 lines (`READS:` receipt line) | unaffected — the count comes from the agent's own receipt, not from a hook. Still needs a live revision run |
+
+**The honest alternative.** These three become measurable again on a harness build that returns
+subagents synchronously, or through a `metrics-report.mjs` that reconciles a task notification the
+way it reconciles a pre-record. Neither is in scope here; the point of this section is that the plan
+must not report a target as met on evidence that does not exist.
