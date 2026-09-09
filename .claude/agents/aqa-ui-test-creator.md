@@ -42,6 +42,14 @@ Match `[A-Z][A-Z0-9]+-\d+` in the prompt, or take the key from a supplied path. 
 
 Then check whether your own report already exists — `Glob` `.workflow/reports/<TICKET-ID>-ui-implementation.md`, or `report_path` when your caller supplied one — and resolve the mode from the table in `docs/automation/contracts/revision-contract.md` §1: `first_run`, `EXISTS`, or `revision`. `revision` sends you to Step 9.
 
+**Which steps a `revision` runs.** Steps 2, 3, 5, 8, 9, 10 and 11 run in full every time — the design and
+the surface are re-read, the application is preflighted, the whole UI suite and the type check run, and
+the report is rewritten. Step 7 narrows to what the findings name, and Step 6 is governed by *Do not
+re-explore* under Step 9. **Step 4b's etalon read happens only when a finding names a file under
+`tests/ui/` or `pages/`** — a finding about a missing scenario or a wrong count changes no code and
+needs no house form; Steps 4 through 4f are re-read on the same terms. a finding about a missing assertion does not need the tier ladder re-read, and one
+calling a locator brittle does.
+
 `EXISTS` means stop: change no file and **do not overwrite the report**. It matters more in this stream than in its sibling, because redoing finished work also spends a browser session re-observing locators that are already in `pages/`. Name the existing report and its `iteration:` in `NOTES` so your caller can see what it already has. `iteration` is whatever your caller passed, or the existing report's `iteration:` + 1, or `1` — you never count iterations yourself.
 
 # Step 2 — Guard: load the test design
@@ -82,44 +90,21 @@ A scenario whose `Expected:` is vague — "shows an error", "the admin appears" 
 
 # Step 4 — Learn the conventions before writing a line
 
-`Read` `CLAUDE.md` first. It is the repository's own statement of how tests are written here, and it outranks any habit you brought with you.
-
-Then inventory what already exists, and reuse it:
+Inventory what already exists, and reuse it:
 
 - `fixtures/pages-fixture.ts` — the page-object and session fixtures, plus everything the API fixture provides (`api`, `ownerToken`, `createdAdminEmails`, `cleanupTasks`, `uncleanableResources`) because it extends that fixture. `Read` the file rather than working from this list: it grows, and a fixture you did not know about is a page object you were about to rebuild.
 - `pages/` — the existing page objects, their locator style and their method shapes.
 - `tests/ui/` — the existing specs are the reference shape for titles, structure and assertion style.
 - `services/api/` — read-only for you, but it is how a UI test arranges its data and cross-checks its result.
-- `utils/test-data/admin-test-data.ts` — `AdminTestData`: `uniqueUiEmail()`, `createAdminPayload(email, overrides?)`, `DEFAULT_PASSWORD`, `MIN_LENGTH_PASSWORD`, `TOO_SHORT_PASSWORD`, `UNUSED_OBJECT_ID`.
-- `utils/test-data/auth-test-data.ts` — `AuthTestData`: `INVALID_PASSWORD`, `MALFORMED_EMAIL`, `MALFORMED_TOKEN`.
-- `utils/response-patterns.ts` — `ResponsePatterns`: `OBJECT_ID`, `ISO_DATE`, `JWT`.
+- `utils/test-data/admin-test-data.ts`, `utils/test-data/auth-test-data.ts`, `utils/response-patterns.ts` — every value a spec may send and every contract regex. `Read` the three files; a member list copied into this body goes stale the first time either stream appends to a class, and a member you believe is missing is a member you re-declare in a spec.
 - `docs/automation/etalons/ui-spec-etalon.md` — the house form, in full. Step 4b sends you there.
 
-Non-negotiable conventions, restated because they are the ones most often broken:
-
-| Rule | Consequence of breaking it |
-|---|---|
-| A UI spec imports `test` and `expect` from `@fixtures/pages-fixture`, never from `@playwright/test` and never from the API fixture | the page objects and the seeded session vanish |
-| Locators come from the **highest tier the app makes possible** — see the ladder in Step 4d. Tier 1 is `getByRole` / `getByLabel` / `getByPlaceholder` / `getByTestId`, and dropping below it costs three receipts | a class name like `.css-1a2b3c` is generated and changes on the next build, so it is outside the ladder entirely, not the bottom of it |
-| A control with no stable hook **at any tier** is a **gap to report**, not a problem to solve with a brittle selector | see `pages/owner-page.ts`, which documents exactly that for a panel shipping no `data-testid` |
-| Web-first assertions and auto-waiting only. No `page.waitForTimeout`, no manual polling loop | fixed sleeps are the single largest source of flake and of wasted CI minutes |
-| Independent observables in `// Assert` use `expect.soft`; preconditions, the Act gate and anything a later line reads stay hard — Step 4e | a hard assertion inside a five-field loop reports one missing column and hides the other four |
-| Every assertion carries the value the scenario states. `toBeGreaterThan(0)`, `toBeTruthy()` and a bare `toBeVisible()` are not assertions on a named value — Step 4f | an existence check cannot fail against a broken build, which is the only thing a test is for |
-| A spec's module scope holds its imports and its `test.describe`, nothing else | a helper that drives the page is a page-object method that ended up in the wrong file |
-| Page objects hold locators and actions, never assertions. `expect` lives in the spec | an assertion buried in a page object cannot be read from the test |
-| Locators are `readonly Locator` fields assigned in the constructor | matches every existing page object |
-| An action that triggers a network call is wrapped in `Promise.all([page.waitForResponse(...), action])`, and both the response and the rendered result are asserted | a UI assertion alone cannot tell "the request succeeded" from "the request never fired" |
-| A native `window.confirm` handler is registered **before** the click | Playwright auto-dismisses unhandled dialogs and the request never fires |
-| Arrange data over the API, not through the UI, unless the scenario is about the creation flow itself | a ten-step UI setup is ten ways for an unrelated test to fail |
-| **An API call in a UI spec is a helper, never the subject — so always take its shortest form**: the controller method with a `createAdminPayload()` body, never the request builder and never a chain of `with*()` calls | the UI is what this test is about; a six-line fluent chain in the Arrange block buries the two lines that actually exercise the UI |
-| Every test creates its own data and registers it for cleanup **the instant it exists** — `createdAdminEmails` for an admin, `cleanupTasks` for anything else | `fullyParallel` is on; shared data means cross-test flakes, and a registration written after the assertions never runs on a red test |
-| Clean up only what **this** test created. A record the app offers no route to remove goes to `uncleanableResources` and `Cleanup Gaps` | a delete-all reaches another test's data while the suite runs in parallel; a silent leak poisons every later run |
-| E-mails come from `AdminTestData.uniqueUiEmail()` — never a literal, never a locally written generator | the helper is dot- and plus-free because the server runs `normalizeEmail()` on create, and the `uiadmin` prefix is what keeps the UI stream from colliding with the API stream's `uniqueApiEmail()` |
-| No test-data literal in a spec: passwords, payloads, boundary values, invalid credentials and contract regexes come from `AdminTestData`, `AuthTestData` and `ResponsePatterns` | a second copy of `"Test12345@"` drifts from the first one silently |
-| The one exception: an **expected rendered string** stays in the spec, next to the assertion it belongs to | `"Admin user deleted successfully"` reads as the specification only where it is asserted |
-| `// Arrange` / `// Act` / `// Assert` comments delimit the phases, in that order, once each per test | the convention every existing spec follows; two Act blocks means two scenarios |
-| One of the two accepted title forms: `"As a <role>, I should be able to …"` for a role-centric flow, `"<Subject> - Should <behavior>"` for a rendering or state check. Keep a file consistent | `tests/ui/owner.spec.ts` uses the first, `tests/ui/search-games.spec.ts` the second; both are house form |
-| Cross-check the UI against the API where it is cheap (`api.admin.listAdmins` after a UI create) | proves the UI reflected real state instead of local component state |
+The conventions themselves are not restated here. They are in
+`docs/automation/etalons/ui-spec-etalon.md` — the fixture chain, the setup-and-cleanup short form, the
+locator tier ladder, the soft-assertion boundary, the meaningful-assertion rule, the module-scope rule,
+the two accepted title forms, and *What the two compliant files demonstrate, point by point* for the
+rest. Step 4b sends you to read that file in full before you write a line. A rule you half-remember
+from this body is a rule you have not read.
 
 Add a scenario id comment above each test — `// SCN-021`, or `// SCN-021 (folds SCN-018)` where the test covers a folded scenario as well — plus the `FR-`/`AC-` id **as the test design records it in that scenario's `Requirement:` field** on the assertion that carries it. You are copying a label forward, not consulting the requirements document.
 
@@ -127,11 +112,16 @@ Add a scenario id comment above each test — `// SCN-021`, or `// SCN-021 (fold
 
 Everything you need is already in the repository. Reuse it; do not rebuild it in a spec.
 
-**`Read` `docs/automation/etalons/ui-spec-etalon.md` before you write a line.** It is the house form for a
+**`Read` the `# Core` of `docs/automation/etalons/ui-spec-etalon.md` before you write a line.** It is the house form for a
 spec in this stream — the fixture chain, the setup and cleanup rules, a full compliant spec, the page
 object it calls, and a non-compliant counter-example with the defects it carries. It is shared with
-whoever reviews your code, so it is also the standard you will be measured against. Read it in full;
-do not work from memory of it.
+whoever reviews your code, so it is also the standard you will be measured against. Read the `# Core`
+in full; do not work from memory of it.
+
+**The etalon is split, and the split is what makes a revision cheap.** `# Core` is the house form and
+is read on every run that writes a line of this stream's code. `# Appendix` is read one section at a
+time, only when the scenario in front of you has the shape that section describes — its own table says
+which. A run that never meets that shape never loads it.
 
 `tests/ui/owner.spec.ts` and `pages/owner-page.ts` are the canonical in-repo references. Read both, and
 match them where they disagree with the etalon.
@@ -271,7 +261,7 @@ Snapshot refs (`e5`, `e12`) are conversation handles. A ref must never appear in
 
 If a control the scenario needs does not exist at all, record it under `Known Limitations` and skip the scenario. Never substitute an XPath, a generated class name, a `nth()` on a data row, or a text match on copy that marketing owns — those are outside the ladder, not the bottom of it.
 
-An exploration run ends with the **selector map** of `docs/automation/references/browser-exploration.md` §5 — one table per route, every row traceable to a snapshot you actually ran. Carry it into the `Explored Locators` section of your report, **merged with the rows a previous iteration recorded for locators still in `pages/`** rather than replacing them: the map is the repository's standing record of what was observed, and an incremental run that publishes only its own three rows deletes the evidence behind everything modelled before it. A session opened, spent, and reported as nothing but `EXPLORED_APP: yes` is wasted work: your reviewer holds no browser, so that map is the only evidence anyone downstream has that a committed locator was ever observed, and the next run against the same page re-explores from zero without it.
+An exploration run ends with the **selector map** of `docs/automation/references/browser-exploration.md` §5 — one table per route, every row traceable to a snapshot you actually ran. Carry it into the `Explored Locators` section of your report, **merged with the rows a previous iteration recorded for locators still in `pages/`** rather than replacing them: the map is the repository's standing record of what was observed, and an incremental run that publishes only its own three rows deletes the evidence behind everything modelled before it. A session opened, spent, and reported as nothing but the report's `explored_app: true` is wasted work: your reviewer holds no browser, so that map is the only evidence anyone downstream has that a committed locator was ever observed, and the next run against the same page re-explores from zero without it.
 
 A run that read mechanics ends with the **mechanics map** of §5 beside it — one row per action, carried into the `Observed Mechanics` section of your report under the same rules: merged with the rows a previous iteration recorded for actions the specs still perform, never blanked by a pass that observed nothing, never holding a rendered string or a count. It is the evidence behind every `waitForResponse` pattern and every dialog handler you commit, and the reviewer that rules on those holds no browser either. A mechanic you needed and could not observe goes under `Known Limitations` saying so — an unobserved wait is a documented risk; a wait invented to fill the gap is a flake nobody can trace.
 
@@ -281,16 +271,7 @@ Write under `tests/ui/` and `pages/` only. Group specs by feature, matching the 
 
 - Prefer extending an existing page object over creating a second one for the same page. A new page object is justified by a new page, not by a new test.
 - A new locator or action belongs in the page object; a spec that calls `page.getByRole(...)` directly has skipped the layer.
-- **A spec's module scope holds its imports and its `test.describe`. Nothing else.** Every helper has a destination, and a helper in the wrong file is a helper the next spec cannot reuse:
-
-  | What it is | Where it goes |
-  |---|---|
-  | traverses, reads or acts on the page | a page-object method |
-  | a value the test sends, or a domain constant | `utils/test-data/` |
-  | a column or field list | the page object that owns the table |
-  | shared by two specs | a page object or `utils/` — never an import from another spec |
-
-  One consequence catches everyone: page objects hold no `expect`, so a page-object loop **cannot use `expect.poll`**. Wait with the locator API instead — after a client-side re-render with no request to wait on, `await previousElement.waitFor({ state: "detached" })` proves the render finished. `pages/home-page.ts` carries the worked example.
+- **A spec's module scope holds its imports and its `test.describe`. Nothing else.** Where each kind of helper goes instead is the destination table under *Nothing lives at a spec's module scope* in the etalon, along with the consequence that catches everyone: page objects hold no `expect`, so a page-object loop cannot use `expect.poll`.
 - A value your scenario sends that no test-data class carries yet is a **new member on the existing class** (`AdminTestData`, `AuthTestData`) or a new regex on `ResponsePatterns` — never a `const` at the top of a spec. Name it for what it is (`TOO_SHORT_PASSWORD`, not `pwd2`) and give it a one-line doc comment saying why that exact value.
 - Register a new page object in `fixtures/pages-fixture.ts` — that file is inside your boundary.
 - One test per **unfolded** scenario. Do not merge two scenarios into one test to save a navigation — the only scenarios that share a test are the ones the design folded, and the `Folds Into:` line is the only thing that authorises it. Two scenarios you think are similar are still two tests.
@@ -402,7 +383,26 @@ waits still rely on.
 
 # Step 10 — Self-check before returning
 
-Confirm all of the following. Any failure -> STOP, do not return `OK`, report `SELF_CHECK_FAILED` naming the specific violation.
+**First, run the linter over what you changed:**
+
+```bash
+node scripts/spec-lint.mjs --stream ui --changed <the files you touched> --report .workflow/reports/<TICKET-ID>-ui-implementation.md
+```
+
+It rules on the mechanical form of a spec and a page object — the fixture import, the title, the
+phase comments, the scenario id, URL and credential literals, the e-mail helper, fixed waits, an
+`expect` in `pages/`, a builder chain in a UI spec, the shapes outside the tier ladder, a snapshot
+ref, the write boundary — and exits non-zero on every one it finds. Pass `--report` once the report
+exists, so the tier-drop cross-check runs; on the pass that writes the report for the first time,
+run the linter again afterwards with it. **Exit 0 is the gate: do not return `OK` until it is
+clean.** Fix what it names, or, where you disagree, say so in `NOTES` naming the code; a violation
+you neither fixed nor explained is a `SELF_CHECK_FAILED`.
+
+It also prints a *Judgement required* block of `SL-W<nn>` lines — a negative assertion, a soft one,
+an existence-only assertion, a declaration at module scope. Those are not violations and do not fail
+the run: each is a shape whose verdict is in the code around it. Read every one and decide.
+
+Then confirm all of the following. Any failure -> STOP, do not return `OK`, report `SELF_CHECK_FAILED` naming the specific violation.
 
 - Every selected scenario appears in either `Implemented Scenarios` or `Skipped Scenarios`, never in neither and never in both.
 - **Every folded scenario is accounted for.** For each scenario you implemented, `grep` the design once more for `Folds Into: <its id>`; every id that comes back either has its `Expected:` asserted inside that test, or is a `Skipped Scenarios` entry naming what stopped it. A folded id in neither is a scenario this run dropped, and nothing downstream will notice — it has no test of its own to be missing.
@@ -410,18 +410,11 @@ Confirm all of the following. Any failure -> STOP, do not return `OK`, report `S
 - No test you wrote has two `// Act` blocks, folded scenario or not. A fold that needed a second action was folded wrongly — the scope contract, §3, says what to do with it.
 - Every file path you report exists on disk, and every path is inside your ownership boundary.
 - Every test title you report is the exact string in the `test(...)` call.
-- No spec imports `test` or `expect` from `@playwright/test`.
-- `grep` your changes: zero `waitForTimeout`, zero XPath, zero generated class names, zero snapshot refs, zero credential literals.
-- Every locator below tier 1 carries a `// LOCATOR-FALLBACK:` comment naming the tier and why the higher ones are impossible, appears under `LOCATOR_GAPS`, and has its tier recorded in `Explored Locators`. A tier drop missing any of the three is undocumented.
-- No spec you wrote declares anything at module scope but its imports and its `test.describe` — no helper function, no constant, no column list.
-- No `expect` in any page object, including `expect.poll`.
+- Every tier drop is one the application forced. The linter checks that all three receipts exist; only you can say whether a higher tier was actually impossible, and a documented drop where `getByRole` would have worked is still a defect.
 - Every assertion on a value the scenario names carries that value. No `toBeGreaterThan(0)`, `toBeTruthy()`, `not.toBeNull()` or bare `toBeVisible()` standing alone in place of one; where the design names no fixed value, the assertion is tied to a named oracle.
 - Every `// Assert` loop over independent observables uses `expect.soft`, and no `expect.soft` appears in `// Arrange`, on an Act gate, on a value a later line reads, or on the presence half of a presence/absence pairing.
 - No spec you wrote defines an e-mail generator, a password, a payload literal, a boundary value or a contract regex locally — every one resolves to `AdminTestData`, `AuthTestData`, `ResponsePatterns` or `Config`. Expected rendered strings are the only literals allowed.
-- Every e-mail in a UI spec came from `AdminTestData.uniqueUiEmail()`, never `uniqueApiEmail()`.
-- Every API call you wrote is a controller method — zero `adminBuilder()`, zero `loginBuilder()`, zero `with*()` chains anywhere under `tests/ui/`.
 - Nothing that already existed in `utils/**` was renamed, re-valued or removed.
-- Every page-object member is a locator or an action; no `expect` in `pages/`.
 - Every `toBeHidden()`, `not.toBeVisible()` or `toHaveCount(0)` in a test you wrote is preceded in that same test by a positive assertion on the same locator. An unpaired one is named under `Known Limitations`.
 - Every locator you added that did not already exist in `pages/` was either confirmed by a `snapshot` / `eval` observation in this run, or is listed under `LOCATOR_GAPS`. A locator that is neither observed nor reported is a guess.
 - Every `page.waitForResponse(...)` pattern and every dialog handler you wrote traces to a row of `Observed Mechanics` — this run's or one carried forward — or to a `Known Limitations` entry saying the mechanic was not observed. A wait matched against a route nobody watched fire is a guess with a green test on top of it.
@@ -446,6 +439,12 @@ In `revision` mode, additionally:
 
 `Write` the implementation report to `.workflow/reports/<TICKET-ID>-ui-implementation.md`, or to `report_path` when your caller supplied one, following `docs/automation/contracts/implementation-report.md` exactly — every section present, `- None.` where empty, `stream: ui`, `iteration:` set to the value from Step 1.
 
+**The front matter is not optional detail.** Your reviewer never sees the receipt block below, so
+every value it needs and cannot re-derive is a front-matter key: `cleanup_gaps` on both streams, and
+`api_surface`, `explored_app`, `locator_gaps`, `mechanics_observed` and `shared_additions` on this one.
+Write the same value in both places — a front-matter key that disagrees with its receipt line is a
+report that contradicts itself.
+
 That contract includes `Explored Locators`, which is required of the UI stream. Fill it with the selector map from Step 6, one table per route, **including its `Tier` column**, plus any row carried forward from a previous iteration for a locator still in `pages/`. `- None.` only when the map is genuinely empty — and if you did not explore because every locator already existed in `pages/`, say that in one clause, so the reviewer can tell "nothing to explore" from "explored nothing".
 
 It includes `Observed Mechanics` directly after it, also UI-only. Fill it with the mechanics map of `docs/automation/references/browser-exploration.md` §5 — one row per action a test you wrote performs, `Action | Request | Trigger | Result shape | Dialog` — plus any row carried forward for an action the specs still perform. `- None.` with the same one-clause reason when there was nothing to read. It is the evidence behind every wait and every dialog handler in your diff, and it holds no value a test could assert.
@@ -469,12 +468,9 @@ FOLDED_SCENARIOS: SCN-018 -> covered in SCN-021
 SKIPPED_SCENARIOS: none
 CREATED_TESTS: As an owner, I should be able to add a new admin | As an owner, I should see a validation error for a mismatched confirmation
 CHANGED_FILES: tests/ui/owner.spec.ts (modified), pages/owner-page.ts (modified)
-NEW_PAGE_OBJECTS: none
-TEST_COMMAND: npx playwright test tests/ui --reporter=line
 EXECUTION: passed=2 failed=0 skipped=0
 TYPECHECK: pass | fail
 API_SURFACE: read | script | none (<reason>)
-EXPLORED_APP: yes | no
 NEW_LOCATORS_OBSERVED: yes | no | n/a
 MECHANICS_OBSERVED: yes | no | n/a
 LOCATOR_GAPS: Owner Panel ships no data-testid; all locators are role-based
@@ -485,13 +481,12 @@ FINDINGS_NOT_APPLICABLE: none
 DEFECT_SUSPECTED: none
 SHARED_ADDITIONS: none
 SHARED_CHANGE_REQUESTED: none
-KNOWN_LIMITATIONS: none
 NOTES: <one line, or "none">
 ```
 
 `FOLDED_SCENARIOS` lists every scenario the design folded into one you implemented, each as `SCN-018 -> covered in SCN-021`, and `none` when the design folded nothing. A folded id never appears in `SELECTED_SCENARIOS` or `IMPLEMENTED_SCENARIOS` — those count tests, and a folded scenario is not one — but it does appear in `SKIPPED_SCENARIOS` when you could not assert it, in which case it appears here too, with the reason.
 
-`TEST_COMMAND` and `EXECUTION` describe the full pre-report run of Step 8 and nothing else. The targeted runs of the fix loop are working steps; they never appear on this receipt or in the report.
+`EXECUTION` describes the full pre-report run of Step 8 and nothing else. The targeted runs of the fix loop are working steps; they never appear on this receipt or in the report.
 
 The three `FINDINGS_` lines read `none` on a `first_run`. Together they must account for every id your caller handed you, with no id in two of them.
 
@@ -541,5 +536,6 @@ On top of those, specific to this stream:
 - Put an assertion in a page object, or a bare `page.getByRole(...)` in a spec.
 - Use `AdminTestData.uniqueApiEmail()` in a UI spec. The `uiadmin` prefix is what keeps the two streams from colliding.
 - Open a browser in `revision` mode when no finding names a locator or a mechanic. Re-deriving what you already hold spends a session, risks colliding with the other stream, and proves nothing you did not already write down.
-- Run any `Bash` command beyond the `curl` preflight, `playwright-cli`, `node scripts/api-surface.mjs`, `npx playwright test tests/ui` (whole directory, or spec paths under it during the fix loop), and `npx tsc --noEmit`. No git, no npm install, no running the API suite, no `show-report`.
+- Run any `Bash` command beyond the `curl` preflight, `playwright-cli`, `node scripts/api-surface.mjs`, `node scripts/spec-lint.mjs --stream ui`, `npx playwright test tests/ui` (whole directory, or spec paths under it during the fix loop), and `npx tsc --noEmit`. No git, no npm install, no running the API suite, no `show-report`.
 - Fetch or parse the OpenAPI document yourself. `scripts/api-surface.mjs` is the only thing in this repository that does, and its output is used as written.
+- Treat a clean `spec-lint` run as evidence that your tests are good. It rules on form and on nothing else: it cannot see whether an assertion carries the value the scenario named, whether a wait matches a mechanic somebody watched fire, whether a test is true to the scenario it cites, or whether a cleanup registration sits before the call that could fail. A green linter over a test that asserts the wrong thing is a green linter.

@@ -61,6 +61,9 @@ When the user supplies a **final commit message** and wants one command, run:
 pwsh -NoProfile -File ./.claude/skills/git-workflow-orchestrator/scripts/run-git-ship-workflow.ps1 `
   -BranchName "<name>" `
   -CommitMessage "<message>" `
+  [-PathspecFile <path>] `
+  [-PrTitle "<title>"] `
+  [-PrBodyFile <path>] `
   [-SkipBranch] `
    [-BaseBranch <branch>] `
    [-PrBase <branch>] `
@@ -70,7 +73,13 @@ pwsh -NoProfile -File ./.claude/skills/git-workflow-orchestrator/scripts/run-git
   [-ReportTokens]
 ```
 
-- **`-CommitMessage`** is required (stages all changes and commits in one step).
+- **`-CommitMessage`** is required.
+- **`-PathspecFile`** is one repo-relative path per line, and is what Phase 2 stages. Without it the
+  phase falls back to `git add -A`. **A caller that knows which files its work produced should always
+  pass it**: `-A` in a repository somebody else is also working in sweeps their unrelated edits into
+  this run's commit, under this run's message.
+- **`-PrTitle`** and **`-PrBodyFile`** pass through to Phase 4 and are used verbatim. Omit either and
+  that half is derived from the branch name and the commit log as before.
 - **`-SkipBranch`** omits Phase 1 (use when already on the target branch).
 - If `-BaseBranch` is omitted, the script auto-detects the core branch (`main` preferred, then `develop`).
 - If `-PrBase` is omitted, it defaults to the resolved `-BaseBranch` value.
@@ -79,6 +88,13 @@ pwsh -NoProfile -File ./.claude/skills/git-workflow-orchestrator/scripts/run-git
 Phase banners and subprocess output use the host stream so they stay visible when the script is invoked from tools that assign function output. On success, the script also emits **`PR_URL: <url>`** on the success stream for redirection or piping.
 
 Interpret the script’s **phase lines** and final **`PR_URL:`** line for the user.
+
+**A caller may run B with its own commit message and pull-request text, provided it owns the
+confirmations.** Section B is called script-driven because it asks nothing — it takes a final message
+and runs. That is safe when a *person* supplied the message, which is what "the user supplies a final
+commit message" above means. It is equally safe when a calling skill collected the same approvals
+itself before invoking this one, and it is not safe otherwise: the confirmations are not optional, they
+have only moved. A caller taking that route says in its own body where each confirmation happens.
 
 ## Phase summary template (agent-driven)
 

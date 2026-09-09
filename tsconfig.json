@@ -114,5 +114,9 @@
       "@utils/*": ["utils/*"],
       "@pages/*": ["pages/*"],
     }
-  }
+  },
+  /* `scripts/` is Node ESM tooling, not part of the Playwright project, and its `__fixtures__/`
+     hold deliberately defective TypeScript that exists to be read as text by a linter. Compiling
+     either would fail the type check on files nothing imports. */
+  "exclude": ["node_modules", "scripts"]
 }

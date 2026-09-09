@@ -20,11 +20,17 @@ gate and the naming. **Do not reach around step 3** to the git skills or to raw 
 the reports rather than trusting a caller's claim that both reviews passed, and skipping it removes
 the one check that a claimed review actually happened.
 
-**Auto mode does not remove the human confirmations in the ship phase.** The commit phase asks
-whether to stage unstaged files and requires an explicit `OK` on the message; the pull-request phase
-asks when a PR with the same ticket prefix already exists. Auto mode automates agent-to-agent routing
-only — the irreversible git actions keep their confirmation. An auto run therefore pauses at least
-twice near the end, by design.
+**Auto mode does not remove the human confirmations in the ship phase.** There are exactly two and
+both now live **inside step 3, before any git command runs**: an explicit `OK` on the composed commit
+message and the list of paths it will stage, and — only when `gh pr list` finds one — whether to open
+a second pull request for this ticket. Auto mode automates agent-to-agent routing only; the
+irreversible git actions keep their confirmation, so an auto run pauses at least once near the end, by
+design.
+
+They moved forward rather than away. The git phases used to ask mid-run, which meant the branch
+already existed by the time anyone was asked about the commit. Asking first is what lets the four
+phases then run as one non-interactive command — and it is also why the confirmations are not
+optional there: the script is quiet because a person already answered, not because nobody asks.
 
 `skip_ship` stops after the final decision. `dry_run` passes through, and step 3 stops after
 composition having run no git command.

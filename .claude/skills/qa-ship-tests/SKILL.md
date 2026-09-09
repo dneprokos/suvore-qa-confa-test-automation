@@ -36,6 +36,7 @@ Run it on the main thread. It reads files and invokes other skills; a subagent c
 | `skip_branch` | no | flag | set when already on the target branch |
 | `dry_run` | no | flag | build and print branch, commit message and PR body; run no git command |
 | `follow_up_tickets` | no | ids | read from the test design's coverage gaps and the reports' limitations |
+| `open_design_findings` | no | one `[DESIGN-*]` id and its one-line text per line | absent — the design review converged. Present when the design loop reached `max_design_iterations` with Majors still open, and then every line goes in the PR body under *Design findings not resolved* |
 
 ## Step 1 — Gate
 
@@ -83,12 +84,9 @@ Type check: npx tsc --noEmit — pass
 is workflow state and is not part of the pull request — if it is not gitignored yet, exclude it
 explicitly rather than committing it.
 
-Optional cross-check, before Phase 2: delegate to the `git-change-analyst` agent with `staged_only: false`,
-`include_pr_facts: false` and `paths` set to the two reports' `Changed Files` lists. Its
-`OUT_OF_SCOPE_FILES` and `SECRET_WARNING` fields answer the one question this gate cannot answer from the
-reports alone — whether the working tree holds something neither report claims. Ignore its
-`PROPOSED_COMMIT_MESSAGE`: the message for this workflow comes from the reports and the test design, never
-from the diff.
+The question the analyst delegation used to answer — whether the working tree holds something neither
+report claims — is answered instead by *not staging it*. Step 3 stages the reported paths and nothing
+else, so an unrelated edit is not excluded by a check, it is never added.
 
 **PR title:** `[<TICKET-ID>] E2E automation — <ticket summary>`.
 
@@ -133,6 +131,11 @@ SCRUM-139
 
 - SCN-016 not automated: the requirements state no maximum password length.
 
+## Design findings not resolved
+
+- [DESIGN-M5] FR-11.3 states a 6-character minimum password; no scenario exercises 5 or 7 characters.
+- [DESIGN-M8] DT-01/R3 (Owner, valid e-mail, invalid password) has no scenario.
+
 ## Suspected Application Defects
 
 - SCN-014 / FR-11.3 — spec requires HTTP 409, application returns 400. The test asserts 409 and fails
@@ -147,22 +150,70 @@ Every value comes from a file — the reports, the test design, the review block
 a scenario title or a verdict from memory. Omit a section only when its source is genuinely empty, and
 say `- None.` rather than deleting the heading.
 
+***Design findings not resolved* appears only when `open_design_findings` was given**, which happens
+when the design review loop reached its cap with Majors still standing and the design shipped as
+`approved_with_open_findings`. Reproduce each line as your caller gave it, verbatim, and add nothing:
+these are findings a reviewer raised and nobody answered, and this section is the only place a human
+sees them. When the parameter is absent the heading is absent too — an empty one would read as a
+design nobody criticised, which is a different and stronger claim.
+
 A red, documented test does **not** block the PR. It is the deliverable: the `Suspected Application
 Defects` section is what makes it visible to a human reviewer.
 
-## Step 3 — Run the phases
+## Step 3 — Confirm, then run the phases
 
-Follow **git-workflow-orchestrator**, agent-driven path, and report SUCCESS or FAILED after each phase.
-Stop on the first failure.
+**Two confirmations first, in both modes, and neither is skippable.** They are the whole reason this
+step may then run as one command: `git-workflow-orchestrator` section B is non-interactive because a
+*person* approved the message, and that approval is collected here instead of inside it.
 
-| Phase | Skill | Note |
+**Confirmation 1 — the commit message.** Print the branch name, the composed commit message and the
+list of paths that will be staged. `AskUserQuestion`: **OK** · **Edit** (take their text verbatim and
+re-ask) · **Decline** (stop; nothing is created, return `BLOCKED` with reason `DECLINED`).
+
+**Confirmation 2 — an existing pull request**, asked only when one is found:
+
+```bash
+gh pr list --search "<TICKET-ID>" --state open
+```
+
+Any hit -> print each number, title and URL, then `AskUserQuestion`: **Continue** (a second PR for this
+ticket is intended) · **Decline** (stop). No hit -> do not ask; a question with one possible answer is
+not a question.
+
+**Then run the phases.** Write the staged-file list to a temp file, one repo-relative path per line,
+and the PR body to another, then invoke section B:
+
+```powershell
+pwsh -NoProfile -File ./.claude/skills/git-workflow-orchestrator/scripts/run-git-ship-workflow.ps1 `
+  -BranchName "test/<TICKET-ID>-e2e-automation" `
+  -CommitMessage "<the message the user approved>" `
+  -PathspecFile "<temp file: the two reports' Changed Files, one per line>" `
+  -PrTitle "[<TICKET-ID>] E2E automation — <ticket summary>" `
+  -PrBodyFile "<temp file: the PR body composed in Step 2>" `
+  [-SkipBranch] [-AllowDuplicatePrefix] [-DryRun]
+```
+
+| Phase | What it does | Note |
 |---|---|---|
-| 1 — Branch | git-branch-creator | skipped when `skip_branch` is set and the current branch is the target |
-| 2 — Commit | git-commit-creator | stage only the reported files; confirm the message before committing |
-| 3 — Push | git-push-creator | refuses to push a core branch, by design |
-| 4 — PR | git-pr-creator | needs `GITHUB_TOKEN` / `GH_TOKEN`; check before Phase 4, not after |
+| 1 — Branch | creates `test/<TICKET-ID>-e2e-automation` | `-SkipBranch` when already on it |
+| 2 — Commit | stages **only** `-PathspecFile`'s paths, then commits | the message is the one confirmed above |
+| 3 — Push | pushes the branch | refuses to push a core branch, by design |
+| 4 — PR | opens the pull request with the title and body given | needs `GITHUB_TOKEN` / `GH_TOKEN`; check before running, not after |
 
-`dry_run` stops after Step 2: print the branch, the commit message and the PR body, run no git command.
+**Never `-StageAll`.** The paths come from the two reports' `Changed Files`, and `git add -A` in a
+repository somebody is also working in commits their unrelated edits under this run's message.
+`.workflow/` is workflow state and is never in that list.
+
+Pass `-AllowDuplicatePrefix` only when confirmation 2 was asked and answered **Continue** — it is the
+flag that suppresses the script's own duplicate check, and suppressing a check nobody was asked about
+is how a second pull request appears that nobody wanted.
+
+Read the phase lines and the final `PR_URL:` line, and report SUCCESS or FAILED per phase. Stop on the
+first failure.
+
+`dry_run` passes `-DryRun` through: every phase previews, nothing is branched, committed, pushed or
+opened. Both confirmations are still asked — a preview the user did not agree to is still a wasted
+run, and asking keeps the dry path the same shape as the real one.
 
 ## Step 4 — Return
 
@@ -170,7 +221,6 @@ Stop on the first failure.
 QA_SHIP_TESTS_RESULT: OK | BLOCKED | FAILED
 TICKET: SCRUM-139
 BRANCH: test/SCRUM-139-e2e-automation
-COMMIT: <sha or "none">
 PHASES: branch=SUCCESS commit=SUCCESS push=SUCCESS pr=SUCCESS
 PR_URL: <url or "none">
 SCENARIOS: SCN-012, SCN-014, SCN-021

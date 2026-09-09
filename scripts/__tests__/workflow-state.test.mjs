@@ -52,8 +52,16 @@ test("every fixture is LF — a CRLF checkout makes these cases pass while testi
   // nothing and the case assert against the clean document it meant to break. Six of them did exactly
   // that on a Windows checkout, silently, until the whole class was pinned in `.gitattributes` —
   // which only governs a fresh checkout, so this is the part that fails loudly if one drifts back.
-  const dir = join(repoRoot, "scripts", "__fixtures__");
-  const crlf = readdirSync(dir).filter((name) => readFileSync(join(dir, name), "utf8").includes("\r\n"));
+  // Recursive since the spec-lint fixtures arrived: they live in `spec-lint/<tree>/tests/api/…`,
+  // shaped like the repository, because the rules they exercise are scoped by path prefix.
+  const root = join(repoRoot, "scripts", "__fixtures__");
+  const walk = (dir) =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
+      entry.isDirectory() ? walk(join(dir, entry.name)) : [join(dir, entry.name)],
+    );
+  const crlf = walk(root)
+    .filter((path) => readFileSync(path, "utf8").includes("\r\n"))
+    .map((path) => path.slice(root.length + 1));
   assert.deepEqual(crlf, [], "fixtures with CRLF endings — convert them to LF");
 });
 
@@ -120,13 +128,47 @@ test("a declined run with an unfilled decline block fails WS-E31, once per missi
 });
 
 test("spending more review rounds than the cap fails WS-E33; reaching it does not", () => {
-  const atCap = scratch((text) => text.replace("  design: 1", "  design: 2"));
+  // The code streams are capped by `max_review_iterations` (2 in the fixture).
+  const atCap = scratch((text) => text.replace("  api: 0", "  api: 2"));
   assert.equal(validate(atCap).status, 0);
 
-  const overCap = scratch((text) => text.replace("  design: 1", "  design: 3"));
+  const overCap = scratch((text) => text.replace("  api: 0", "  api: 3"));
   const { status, stdout } = validate(overCap);
   assert.equal(status, 1, stdout);
-  assert.match(stdout, /iterations\.design: 3 review rounds spent against a cap of 2/);
+  assert.match(stdout, /iterations\.api: 3 review rounds spent against a cap of 2/);
+});
+
+test("the design counter is capped by max_design_iterations, not by the code streams' cap", () => {
+  // Two loops, two caps: a code review's findings are answered by editing the file it names, while
+  // a design review's are answered by regenerating a document whose next version invites new
+  // findings. The fixture caps design at 1 and the code streams at 2, so a second design round is
+  // over its cap while a second API round is not.
+  const secondDesignRound = scratch((text) => text.replace("  design: 1", "  design: 2"));
+  const { status, stdout } = validate(secondDesignRound);
+  assert.equal(status, 1, stdout);
+  assert.match(stdout, /iterations\.design: 2 review rounds spent against a cap of 1/);
+});
+
+test("a document predating max_design_iterations falls back to the shared cap, not to zero", () => {
+  // `Number(null)` is 0. Coercing an absent key would report a cap of zero and fail every document
+  // written before this setting existed on its first review round.
+  const legacy = scratch((text) => text.replace(/^  max_design_iterations: 1\n/m, ""));
+  assert.ok(!readFileSync(legacy, "utf8").includes("max_design_iterations"));
+  assert.equal(validate(legacy).status, 0, validate(legacy).stdout);
+
+  const overSharedCap = scratch((text) =>
+    text.replace(/^  max_design_iterations: 1\n/m, "").replace("  design: 1", "  design: 3"),
+  );
+  assert.match(validate(overSharedCap).stdout, /iterations\.design: 3 review rounds spent against a cap of 2/);
+});
+
+test("approved_with_open_findings is a design status the schema accepts", () => {
+  // Reaching the design cap with Majors still open produces a design that ships and a review that
+  // did not converge. A reader who cannot tell it from `approved` cannot tell a design nobody
+  // criticised from one whose criticism nobody answered.
+  const capped = scratch((text) => text.replace("  status: approved", "  status: approved_with_open_findings"));
+  const { status, stdout } = validate(capped, "--strict");
+  assert.equal(status, 0, stdout);
 });
 
 test("a pull request recorded before the ship phase fails WS-E34", () => {
@@ -488,6 +530,19 @@ test("normalize never overwrites a setting somebody chose", () => {
   const path = scratch((text) => text.replace(/^  max_review_iterations: 2$/m, "  max_review_iterations: 1"));
   assert.equal(run("normalize", path).status, 0);
   assert.equal(run("get", path, "configuration.max_review_iterations").stdout.trim(), "1");
+});
+
+test("normalize never back-fills the design cap — a tighter cap would invalidate a run in flight", () => {
+  // `state-legacy-115.yaml` predates the key and has already spent 2 design rounds. Writing the
+  // template's `1` into it would make it fail WS-E33, normalize would then refuse to write it, and
+  // a command that promises to change nothing about the run would have bricked one. The validator's
+  // fallback to `max_review_iterations` is the defined answer instead.
+  const legacy = scratch((text) => text, "state-legacy-115.yaml");
+  const { status, stdout } = run("normalize", legacy);
+  assert.equal(status, 0, stdout);
+  assert.doesNotMatch(stdout, /max_design_iterations/);
+  assert.ok(!readFileSync(legacy, "utf8").includes("max_design_iterations"));
+  assert.equal(validate(legacy).status, 0);
 });
 
 test("normalize back-fills configuration and nothing else — it is not a migration of the run", () => {

@@ -597,3 +597,67 @@ test("TD-E22 says nothing about an E2E API scenario, whatever its Notes say", ()
   assert.equal(status, 0, stdout);
   assert.deepEqual(codes(stdout), []);
 });
+
+// ---------------------------------------------------------------------------------------------
+// After the merge: one step writes and classifies, so `Suggested Level:` has nothing to suggest to
+// itself. It is optional rather than removed, because documents written before the merge still
+// carry it and are still valid.
+// ---------------------------------------------------------------------------------------------
+
+test("a block with no Suggested Level line is clean — the field is optional, not removed", () => {
+  const path = scratchCopy("classified-clean.md", (text) =>
+    text.replace(/^Suggested Level: .*\n/gm, ""),
+  );
+  const { status, stdout } = lintPath(path);
+  assert.equal(status, 0, stdout);
+  assert.deepEqual(codes(stdout), []);
+});
+
+test("a Suggested Level line that is still present is still checked", () => {
+  // Optional does not mean ignored: a document that carries the field must carry a real level in it.
+  const path = scratchCopy("classified-clean.md", (text) =>
+    text.replace("Suggested Level: Component", "Suggested Level: Smoke"),
+  );
+  const { status, stdout } = lintPath(path);
+  assert.equal(status, 1, stdout);
+  assert.ok(codes(stdout).includes("TD-E04"), stdout);
+  assert.match(stdout, /"Smoke" is not a permitted level/);
+});
+
+test("a Suggested Level line out of contract order still fails TD-E02", () => {
+  const path = scratchCopy("classified-clean.md", (text) =>
+    text
+      .replace(/^Suggested Level: (.*)\n/m, "")
+      .replace(/^Requirement: (.*)$/m, "Suggested Level: Component\nRequirement: $1"),
+  );
+  const { status, stdout } = lintPath(path);
+  assert.equal(status, 1, stdout);
+  assert.ok(codes(stdout).includes("TD-E02"), stdout);
+  assert.match(stdout, /out of contract order/);
+});
+
+test("--apply-all repairs the summary and the level arithmetic in one invocation", () => {
+  // Two passes, not one: rewriting `# Summary` moves every line below it, so a single parse would
+  // splice the level section at a line number that had already moved.
+  const path = scratchCopy("classified-clean.md", (text) =>
+    text.replace(/^Scenarios: .*$/m, "Scenarios: 99").replace(/^Levels: .*$/m, "Levels: nonsense"),
+  );
+  const { status, stdout } = lintPath(path, "--apply-all");
+  assert.equal(status, 0, stdout);
+  assert.match(stdout, /rewrote # Summary/);
+  assert.match(stdout, /rewrote # Summary \(Levels:\)/);
+
+  const after = readFileSync(path, "utf8");
+  assert.doesNotMatch(after, /^Scenarios: 99$/m);
+  assert.doesNotMatch(after, /^Levels: nonsense$/m);
+  assert.equal(lintPath(path).status, 0);
+
+  // Idempotent, like each pass on its own.
+  assert.match(lintPath(path, "--apply-all").stdout, /no change/);
+});
+
+test("--apply-all is mutually exclusive with the single apply modes", () => {
+  const { status, stderr } = lint("classified-clean.md", "--apply-all", "--apply-levels");
+  assert.equal(status, 2);
+  assert.match(stderr, /mutually exclusive/);
+});

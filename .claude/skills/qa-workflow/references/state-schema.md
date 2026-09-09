@@ -54,6 +54,7 @@ proper; `validate --json` lists them under `promote_candidates`.
 | `configuration.review_requirements` | scalar | — |  |
 | `configuration.non_e2e_coverage_strategy` | scalar | — |  |
 | `configuration.max_review_iterations` | int | — |  |
+| `configuration.max_design_iterations` | int | — | the design review's own cap, separate from the code reviews' because the two loops converge differently; on reaching it the design is approved_with_open_findings and the open ids travel to the pull request |
 | `configuration.batch_threshold` | int | — |  |
 | `configuration.batch_size` | int | — |  |
 | `configuration.jira_target_status` | scalar | — |  |
@@ -78,7 +79,7 @@ proper; `validate --json` lists them under `promote_candidates`.
 | `artifacts.api_surface.decided_at` | scalar | — |  |
 | `artifacts.notes` | free | — |  |
 | `test_design` | map | yes |  |
-| `test_design.status` | enum(pending | generated | classified | approved) | yes |  |
+| `test_design.status` | enum(pending | generated | classified | approved | approved_with_open_findings) | yes |  |
 | `test_design.review_status` | enum(pending | passed | needs_revision | blocked) | yes |  |
 | `test_design.batches` | seq | — |  |
 | `test_design.open_questions` | seq | — |  |

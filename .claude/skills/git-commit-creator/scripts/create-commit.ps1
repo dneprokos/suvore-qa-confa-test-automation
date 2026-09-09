@@ -1,9 +1,18 @@
 param(
     [string]$CommitMessage,
     [switch]$StageAll,
+    [string]$PathspecFile = '',
     [switch]$PreviewOnly,
     [switch]$DryRun
 )
+
+# -PathspecFile is -StageAll's opposite: one path per line, and nothing outside the list is staged.
+# A caller that knows exactly which files its work produced - a workflow holding two implementation
+# reports, say - must not stage everything else in the tree with them, because `git add -A` in a
+# repository somebody is also working in commits their unrelated edits under this run's message.
+#
+# A file rather than an argument list: the paths come from a document, there can be dozens, and
+# `git add --pathspec-from-file` is what git provides for exactly this.
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -61,7 +70,32 @@ try {
         Exit-WithMessage -Message 'Unable to determine the current branch.'
     }
 
-    if ($StageAll) {
+    if ($StageAll -and -not [string]::IsNullOrWhiteSpace($PathspecFile)) {
+        Exit-WithMessage -Message '-StageAll and -PathspecFile are mutually exclusive. One stages everything and the other stages a named list; a caller that passed both has not decided which it meant.'
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($PathspecFile)) {
+        if (-not (Test-Path -LiteralPath $PathspecFile)) {
+            Exit-WithMessage -Message "-PathspecFile '$PathspecFile' does not exist. Nothing was staged and nothing was committed."
+        }
+
+        $pathspecLines = @(Get-Content -LiteralPath $PathspecFile -Encoding utf8 | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        if ($pathspecLines.Count -eq 0) {
+            Exit-WithMessage -Message "-PathspecFile '$PathspecFile' is empty. Staging nothing and committing nothing is never what a caller meant."
+        }
+
+        if ($DryRun) {
+            Write-Output "[DryRun] Would stage $($pathspecLines.Count) path(s) with: git add --pathspec-from-file=$PathspecFile"
+            foreach ($line in $pathspecLines) {
+                Write-Output "[DryRun]   $line"
+            }
+        }
+        else {
+            Write-Output "Staging $($pathspecLines.Count) path(s) from $PathspecFile..."
+            Invoke-Git -Arguments @('add', '--pathspec-from-file', $PathspecFile) | Out-Null
+        }
+    }
+    elseif ($StageAll) {
         if ($DryRun) {
             Write-Output '[DryRun] Would stage all unstaged files with: git add -A'
         }
@@ -76,7 +110,8 @@ try {
     $stagedStat = Invoke-Git -Arguments @('diff', '--cached', '--stat')
     $hasStagedChanges = Test-GitStagedChanges
 
-    if ($DryRun -and $StageAll -and -not $hasStagedChanges -and -not [string]::IsNullOrWhiteSpace($statusOutput)) {
+    $wouldStage = $StageAll -or -not [string]::IsNullOrWhiteSpace($PathspecFile)
+    if ($DryRun -and $wouldStage -and -not $hasStagedChanges -and -not [string]::IsNullOrWhiteSpace($statusOutput)) {
         $hasStagedChanges = $true
     }
 

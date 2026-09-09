@@ -69,6 +69,10 @@ An operation block carrying `Source: user-supplied` or `Source: openapi + user-s
 
 Run every FR and AC through both passes below. Keep working notes; only the synthesized findings from Step 6 get written to the file.
 
+**The filter between the notes and the file is a single question: does this gap stop a test being written?** Three things pass it — a value a test would have to assert and the document does not state, an outcome the document never names, and a contradiction where two statements give different values for the same behaviour. Everything else is a working note: it stays in your head, and it does not become a bullet.
+
+Both passes below are **internal rubrics**. They exist to make you look in the right places, not to produce one bullet per cell. A document scoring badly on Atomic or Traceable and stating every value a test needs has no finding here at all — the scenarios can be written, which is the only thing this review is asked about. Downstream, a finding is a routing decision: each one is read, ruled on, and may send a run back a step, so a finding nobody can act on is not thoroughness, it is cost.
+
 ## Pass A — 8 Characteristics of Good Requirements
 
 | #   | Characteristic | Fails when                                                                                                             |
@@ -86,7 +90,7 @@ Run every FR and AC through both passes below. Keep working notes; only the synt
 
 Ambiguous requirements · missing acceptance criteria · missing validation rules · missing error-handling behavior · missing permission/authorization rules · missing boundary conditions · missing integration details · missing data requirements · missing observability/logging requirements · **missing API surface evidence** · risks · assumptions · open questions.
 
-For every FR/AC, ask explicitly: is there a stated upper bound / max length / rate limit? A stated authorization check? A stated behavior on external-dependency failure? A stated log/audit trail? Silence on any of these is a finding, not a pass — do not let "not applicable" be your default.
+For every FR/AC, ask explicitly: is there a stated upper bound / max length / rate limit? A stated authorization check? A stated behavior on external-dependency failure? A stated log/audit trail? Ask all four of every unit — do not let "not applicable" be your default. Then apply the filter: silence is a finding **when a scenario would have to assert the missing value**, and a working note when it would not. A missing rate limit on a route no requirement measures blocks nothing.
 
 ### Check 13 — API surface evidence
 
@@ -125,7 +129,7 @@ Content and order, exactly:
 ```
 # QA Review Notes
 
-_Testing-focused critique against the 8 Characteristics of Good Requirements. Every finding carries a stable id and names the specific FR/AC id it came from._
+_Gaps that stop a test being written, against the 8 Characteristics of Good Requirements. Every finding carries a stable id and names the specific FR/AC id it came from. A unit with no such gap reads `✅ No issues found.` — it is not a claim that the requirement is well written, only that a scenario can be derived from it._
 
 ### FR-11.1
 - ⚠️ **[REQ-M1] Complete**: <finding, quoting the problem phrase>
@@ -135,9 +139,9 @@ _Testing-focused critique against the 8 Characteristics of Good Requirements. Ev
 
 # Missing Information
 
-- **[REQ-M2] Validation rules** — <specific gap, naming the FR/AC it applies to>
-- **Error handling** — ...
-(one bullet per gap actually found; omit a bullet type entirely if genuinely not applicable — do not pad)
+- **[REQ-M2] missing value: <short name>** — <what is missing, and what a test would have to assert>. Applies to FR-11.1, AC-3.
+- **[REQ-C1] missing value: duplicate-e-mail status code** — the ticket says the request is rejected and never says with what. Applies to AC-1.
+(one bullet per distinct missing value actually found; omit a bullet entirely if genuinely not applicable — do not pad)
 
 # Identified Risks
 
@@ -158,17 +162,27 @@ Rules:
 - On a regenerate run, an id whose finding still stands **keeps its number**. New findings continue from the highest already used for that severity, read out of the block you captured in Step 3, and a resolved id is never reused for a different defect. Those ids are cited downstream and in Jira comments; renumbering them on a re-run makes every citation wrong.
 - Every bullet in every section names the FR/AC id it concerns, or states explicitly that it applies document-wide.
 - Quote the problematic phrase from the source text when flagging Clear/Verifiable issues — "this requirement is unclear" is not an acceptable finding.
-- If a requirement genuinely has no issues, write `✅ No issues found.` under its heading rather than omitting the heading — every FR and AC must be shown as checked.
+- If a requirement blocks no test, write `✅ No issues found.` under its heading rather than omitting the heading — every FR and AC must be shown as checked, and most of them should read this way on a well-written ticket.
 - Never write a full 8×N grading table into the file. This is a findings document, not a scorecard — the rubric in Step 5 is your internal tool, not your output shape.
-- **A gap that lands on three or more FR/AC units is one finding, not three.** Write it once as a single bullet under `# Missing Information`, with one id, naming every unit it touches:
+- **Every `# Missing Information` bullet is written in one fixed form**, because a later step matches on it:
 
   ```
-  - **[REQ-M2] Boundary conditions** — no minimum or maximum is stated for any input length. Applies to FR-11.1, FR-11.2, FR-11.4, AC-3.
+  - **[<id>] missing value: <short name>** — <what is missing>. Applies to <FR/AC ids>.
   ```
 
-  Under `# QA Review Notes`, each affected unit then carries a one-line pointer — `- ⚠️ **[REQ-M2]** — see # Missing Information` — and never a restatement of the finding. Two units or fewer stays per-unit, written out in place as usual.
+  `<short name>` is a two-to-five-word noun phrase naming the *value*, not the category — `duplicate-e-mail status code`, `minimum password length`, `owner-only rejection code`. It is what a human is shown when asked to approve a value, and what an approval is keyed on afterwards: `AC-1 · duplicate-e-mail status code: 409 — …`. Two bullets must never share a short name against the same requirement, or the key stops identifying one thing. A category label on its own (`Validation rules`, `Error handling`) names no value and cannot be approved, which is why the form asks for the value instead.
 
-  This is the same instinct as the rule above it. The same missing boundary rule copied under eight headings is a scorecard wearing a findings document's clothes: it reads as eight defects, it is cited downstream as eight, and every reader who acts on it expands it eightfold. One finding with eight ids attached says strictly more and costs a fraction.
+  The `Applies to` clause lists every FR and AC id the gap touches, and it is not optional: the requirement id is the other half of the key.
+
+- **One finding per distinct missing value, however many units it touches.** This is the default, not an exception for large groups. Write it once as a single bullet under `# Missing Information`, with one id, naming every unit it applies to:
+
+  ```
+  - **[REQ-M2] missing value: input length bounds** — no minimum or maximum is stated for any input length. Applies to FR-11.1, FR-11.2, FR-11.4, AC-3.
+  ```
+
+  Under `# QA Review Notes`, each affected unit then carries a one-line pointer — `- ⚠️ **[REQ-M2]** — see # Missing Information` — and never a restatement of the finding. A gap touching exactly one unit is written out in place there as usual, which is the same rule with a group of one.
+
+  The same missing boundary rule copied under eight headings is a scorecard wearing a findings document's clothes: it reads as eight defects, it is cited downstream as eight, and every reader who acts on it expands it eightfold. One finding with eight ids attached says strictly more and costs a fraction.
 
 # Step 7 — Diff-safety self-check
 

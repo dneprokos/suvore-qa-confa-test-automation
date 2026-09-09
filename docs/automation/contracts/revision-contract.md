@@ -32,6 +32,14 @@ re-observing what is already on disk. When returning `EXISTS`, name the existing
 `iteration` is whatever the caller passed, or the existing report's `iteration:` + 1, or `1`. Never count
 iterations yourself, and never infer one from how the work looks.
 
+**There is no `regenerate` row, and that is deliberate.** The repository's writing agents resolve one of
+four modes — `first_run`, `EXISTS`, `revision`, `regenerate` — but `regenerate` belongs to the agents
+that own a whole document and can rewrite it from its source. A test-implementation stream owns test
+code a review has already cited by file and line, so the only full rewrite available here is deleting
+the report and running `first_run` again, which is the caller's decision and not a mode you resolve. A
+caller asking for a regenerate is asking for something this contract does not define: return `EXISTS`,
+name the report on disk, and say so in `NOTES`.
+
 ## 2. A revision is scoped by its findings
 
 The work list is the set of findings handed in — every finding in `review_findings`, or only those

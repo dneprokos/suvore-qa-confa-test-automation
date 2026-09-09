@@ -10,6 +10,17 @@ canonical in-repo references, and `tests/ui/search-games.spec.ts` with `pages/ho
 control that acts on value change and for an empty state; where the repository and this document
 disagree, the repository is right and the difference is not a finding.
 
+---
+
+# Core — read this on every run that writes a spec or a page object
+
+Everything from here to the appendix is the house form itself: the fixture chain, setup and cleanup,
+the locator tier ladder, the assertion rules, the module-scope rule, a full compliant spec with the
+page object it calls, and the counter-example. A run that writes or changes a single line under
+`tests/ui/` or `pages/` reads all of it.
+
+---
+
 ## The fixture chain
 
 ```
@@ -278,17 +289,12 @@ Level Rationale: … folded into SCN-001 by the minimum-set pass — same actor,
 Folds Into: SCN-001
 ```
 
-That scenario gets no test of its own. It is asserted inside SCN-001's test, which is the only place it
-is asserted at all — so an unimplemented fold is a scenario lost silently, with no missing test anywhere
-to notice. Three things change in the covering test and nothing else does:
-
-1. **The id comment names both** — `// SCN-001 (folds SCN-018)`.
-2. **The arrange block seeds the wider precondition.** The folded scenario needs more data than the
-   covering one; you seed what satisfies both. A catalogue past the page-size threshold still satisfies
-   "two or more games", so the covering scenario's own assertions stay truthful against it — that is
-   what made the fold legal in the first place.
-3. **The folded scenario's `Expected:` becomes assertions in the same `// Assert` block**, carrying the
-   folded scenario's own `FR-`/`AC-` ids, not the covering scenario's.
+**What a fold is, and every rule about writing one, is `docs/automation/contracts/e2e-stream-scope.md`
+§3** — both halves of the stream are held to that file and it is not restated here. What this section
+adds is the only thing an etalon can: what the covering test looks like when those rules are followed.
+Three things change in it and nothing else does — the id comment names both scenarios, the arrange
+block seeds the wider precondition, and the folded scenario's `Expected:` becomes assertions in the
+same `// Assert` block carrying its own `FR-`/`AC-` ids.
 
 ```ts
 // SCN-001 (folds SCN-018)
@@ -327,85 +333,6 @@ test("Games management table - Should list every game returned by GET /api/games
   expect(body.games.map((g) => g.name)).toEqual(expect.arrayContaining(seeded.names));
 });
 ```
-
-What a fold is **not**: a licence to merge two tests you find similar. Only a `Folds Into:` line
-authorises one test to carry two ids, and it is written by the classification step, never here. Two
-scenarios sharing a test without one is a Critical review finding, and so is a fold that grew a second
-`// Act` block to fit — one test has one Act, folded or not. A folded scenario whose assertion cannot be
-written goes to `Skipped Scenarios` with the reason; it never just disappears.
-
-## A control with no submit button, and the empty state it produces
-
-A filter or search control breaks two assumptions the delete flow above never tests: **the action is a
-value change rather than a click**, and **the result of the action can be the absence of everything**.
-`tests/ui/search-games.spec.ts` and the `searchFor` member of `pages/home-page.ts` are the in-repo
-reference for both.
-
-**Filling the box is the whole Act.** Whether the control needs a submit press, a debounce or neither is
-a *mechanic* — §4b of `docs/automation/references/browser-exploration.md` — and it is observed, never assumed. Where
-the listing re-requests on change, an `Enter` press or a click on a nearby button in the `// Act` is an
-invented step, and a test that adds one passes for the wrong reason.
-
-**Key the response matcher to the value, not to the route.** A listing that searches on change fires the
-same route on mount with an empty term, so a matcher testing only the pathname resolves against the
-*initial* load and the test asserts on the unfiltered page:
-
-```ts
-private static isGamesSearchResponse(response: Response, term: string): boolean {
-  const url = new URL(response.url());
-
-  return (
-    url.pathname === Endpoints.games.list &&
-    response.request().method() === "GET" &&
-    url.searchParams.get("search") === term
-  );
-}
-
-async searchFor(term: string): Promise<Response> {
-  const [response] = await Promise.all([
-    this.page.waitForResponse((response) =>
-      HomePage.isGamesSearchResponse(response, term),
-    ),
-    this.searchInput.fill(term),
-  ]);
-
-  return response;
-}
-```
-
-The page object returns the `Response` and asserts nothing on it, exactly as `gotoAndWaitForGames` does;
-the status gate is a line in the spec.
-
-**Where the environment supplies the data, the response is the oracle.** A catalog that varies by machine
-has no fixed result set to name, so the rendered cards are compared against the names *that response*
-carried — and the comparison is gated on a web-first count first, because `waitForResponse` resolves when
-the response arrives, not when the page has rendered it:
-
-```ts
-await expect(homePage.gameNameHeadings).toHaveCount(matchedNames.length);
-const renderedNames = await homePage.gameNamesOnCurrentPage();
-expect([...renderedNames].sort()).toEqual([...matchedNames].sort());
-```
-
-Seed the record the scenario searches for. A term read off the catalog's first page is data another spec
-may delete mid-test — the same isolation rule as everywhere else in this document, and the reason the
-compliant spec calls `seedGame` before it navigates.
-
-**An empty state is a presence/absence pairing.** `toHaveCount(0)` and `toBeHidden()` both pass on a page
-that rendered nothing at all, so the presence half carries a hard assertion on the value:
-
-```ts
-// Presence half of the presence/absence pairing: hard, since the absence
-// assertion below passes just as well on a page that rendered nothing.
-await expect(homePage.noResultsHeading).toHaveText("No Games Found");
-await expect.soft(homePage.noResultsMessage).toHaveText("Try adjusting your search or filters ...");
-await expect.soft(homePage.gameNameHeadings).toHaveCount(0);
-```
-
-The empty-state locators are scoped to the block that owns them (`getByTestId("no-results")`, then the
-heading and paragraph inside it), so neither can resolve against the page banner. Reading the block's
-*shape* — that it is a heading plus a message — is a mechanic; the strings above are values the design
-supplies, and lifting them off the running app instead is the invented-value defect, not a shortcut.
 
 ## Compliant — the spec
 
@@ -510,24 +437,27 @@ particular admin would be — its position depends on which other tests are runn
 
 ## What the two compliant files demonstrate, point by point
 
+**The mechanical half of this list is enforced by `scripts/spec-lint.mjs`, and is therefore not
+listed here.** The fixture import, the title form, the `// Arrange` / `// Act` / `// Assert`
+comments, the `// SCN-` id, a URL or credential literal, a fixed wait, the e-mail helper — a script
+finds every one of those or none, which is the point of moving them there. What is left is what a
+script cannot reach: whether the example is *right*, not whether it is well formed.
+
 | # | The etalon shows |
 |---|---|
-| E1 | `test`/`expect` from `@fixtures/pages-fixture`, never `@playwright/test` and never the API fixture |
 | E2 | data arranged over the API, the seed status asserted, the e-mail registered for cleanup **before** the seed call |
-| E3 | the API call in its shortest form — one controller method, one `createAdminPayload()` body. It is a helper, so it takes as little room as it can; the UI steps are what the reader came for |
+| E3 | the API call in its shortest form — one controller method, one `createAdminPayload()` body. It is a helper, so it takes as little room as it can; the UI steps are what the reader came for. The linter fails a `with*()` chain here; a two-controller-call arrange that should have been one is this row |
 | E4 | every sent value from `AdminTestData` — `uniqueUiEmail()` for the e-mail, `createAdminPayload()` for the body. No literal e-mail, password or locally written generator in the spec |
 | E5 | the one literal that does belong here: the expected rendered string, next to its assertion |
 | E6 | `ownerPage` used for the session — no UI login, no manual token write |
 | E7 | tier-1 locators throughout, declared as `readonly Locator` fields in the constructor, with a documented missing-`data-testid` gap — no tier drop was needed, so no `LOCATOR-FALLBACK` comment appears |
-| E8 | zero `expect` in the page object; the spec calls page-object members, never `page.getByRole` directly |
 | E9 | the network-triggering click wrapped in `Promise.all([page.waitForResponse(...), action])`, with both the response status and the rendered result asserted. **That the click triggers a request at all is an observation, not a deduction** — the route in the pattern comes from a mechanic somebody watched fire (`docs/automation/references/browser-exploration.md` §4b) and is reported alongside the code; a pattern written on an assumption is a race that stays green until it does not, and an action that quietly calls the server with no wait around it is the same defect with nothing on the page to notice |
 | E10 | the `window.confirm` handler registered **before** the click |
 | E11 | an absence assertion (`toBeHidden`) **paired with the `toBeVisible` on the same locator in `// Arrange`** — that pairing is what proves the locator resolves at all, since `toBeHidden` passes on a locator matching nothing — plus an API cross-check |
-| E12 | `// Arrange` / `// Act` / `// Assert`, a `// SCN-` id per test, an `FR-`/`AC-` id on the assertion carrying it, and one of the two accepted title forms |
-| E13 | no `waitForTimeout`, no XPath, no generated class name, no credential literal, no URL string — `Endpoints` supplies the route |
+| E12 | the `FR-`/`AC-` id on the assertion that carries it — **which** assertion is the judgement; that the id comment, the phase comments and the title form exist at all is the linter's |
 | E14 | hard assertions where they belong: the seed status in `// Arrange`, the response status in `// Act`. This test asserts three dependent facts about one record, so nothing here is soft — the soft form is for the independent-observable loop shown under *Assertions* above |
 | E15 | every assertion carries the value the scenario states — `toContainText("Admin user deleted successfully")`, not `toBeVisible()`; the API cross-check names the e-mail, not a count |
-| E16 | nothing at module scope but the import lines and the `test.describe` |
+| E16 | nothing at module scope but the import lines and the `test.describe`. The linter reports a declaration there as a shape to judge, never as a defect: a helper that only *reads* a response is the one blessed form |
 
 ## Non-compliant — the same intent, and the defects it carries
 
@@ -567,6 +497,95 @@ No test data is created here at all, so the run also silently depends on an admi
 behind — an isolation defect on top of the eight above. None of these is a **coverage** finding, which
 is the separate and more valuable question: whether every scenario the test design assigned to this
 stream actually got a test, and whether that test asserts what the scenario says.
+
+
+---
+
+# Appendix — read a section only when its scenario shape comes up
+
+Neither section below is part of the general form, and a run that does not meet the shape it
+describes gains nothing by reading it. They are here rather than in Core because the Core is read on
+every run and these two are not needed on most of them.
+
+| Read | When |
+|---|---|
+| *A control with no submit button, and the empty state it produces* | the act is a value change rather than a click, or the expected result is the absence of everything |
+| *Two accepted title forms* | starting a new spec file, where which form the file uses is still open |
+
+---
+
+## A control with no submit button, and the empty state it produces
+
+A filter or search control breaks two assumptions the delete flow above never tests: **the action is a
+value change rather than a click**, and **the result of the action can be the absence of everything**.
+`tests/ui/search-games.spec.ts` and the `searchFor` member of `pages/home-page.ts` are the in-repo
+reference for both.
+
+**Filling the box is the whole Act.** Whether the control needs a submit press, a debounce or neither is
+a *mechanic* — §4b of `docs/automation/references/browser-exploration.md` — and it is observed, never assumed. Where
+the listing re-requests on change, an `Enter` press or a click on a nearby button in the `// Act` is an
+invented step, and a test that adds one passes for the wrong reason.
+
+**Key the response matcher to the value, not to the route.** A listing that searches on change fires the
+same route on mount with an empty term, so a matcher testing only the pathname resolves against the
+*initial* load and the test asserts on the unfiltered page:
+
+```ts
+private static isGamesSearchResponse(response: Response, term: string): boolean {
+  const url = new URL(response.url());
+
+  return (
+    url.pathname === Endpoints.games.list &&
+    response.request().method() === "GET" &&
+    url.searchParams.get("search") === term
+  );
+}
+
+async searchFor(term: string): Promise<Response> {
+  const [response] = await Promise.all([
+    this.page.waitForResponse((response) =>
+      HomePage.isGamesSearchResponse(response, term),
+    ),
+    this.searchInput.fill(term),
+  ]);
+
+  return response;
+}
+```
+
+The page object returns the `Response` and asserts nothing on it, exactly as `gotoAndWaitForGames` does;
+the status gate is a line in the spec.
+
+**Where the environment supplies the data, the response is the oracle.** A catalog that varies by machine
+has no fixed result set to name, so the rendered cards are compared against the names *that response*
+carried — and the comparison is gated on a web-first count first, because `waitForResponse` resolves when
+the response arrives, not when the page has rendered it:
+
+```ts
+await expect(homePage.gameNameHeadings).toHaveCount(matchedNames.length);
+const renderedNames = await homePage.gameNamesOnCurrentPage();
+expect([...renderedNames].sort()).toEqual([...matchedNames].sort());
+```
+
+Seed the record the scenario searches for. A term read off the catalog's first page is data another spec
+may delete mid-test — the same isolation rule as everywhere else in this document, and the reason the
+compliant spec calls `seedGame` before it navigates.
+
+**An empty state is a presence/absence pairing.** `toHaveCount(0)` and `toBeHidden()` both pass on a page
+that rendered nothing at all, so the presence half carries a hard assertion on the value:
+
+```ts
+// Presence half of the presence/absence pairing: hard, since the absence
+// assertion below passes just as well on a page that rendered nothing.
+await expect(homePage.noResultsHeading).toHaveText("No Games Found");
+await expect.soft(homePage.noResultsMessage).toHaveText("Try adjusting your search or filters ...");
+await expect.soft(homePage.gameNameHeadings).toHaveCount(0);
+```
+
+The empty-state locators are scoped to the block that owns them (`getByTestId("no-results")`, then the
+heading and paragraph inside it), so neither can resolve against the page banner. Reading the block's
+*shape* — that it is a heading plus a message — is a mechanic; the strings above are values the design
+supplies, and lifting them off the running app instead is the invented-value defect, not a shortcut.
 
 ## Two accepted title forms
 

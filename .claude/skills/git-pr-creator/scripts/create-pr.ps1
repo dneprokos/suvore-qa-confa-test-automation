@@ -1,10 +1,21 @@
 param(
     [string]$BaseBranch = '',
+    [string]$Title = '',
+    [string]$BodyFile = '',
     [switch]$AllowDuplicatePrefix,
     [switch]$ApproveInstall,
     [switch]$ApproveAuth,
     [switch]$DryRun
 )
+
+# -Title and -BodyFile are for a caller that already composed the pull request from something better
+# than the branch name and the commit log - a workflow holding the implementation reports and the test
+# design, say. When either is given it is used verbatim: this script derives a title from the branch
+# and a body from the commits precisely because it usually has nothing else, and overwriting a
+# caller's text with that guess would be worse than not offering the parameter.
+#
+# -BodyFile rather than -Body: a pull-request body is multi-line markdown with backticks, quotes and
+# blank lines in it, and passing that through a PowerShell command line is where it gets mangled.
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -398,7 +409,10 @@ function Get-BranchTicketInfo {
     $prefix = ''
     $suffix = $BranchName
 
-    if ($BranchName -match '^(?<prefix>(?:[A-Za-z]+-\d+|\d+))[\-_](?<suffix>.+)$') {
+    # An optional `<kind>/` segment first: this repository's branches are `test/SCRUM-139-...`,
+    # `feat/SCRUM-140-...`, and without it the whole name failed to match, the prefix came back empty,
+    # and the duplicate-PR check silently did not run.
+    if ($BranchName -match '^(?:[A-Za-z]+/)?(?<prefix>(?:[A-Za-z]+-\d+|\d+))[\-_](?<suffix>.+)$') {
         $prefix = $Matches['prefix']
         $suffix = $Matches['suffix']
     }
@@ -700,7 +714,13 @@ Do not commit github-pr.local.json. See .claude/skills/git-pr-creator/README.md 
 
     $ghRepoSlug = Resolve-GhRepoSlug
 
-    $prTitle = Get-ProposedPrTitle -CurrentBranch $currentBranch -BaseBranch $BaseBranch
+    if ([string]::IsNullOrWhiteSpace($Title)) {
+        $prTitle = Get-ProposedPrTitle -CurrentBranch $currentBranch -BaseBranch $BaseBranch
+    }
+    else {
+        $prTitle = $Title
+    }
+
     $ticketInfo = Get-BranchTicketInfo -BranchName $currentBranch
     $prefix = [string]$ticketInfo.Prefix
     $ghAvailable = [bool](Get-Command gh -ErrorAction SilentlyContinue)
@@ -740,13 +760,29 @@ Do not commit github-pr.local.json. See .claude/skills/git-pr-creator/README.md 
 
     $remoteBranchExists = Test-RemoteBranchExists -BranchName $currentBranch
 
-    $prBody = Get-PrBodyFromBranchCommits -BaseBranch $BaseBranch -CurrentBranch $currentBranch
+    if ([string]::IsNullOrWhiteSpace($BodyFile)) {
+        $prBody = Get-PrBodyFromBranchCommits -BaseBranch $BaseBranch -CurrentBranch $currentBranch
+    }
+    elseif (-not (Test-Path -LiteralPath $BodyFile)) {
+        Exit-WithMessage -Message "-BodyFile '$BodyFile' does not exist. The caller composed a pull-request body and it is not on disk; nothing was created."
+    }
+    else {
+        $prBody = Get-Content -LiteralPath $BodyFile -Raw -Encoding utf8
+        if ([string]::IsNullOrWhiteSpace($prBody)) {
+            Exit-WithMessage -Message "-BodyFile '$BodyFile' is empty. An empty pull-request body is never what a caller meant; nothing was created."
+        }
+    }
 
     if ($DryRun) {
         $ghAvailable = [bool](Get-Command gh -ErrorAction SilentlyContinue)
         Write-Output "Current branch: $currentBranch"
         Write-Output "Base branch: $BaseBranch"
-        Write-Output "Proposed PR title: $prTitle"
+        if ([string]::IsNullOrWhiteSpace($Title)) {
+            Write-Output "Proposed PR title: $prTitle"
+        }
+        else {
+            Write-Output "PR title (supplied by the caller, used verbatim): $prTitle"
+        }
 
         if ($remoteBranchExists) {
             Write-Output "Remote branch: origin/$currentBranch"
@@ -770,7 +806,12 @@ Do not commit github-pr.local.json. See .claude/skills/git-pr-creator/README.md 
         }
 
         Write-Output ''
-        Write-Output '[DryRun] Proposed PR body:'
+        if ([string]::IsNullOrWhiteSpace($BodyFile)) {
+            Write-Output '[DryRun] Proposed PR body:'
+        }
+        else {
+            Write-Output "[DryRun] PR body (supplied by the caller in $BodyFile, used verbatim):"
+        }
         Write-Output $prBody
 
         return

@@ -28,17 +28,15 @@ flowchart TD
         direction TB
         A1["1.1 requirements collection<br/>writes requirements.md incl. # API Surface"]
         A2["1.2 requirements review<br/>skipped when review_requirements: false"]
-        CKA(["Checkpoint A — size the test basis<br/>&gt; batch_threshold → batch it"])
-        A3["1.3 scenario generation<br/>one delegation per batch"]
-        A4["1.4 level classification"]
+        CKA(["Checkpoint A — A1 approvals · A2 surface<br/>size the test basis: &gt; batch_threshold → batch it"])
+        A3["1.3 scenario generation + level assignment<br/>one delegation per batch; the last one classifies"]
         CKB(["Checkpoint B — count from the manifest<br/>settle each stream's scope"])
         A5["1.5 design review<br/>Pass / Needs Revision / Blocked"]
         GATE(["design gate<br/>unapproved unknown → coverage?"])
-        A1 --> A2 --> CKA --> A3 --> A4 --> CKB --> A5 --> GATE
+        A1 --> A2 --> CKA --> A3 --> CKB --> A5 --> GATE
     end
 
-    A5 -.->|"missing scenarios · duplications<br/>technique · risks"| A3
-    A5 -.->|"incorrect classifications"| A4
+    A5 -.->|"missing scenarios · duplications · technique<br/>risks · incorrect classifications"| A3
     A5 -.->|"REQ-* · root cause is a missing requirement"| ESC
     CKB -.->|"design wants API coverage, no surface<br/>on_missing_api_surface: escalate"| ESC
     GATE -.->|"main flow has no automatable coverage<br/>or on_blocked_alternative_flow: escalate"| ESC
@@ -105,8 +103,8 @@ Four places the run can stop or narrow. Two of them are settings, and both setti
 
 | Gate | Where | What it decides | Auto-mode setting |
 |---|---|---|---|
-| Checkpoint A | before the first 1.3 | one delegation, or `batch_size` ids per delegation | — |
-| Checkpoint B | after 1.4 | each stream's scope, from `--emit-manifest` counts — never by hand | `on_missing_api_surface` (default `escalate`) |
+| Checkpoint A | before the first 1.3 | which missing values a human approves (A1) · the API surface (A2) · one delegation, or `batch_size` ids per delegation | A1 stops on a `[REQ-C*]` against an in-scope AC |
+| Checkpoint B | after 1.3 | each stream's scope, from `--emit-manifest` counts — never by hand | `on_missing_api_surface` (default `escalate`) |
 | design gate | after 1.5 | whether an unapproved unknown leaves an in-scope requirement with no automatable coverage | `on_blocked_alternative_flow` (default `escalate`) |
 | ship gate | inside step 3 | both reviews passed / both reports exist, read off the files rather than off a caller's claim | — |
 

@@ -16,6 +16,16 @@ the builder, one `with*()` call per field sent.** An older spec that acts throug
 or through `withMatchingPassword` predates the rule. New code follows the rule; the old specs are not
 retrofitted to match, and they are not evidence against it.
 
+---
+
+# Core — read this on every run that writes a spec
+
+Everything from here to the appendix is the house form itself: the layers, which layer a phase uses,
+the response shapes, setup and cleanup, a full compliant spec, and the counter-example. A run that
+writes or changes a single line under `tests/api/` reads all of it.
+
+---
+
 ## The layers
 
 ```
@@ -145,150 +155,6 @@ One line of it decides every question this stream asks of the surface: **a value
 in the test design's `Expected:`.** The surface supplies the route, the verb, the parameter names and the
 bearer requirement; the design supplies everything the test claims.
 
-## Query parameters
-
-`GET` collections take their filters and paging in the query string. The `// Act` rule does not change:
-**one `with*()` per parameter the request sends**, so the whole request still reads at the point it is
-made. A parameter set with a payload object, or spliced into the URL as a string, hides what was sent —
-the same defect as `withBody` in an Act block.
-
-The builder holds the query the way it already holds headers, and Playwright serialises it through
-`params`:
-
-```ts
-export class GamesRequestBuilder {
-  private query: Record<string, string | number | boolean> = {};
-  private headers: Record<string, string> = {};
-
-  constructor(private readonly request: APIRequestContext) {}
-
-  // #region Query
-  withQueryParam(name: string, value: string | number | boolean): this {
-    this.query[name] = value;
-    return this;
-  }
-
-  /** Named sugar for the parameters the API documents. */
-  withLimit(limit: number): this {
-    return this.withQueryParam("limit", limit);
-  }
-
-  withPage(page: number): this {
-    return this.withQueryParam("page", page);
-  }
-
-  withSearch(search: string): this {
-    return this.withQueryParam("search", search);
-  }
-  // #endregion
-
-  async sendListGames(): Promise<ListGamesApiResult> {
-    const response = await this.request.get(Endpoints.games.list, {
-      params: this.query,
-      headers: this.headers,
-    });
-
-    return toApiResult<ListGamesResponse | GamesErrorResponse>(response);
-  }
-}
-```
-
-and the Act reads as one line naming every parameter it sends:
-
-```ts
-// Act
-const result = await api.games.builder().withLimit(10).withPage(2).sendListGames();
-```
-
-Rules for the sugar:
-
-- Add a named `with*()` for a parameter the API surface documents, and use it. `withLimit(10)` says what the
-  request means; `withQueryParam("limit", 10)` only says what it contains.
-- Keep `withQueryParam` for a parameter no scenario names repeatedly, and for one the surface does not
-  document — that case needs the escape hatch precisely because there is nothing to name it after.
-- Never add a `with*()` for a parameter no scenario uses. A builder is grown by the tests that need it, not
-  filled in from a route list.
-- A parameter omitted from the chain is a parameter the request does not send. That is a meaningful test
-  input — the default-paging case is `sendListGames()` with an empty chain, not `withPage(1)`.
-
-## Filtering a shared collection
-
-A filter parameter (`search`, and any `?field=` narrowing a collection) asks a question the rest of this
-document does not: **the endpoint answers about records this test did not create.** The catalog is
-shared, `fullyParallel` is on, and another spec is seeding and deleting rows in it while this one reads.
-Four rules follow, all of them visible in `tests/api/games-search-api.spec.ts`.
-
-**Search on a token the test seeded itself.** A term borrowed from the environment — the first row of
-the collection, a shipped title — is data another spec may delete mid-test, and the failure reads as a
-broken filter. Seed the matches, name them from a run-unique token, and the filtered set is closed:
-
-```ts
-// Arrange - two seeds under different tokens, so a term matching only one of
-// them proves filtering rather than an empty catalog
-const token = GameTestData.uniqueSearchToken();
-const matchingGame = await seedGame(GameTestData.createSearchSeedPayload(token));
-const otherGame = await seedGame(
-  GameTestData.createSearchSeedPayload(GameTestData.uniqueSearchToken()),
-);
-```
-
-The token belongs in `utils/test-data/`, like every other sent value, and it is **free of regex
-metacharacters** — a term is a filter input, and a generator that emits `.` or `(` into one makes the
-test's own data the variable under test.
-
-**Read the count off the response, never off the environment.** A filtered page's `pagination` block
-counts the whole match set, so it rules out a second match that landed off-page — which asserting on
-`games.length` alone cannot:
-
-```ts
-expect(body.games.map((game) => game.name)).toEqual([matchingGame.name]);
-expect(body.pagination.totalGames).toBe(1);
-```
-
-The same reasoning bars `expect(totalGames).toBe(21)`: a literal catalog size is a fact about one
-machine at one moment. Where the scenario is paging, assert the metadata's internal consistency
-(`totalPages`, `hasNextPage`, `currentPage`) and the union of the pages against the seeded ids.
-
-**An empty result needs a positive control.** `games` coming back empty proves the filter excluded the
-record *or* that the seed never landed, and those are opposite verdicts. Pair the empty assertion with a
-second read that must return the same record — through the **controller**, since it is `// Assert`
-plumbing and not the request under test:
-
-```ts
-// Act - the term is the description's token, which no name carries
-const result = await api.games.gamesBuilder().withBearerToken(ownerToken)
-  .withSearch(descriptionToken).withLimit(...).withPage(1).sendListGames();
-
-// Assert
-expect((result.body as ListGamesResponse).games).toEqual([]);
-
-const byName = await api.games.listGames(ownerToken, { search: nameToken, ... });
-expect((byName.body as ListGamesResponse).games.map((game) => game._id))
-  .toEqual([seededGame.id]);
-```
-
-One `// Act` still means one request under test. A second *builder* chain in the same test is a second
-Act and belongs in a second test — the genre and description cases are two tests for exactly that
-reason.
-
-**Choose absence-of-id over an empty page when a legitimate match could exist.** Searching for a genre
-word must not reach the seed, but a shipped title carrying that word in its *name* is a correct match;
-asserting an empty page would fail on somebody else's data. Assert what the scenario claims — that this
-id is not in the result — and say in a comment why the stronger form would be wrong.
-
-**A term that crashes the endpoint is asserted against the specification.** Where the filter is
-interpolated into a pattern without escaping, a metacharacter term returns `500`. The test asserts the
-outcomes the specification allows and lets the defect stand red, with a comment naming it:
-
-```ts
-// Assert - either outcome is defensible; a 500 is not one of them
-expect([200, 400]).toContain(result.status);
-```
-
-Both defensible outcomes are named because the surface documents neither — inventing a single expected
-status would be a guessed mechanic. Weakening this to `not.toBe(500)`, or to whatever the app currently
-returns, deletes the report; the red test **is** the deliverable.
-
 ## A folded scenario — one test, two scenario ids
 
 Most tests map one to one onto a scenario. The exception is a scenario whose block carries a third
@@ -340,7 +206,7 @@ test("List games - Should return the requested page with its pagination metadata
 ```
 
 What a fold is **not**: a licence to merge two tests you find similar. Only a `Folds Into:` line
-authorises one test to carry two ids, and it is written by the classification step, never here. Two
+authorises one test to carry two ids, and it is written by the step that assigns levels, never here. Two
 scenarios sharing a test without one is a Critical review finding. So is a covering test that grew a
 **second `// Act`** to fit the fold — one test sends one request under test, and a folded scenario that
 needs a request of its own was folded wrongly: implement the covering scenario, and record the folded
@@ -525,21 +391,24 @@ test.describe("POST /api/admin/users", () => {
 
 ## What the compliant example demonstrates, point by point
 
+**The mechanical half of this list is enforced by `scripts/spec-lint.mjs`, and is therefore not
+listed here.** The fixture import, the title form, the `// Arrange` / `// Act` / `// Assert`
+comments, the `// SCN-` id, a URL or credential literal, a fixed wait, the e-mail helper — a script
+finds every one of those or none, which is the point of moving them there. What is left is what a
+script cannot reach: whether the example is *right*, not whether it is well formed.
+
 | # | The etalon shows |
 |---|---|
-| E1 | `test`/`expect` from `@fixtures/api-fixture`, never `@playwright/test` |
 | E2 | fixtures destructured, not constructed: `api`, `ownerToken`, `createdAdminEmails` |
 | E3 | builder for every `// Act`, one `with*` call per field sent, so the request reads in full at the point it is made — no `withMatchingPassword`, no payload object, no `withBody` |
 | E4 | controller for every precondition and postcondition — the seed, the cross-check, the cleanup — where the short form keeps those steps out of the reader's way |
 | E5 | cleanup registered **before** the call that creates the record; no `createdAdminEmails` at all when the call is expected to create nothing |
-| E6 | every sent value from `AdminTestData` / `AuthTestData`, every contract regex from `ResponsePatterns` — no literal e-mail, password, ObjectId or regex in the spec |
+| E6 | every sent value from `AdminTestData` / `AuthTestData`, every contract regex from `ResponsePatterns`. The linter catches a literal e-mail or password; a literal ObjectId or an inline regex is this row |
 | E7 | the one literal that does belong here: the expected response message, next to its assertion |
-| E8 | `// Arrange` / `// Act` / `// Assert`, a `// SCN-` id per test, an `FR-`/`AC-` id on the assertion carrying it |
+| E8 | the `FR-`/`AC-` id on the assertion that carries it — **which** assertion is the judgement; that the id comment and the phase comments exist at all is the linter's |
 | E9 | assertions on `result.status` / `result.ok` / `result.body` (and `await expect(result.response).toBeOK()` on a happy path), plus absence assertions and a cross-check against `listAdmins` |
 | E10 | a file-local helper only for **reading** a response — `errorMessages` above. A helper that *produces* test data belongs in `utils/test-data/` |
 | E11 | a comment stating why a case is asserted loosely, when the design left the value open |
-| E12 | title `"<Feature> - Should <behavior>"`, describe block named for the endpoint |
-| E13 | no URL string, no credential literal, no `waitForTimeout` |
 | E14 | a seeded precondition is a single `await seedGame(...)` line — no `if (id)` branch, no `as string` cast, no per-call-site `uncleanableResources` push, and no status assertion the fixture already makes by throwing |
 
 ## Non-compliant — the same intent, and the defects it carries
@@ -615,3 +484,163 @@ const gameId = seed.id as string;                         // (9)
 All three are one finding with one fix: **a seeding fixture**. A reviewer seeing this shape reports it
 against E14 and points at `seedGame`; it is not a style preference, because (8) makes the cleanup report
 untrue.
+
+
+---
+
+# Appendix — read a section only when its scenario shape comes up
+
+Neither section below is part of the general form, and a run that does not meet the shape it
+describes gains nothing by reading it. They are here rather than in Core because the Core is read on
+every run and these two are not needed on most of them.
+
+| Read | When |
+|---|---|
+| *Query parameters* | the scenario sends one — a `GET` over a collection with `search`, `limit` or `page` |
+| *Filtering a shared collection* | the scenario asserts over a catalogue other tests also write to |
+
+---
+
+## Query parameters
+
+`GET` collections take their filters and paging in the query string. The `// Act` rule does not change:
+**one `with*()` per parameter the request sends**, so the whole request still reads at the point it is
+made. A parameter set with a payload object, or spliced into the URL as a string, hides what was sent —
+the same defect as `withBody` in an Act block.
+
+The builder holds the query the way it already holds headers, and Playwright serialises it through
+`params`:
+
+```ts
+export class GamesRequestBuilder {
+  private query: Record<string, string | number | boolean> = {};
+  private headers: Record<string, string> = {};
+
+  constructor(private readonly request: APIRequestContext) {}
+
+  // #region Query
+  withQueryParam(name: string, value: string | number | boolean): this {
+    this.query[name] = value;
+    return this;
+  }
+
+  /** Named sugar for the parameters the API documents. */
+  withLimit(limit: number): this {
+    return this.withQueryParam("limit", limit);
+  }
+
+  withPage(page: number): this {
+    return this.withQueryParam("page", page);
+  }
+
+  withSearch(search: string): this {
+    return this.withQueryParam("search", search);
+  }
+  // #endregion
+
+  async sendListGames(): Promise<ListGamesApiResult> {
+    const response = await this.request.get(Endpoints.games.list, {
+      params: this.query,
+      headers: this.headers,
+    });
+
+    return toApiResult<ListGamesResponse | GamesErrorResponse>(response);
+  }
+}
+```
+
+and the Act reads as one line naming every parameter it sends:
+
+```ts
+// Act
+const result = await api.games.builder().withLimit(10).withPage(2).sendListGames();
+```
+
+Rules for the sugar:
+
+- Add a named `with*()` for a parameter the API surface documents, and use it. `withLimit(10)` says what the
+  request means; `withQueryParam("limit", 10)` only says what it contains.
+- Keep `withQueryParam` for a parameter no scenario names repeatedly, and for one the surface does not
+  document — that case needs the escape hatch precisely because there is nothing to name it after.
+- Never add a `with*()` for a parameter no scenario uses. A builder is grown by the tests that need it, not
+  filled in from a route list.
+- A parameter omitted from the chain is a parameter the request does not send. That is a meaningful test
+  input — the default-paging case is `sendListGames()` with an empty chain, not `withPage(1)`.
+
+## Filtering a shared collection
+
+A filter parameter (`search`, and any `?field=` narrowing a collection) asks a question the rest of this
+document does not: **the endpoint answers about records this test did not create.** The catalog is
+shared, `fullyParallel` is on, and another spec is seeding and deleting rows in it while this one reads.
+Four rules follow, all of them visible in `tests/api/games-search-api.spec.ts`.
+
+**Search on a token the test seeded itself.** A term borrowed from the environment — the first row of
+the collection, a shipped title — is data another spec may delete mid-test, and the failure reads as a
+broken filter. Seed the matches, name them from a run-unique token, and the filtered set is closed:
+
+```ts
+// Arrange - two seeds under different tokens, so a term matching only one of
+// them proves filtering rather than an empty catalog
+const token = GameTestData.uniqueSearchToken();
+const matchingGame = await seedGame(GameTestData.createSearchSeedPayload(token));
+const otherGame = await seedGame(
+  GameTestData.createSearchSeedPayload(GameTestData.uniqueSearchToken()),
+);
+```
+
+The token belongs in `utils/test-data/`, like every other sent value, and it is **free of regex
+metacharacters** — a term is a filter input, and a generator that emits `.` or `(` into one makes the
+test's own data the variable under test.
+
+**Read the count off the response, never off the environment.** A filtered page's `pagination` block
+counts the whole match set, so it rules out a second match that landed off-page — which asserting on
+`games.length` alone cannot:
+
+```ts
+expect(body.games.map((game) => game.name)).toEqual([matchingGame.name]);
+expect(body.pagination.totalGames).toBe(1);
+```
+
+The same reasoning bars `expect(totalGames).toBe(21)`: a literal catalog size is a fact about one
+machine at one moment. Where the scenario is paging, assert the metadata's internal consistency
+(`totalPages`, `hasNextPage`, `currentPage`) and the union of the pages against the seeded ids.
+
+**An empty result needs a positive control.** `games` coming back empty proves the filter excluded the
+record *or* that the seed never landed, and those are opposite verdicts. Pair the empty assertion with a
+second read that must return the same record — through the **controller**, since it is `// Assert`
+plumbing and not the request under test:
+
+```ts
+// Act - the term is the description's token, which no name carries
+const result = await api.games.gamesBuilder().withBearerToken(ownerToken)
+  .withSearch(descriptionToken).withLimit(...).withPage(1).sendListGames();
+
+// Assert
+expect((result.body as ListGamesResponse).games).toEqual([]);
+
+const byName = await api.games.listGames(ownerToken, { search: nameToken, ... });
+expect((byName.body as ListGamesResponse).games.map((game) => game._id))
+  .toEqual([seededGame.id]);
+```
+
+One `// Act` still means one request under test. A second *builder* chain in the same test is a second
+Act and belongs in a second test — the genre and description cases are two tests for exactly that
+reason.
+
+**Choose absence-of-id over an empty page when a legitimate match could exist.** Searching for a genre
+word must not reach the seed, but a shipped title carrying that word in its *name* is a correct match;
+asserting an empty page would fail on somebody else's data. Assert what the scenario claims — that this
+id is not in the result — and say in a comment why the stronger form would be wrong.
+
+**A term that crashes the endpoint is asserted against the specification.** Where the filter is
+interpolated into a pattern without escaping, a metacharacter term returns `500`. The test asserts the
+outcomes the specification allows and lets the defect stand red, with a comment naming it:
+
+```ts
+// Assert - either outcome is defensible; a 500 is not one of them
+expect([200, 400]).toContain(result.status);
+```
+
+Both defensible outcomes are named because the surface documents neither — inventing a single expected
+status would be a guessed mechanic. Weakening this to `not.toBe(500)`, or to whatever the app currently
+returns, deletes the report; the red test **is** the deliverable.

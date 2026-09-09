@@ -104,7 +104,14 @@ export const ENUMS = {
    * setting above it approves nothing — it only decides whether a human is fetched now.
    */
   missing_api_surface: ["escalate", "ignore"],
-  design_status: ["pending", "generated", "classified", "approved"],
+  /**
+   * `approved_with_open_findings` is what reaching `max_design_iterations` produces: the design is
+   * good enough to implement and the review still has open Majors, whose ids go to
+   * `test_design.open_questions` and into the pull-request body. It is a distinct state rather than
+   * `approved`, because a reader who cannot tell the two apart cannot tell a design nobody
+   * criticised from one whose criticism nobody answered.
+   */
+  design_status: ["pending", "generated", "classified", "approved", "approved_with_open_findings"],
   review_status: ["pending", "passed", "needs_revision", "blocked"],
   stream_status: [
     "pending",
@@ -169,6 +176,10 @@ const SCHEMA = {
       review_requirements: { type: "scalar" },
       non_e2e_coverage_strategy: { type: "scalar" },
       max_review_iterations: { type: "int" },
+      max_design_iterations: {
+        type: "int",
+        doc: "the design review's own cap, separate from the code reviews' because the two loops converge differently; on reaching it the design is approved_with_open_findings and the open ids travel to the pull request",
+      },
       batch_threshold: { type: "int" },
       batch_size: { type: "int" },
       jira_target_status: { type: "scalar" },
@@ -672,18 +683,32 @@ function crossChecks(root, report, metricsRecords) {
     );
   }
 
-  const cap = Number(get("configuration.max_review_iterations"));
-  if (Number.isFinite(cap)) {
-    for (const counter of ["design", "api", "ui"]) {
-      const spent = Number(get(`iterations.${counter}`));
-      if (Number.isFinite(spent) && spent > cap) {
-        report.err(
-          "WS-E33",
-          `iterations.${counter}`,
-          `${spent} review rounds spent against a cap of ${cap}. Reaching the cap is legal; passing it is not`,
-          lineOf(`iterations.${counter}`),
-        );
-      }
+  // Two caps, because the two loops converge differently: a code review's findings are answered by
+  // editing the file it names, while a design review's are answered by regenerating a document
+  // whose next version invites new findings. `max_design_iterations` falls back to the shared cap
+  // for a document written before it existed.
+  // `Number(null)` is 0 and `Number(undefined)` is NaN, so an absent key has to be tested before it
+  // is coerced — otherwise a document predating this setting reports a cap of zero and fails on its
+  // first review round.
+  const asCap = (path) => {
+    const raw = get(path);
+    if (raw === null || raw === undefined || raw === "") return NaN;
+    return Number(raw);
+  };
+  const codeCap = asCap("configuration.max_review_iterations");
+  const declaredDesignCap = asCap("configuration.max_design_iterations");
+  const designCap = Number.isFinite(declaredDesignCap) ? declaredDesignCap : codeCap;
+  const caps = { design: designCap, api: codeCap, ui: codeCap };
+  for (const [counter, cap] of Object.entries(caps)) {
+    if (!Number.isFinite(cap)) continue;
+    const spent = Number(get(`iterations.${counter}`));
+    if (Number.isFinite(spent) && spent > cap) {
+      report.err(
+        "WS-E33",
+        `iterations.${counter}`,
+        `${spent} review rounds spent against a cap of ${cap}. Reaching the cap is legal; passing it is not`,
+        lineOf(`iterations.${counter}`),
+      );
     }
   }
 
@@ -1487,6 +1512,7 @@ configuration:
   review_requirements: true
   non_e2e_coverage_strategy: create_follow_up_ticket
   max_review_iterations: 2
+  max_design_iterations: 1
   batch_threshold: 15
   batch_size: 10
   jira_target_status: In Review
@@ -1745,7 +1771,16 @@ function templateConfiguration() {
  * Only `configuration.*`, and only keys the template carries a value for. Nothing else in the
  * document is touched — a back-fill is not a migration of the run, and a counter, a phase or a
  * history entry means what it said before this command ran.
+ *
+ * One key is deliberately never back-filled, for that same reason. `max_design_iterations` is a
+ * *cap*, and writing a tighter one into a run that already spent more rounds than it allows would
+ * retroactively make that run illegal — the document stops validating, `normalize` then refuses to
+ * write it, and a command whose whole promise is that it changes nothing about the run has bricked
+ * one. A document that predates the key falls back to `max_review_iterations` in the validator,
+ * which is a defined answer rather than an absence, so there is nothing here for a back-fill to fix.
  */
+const NEVER_BACKFILLED = new Set(["max_design_iterations"]);
+
 function backfillConfiguration(root) {
   const template = templateConfiguration();
   const target = mapEntry(root, "configuration");
@@ -1754,6 +1789,7 @@ function backfillConfiguration(root) {
   for (const entry of template.entries) {
     const field = SCHEMA.configuration.children?.[entry.key];
     if (!field || field.type === "free") continue;
+    if (NEVER_BACKFILLED.has(entry.key)) continue;
     if (mapEntry(target.value, entry.key)) continue;
     target.value.entries.push({ key: entry.key, value: entry.value });
     added.push(`${entry.key}: ${scalarValue(entry.value)}`);

@@ -106,70 +106,32 @@ is what lets negative tests assert on `status` without dying in a parse error. A
 
 New endpoints go in `services/api/endpoints.ts`; never write a URL string in a spec or page object.
 
-### Page objects
+### Page objects and test conventions — where they live
 
-Locators are assigned in the constructor as `readonly Locator` fields; methods perform actions and return
-locators for the spec to assert on. Page objects hold **no assertions** — `expect` lives in the spec, and
-that includes `expect.poll`. A page-object loop waiting on a client-side re-render uses the locator API
-instead: `await previousElement.waitFor({ state: "detached" })`. `pages/home-page.ts` carries the example.
+**The conventions themselves are not in this file.** They are in the two etalons, because the agents
+that write and review test code read those and would otherwise have to load this whole document to
+find them:
 
-Locator policy is a **tier ladder**, defined in `docs/automation/references/browser-exploration.md` §4 and
-`docs/automation/etalons/ui-spec-etalon.md`. Tier 1 — `getByRole`, `getByLabel`, `getByPlaceholder`, `getByTestId`
-— is what almost everything uses. Below it, `#id` (2), a non-testid `[data-*]` (3) and structural CSS (4)
-are each allowed only when every higher tier is impossible, and each costs three receipts: a
-`// LOCATOR-FALLBACK: tier <n> — <why>` comment on the field, a `LOCATOR_GAPS` entry, and the tier in the
-report's `Explored Locators` map. **XPath, generated class names (`.css-1a2b3c`), matching on marketing
-copy and `nth()` on a data row sit outside the ladder entirely** — never a tier-4 fallback. An element
-with no stable hook at any tier is a **gap to report**, not a problem to solve with a brittle selector;
-`pages/owner-page.ts` documents exactly that for the Owner Panel, which ships no `data-testid` at all.
-`nth()` on a *structural* element — the second rowgroup of a table is its body — is tier 1.
+| What | Where |
+|---|---|
+| the house form for an API spec — the layer diagram, phase-to-layer, response shapes, setup and cleanup, a full compliant spec and a counter-example | `docs/automation/etalons/api-spec-etalon.md`, `# Core` |
+| the house form for a UI spec and its page object — the fixture chain, the locator tier ladder, the soft-assertion boundary, the meaningful-assertion rule, the module-scope rule, cleanup | `docs/automation/etalons/ui-spec-etalon.md`, `# Core` |
+| the mechanical rules — fixture import, title form, phase comments, scenario id, fixed waits, URL and credential literals, `expect` in a page object, the shapes outside the tier ladder, the write boundary | `scripts/spec-lint.mjs`, fifteen `SL-E<nn>` checks plus four `SL-W<nn>` shapes it reports and refuses to rule on |
 
-Wait policy: web-first assertions and Playwright auto-waiting only. No `waitForTimeout`.
+Each etalon splits into `# Core`, read by any run that writes a line of that stream's code, and
+`# Appendix`, read only when the scenario has the shape a section describes. That split is the point
+of them: a revision correcting one assertion used to load both halves.
 
-### Test conventions
+Three rules are repeated here because they are the ones most often broken from outside those files:
 
-- Title format is `"<Subject> - Should <behavior>"`, where the subject is the feature under test:
-  `"Create admin - Should reject a malformed e-mail"`, `"Login as owner - Should reject invalid
-  credentials"`. `describe` blocks are named for the endpoint in API specs (`"POST /api/admin/users"`) and
-  for the feature in UI specs (`"Owner feature"`). UI specs accept a second form and a file picks one:
-  `"As a <role>, I should be able to …"` for a role-centric flow (`tests/ui/owner.spec.ts`),
-  `"<Subject> - Should <behavior>"` for a rendering or state check (`tests/ui/search-games.spec.ts`).
-  New Owner Panel tests follow the first.
-- `// Arrange` / `// Act` / `// Assert` comments delimit the three phases, once each per test.
-- **Assertions carry the value, not its existence.** `toBeGreaterThan(0)`, `toBeTruthy()`,
-  `not.toBeNull()` and a bare `toBeVisible()` never stand as the only assertion on a value the scenario
-  names — use `toHaveText` / `toContainText` / `toHaveCount(n)`. Where no fixed value exists (a catalogue
-  that varies by environment), tie the assertion to a named **independent oracle** and say so in a
-  comment: `tests/ui/search-games.spec.ts` cross-checks the rendered cards against the search response.
-- **`expect.soft` for independent observables** — the fields of one row, each row of a table — so one
-  missing column reports all five instead of the first. Hard `expect` everywhere it matters: in
-  `// Arrange`, on the `waitForResponse` status, on any value a later line reads, and on the presence half
-  of a presence/absence pairing. Soft does not short-circuit and still fails the test; it is a
-  better-reported assertion, never a weaker one.
-- **A spec's module scope holds its imports and its `test.describe`, nothing else.** A helper that drives
-  or reads the page is a page-object method; a column list belongs to the page object that owns the table;
-  a value the test sends belongs in `utils/test-data/`.
-- Test data lives in `utils/`, never inline in a spec: `AdminTestData` and `AuthTestData`
-  (`utils/test-data/`) own generated e-mails, passwords, boundary values and invalid credentials, and
-  `ResponsePatterns` (`utils/response-patterns.ts`) owns the contract regexes. New data goes there, not
-  into a local `const`. Expected response messages are the exception — they stay in the spec, next to
-  the assertion they belong to.
-- Each test creates its own data with a unique e-mail — `AdminTestData.uniqueApiEmail()` in API specs,
-  `uniqueUiEmail()` in UI specs, so the two streams never collide; both are dot- and plus-free because
-  the server runs `normalizeEmail()` on create — and registers it in `createdAdminEmails`.
-  No shared mutable state between tests; `fullyParallel` is on.
-- **Register cleanup the instant the record exists**, before any assertion — for a UI create flow, before
-  the submit. Fixture teardown already runs on a red test; what does not run is a registration the failed
-  assertion jumped over. Remove only what this test created, never a delete-all. A record the app offers
-  no route to remove goes to `uncleanableResources`, which says so in the run output.
-- UI tests that trigger a network call wrap the action in `Promise.all([page.waitForResponse(...), action])`
-  and assert on both the response and the rendered result — the UI assertion alone is not enough.
-- Cross-check the UI against the API where it is cheap (`api.admin.listAdmins` after a UI create/delete).
-- A known application defect is asserted against the **spec**, with a comment naming the defect — see the
-  `lastLogin` "Never" assertion in `tests/ui/owner.spec.ts`. Do not weaken an assertion to make a red test
-  green; the failure is the report.
-- Native `window.confirm` dialogs: register the handler **before** the click
-  (`ownerPage.acceptNextConfirmDialog()`), or Playwright auto-dismisses and the request never fires.
+- **Page objects hold no assertions.** `expect` lives in the spec, `expect.poll` included. A
+  page-object loop waiting on a client-side re-render uses `await previousElement.waitFor({ state:
+  "detached" })`; `pages/home-page.ts` carries the worked example.
+- **Wait policy is web-first assertions and Playwright auto-waiting.** No `waitForTimeout`, no
+  `networkidle` as a synchronisation crutch.
+- **A known application defect is asserted against the spec**, with a comment naming it — see the
+  `lastLogin` "Never" assertion in `tests/ui/owner.spec.ts`. Never weaken an assertion to turn a red
+  test green: the failure is the report.
 
 ## Agent workflow
 
@@ -197,14 +159,28 @@ Rules that matter when touching `.claude/agents/`:
 - **The orchestrator is `.claude/skills/qa-workflow/SKILL.md`**, invoked as `/qa-workflow SCRUM-139
   [--auto]`. It is the one file that names agents next to each other, and the only place a routing change
   belongs. It runs on the main thread — subagents cannot spawn subagents or see skills — owns
-  `.workflow/<TICKET-ID>.yaml`, the per-stream iteration counters and the `max_review_iterations` cap
-  (default 2, auto mode only), **sizes the test basis before scenario generation and batches it** —
-  `batch_threshold` 15, `batch_size` 10, counted off the `### FR-`/`### AC-` headings and passed down as
-  `requirement_ids`, because the generating agent is barred from choosing its own scope and a batch is not
+  `.workflow/<TICKET-ID>.yaml`, the per-stream iteration counters and **two review caps** — the code
+  streams' `max_review_iterations` (default 2, auto mode only) and the design loop's own
+  `max_design_iterations` (default 1). They are separate because the two loops converge differently: a
+  code finding is answered by editing the file it names, while a design finding is answered by
+  regenerating a document whose next version invites new ones. Reaching the code cap escalates;
+  reaching the design cap does not — the design ships as `approved_with_open_findings`, the open
+  `[DESIGN-*]` ids go to `test_design.open_questions` and into the pull-request body under *Design
+  findings not resolved*, where a human can rule on them. **It sizes the test basis before scenario
+  generation and batches it** — `batch_threshold` 15, `batch_size` 10, taken from the 1.1 receipt's
+  `FR_IDS` and `AC_IDS` lines rather than counted off the document again, persisted at
+  `test_design.notes.requirement_ids` so a resume that never re-runs 1.1 still knows the size, and
+  passed down as `requirement_ids`, because the generating agent is barred from choosing its own scope and a batch is not
   a review round — delegates the ship phase to `qa-ship-tests`, which in turn drives
   `git-workflow-orchestrator`, and then closes the loop by delegating the Jira hand-back to
   `qa-jira-transition`. Manual mode asks for every transition; auto mode routes on the verdict but keeps
-  the git confirmations.
+  the git confirmations — **two of them, both inside the ship step and both before any git command
+  runs**: an `OK` on the composed commit message together with the exact list of paths it will stage,
+  and, only when `gh pr list` finds one, whether to open a second pull request for the ticket. Asking
+  first is what lets the four git phases then run as one non-interactive command, and it is why those
+  confirmations are not optional: the script is quiet because a person already answered, not because
+  nobody asks. Staging is `git add --pathspec-from-file` over the two reports' `Changed Files` and
+  never `git add -A`, so an unrelated edit in the tree is not excluded by a check — it is never added.
 - **Auto mode has two gates that are settings rather than rules, and both default to stopping.**
   `on_missing_api_surface` at Checkpoint B, and `on_blocked_alternative_flow` at the design gate — the
   latter narrows the no-coverage escalation, which fires when an unapproved unknown leaves an in-scope
@@ -267,12 +243,14 @@ Rules that matter when touching `.claude/agents/`:
   the sections that are pure recount — `# Summary` and the three matrices for the first pair, the
   `Levels:` line and the whole `# Level Assignment Summary` section for the second — and
   **`--emit-manifest`** prints the whole model as JSON, which is what the orchestrator's Checkpoint B
-  gates on instead of counting `Assigned Level:` lines by hand. **The two judgement lines inside a counted section
+  gates on instead of counting `Assigned Level:` lines by hand. **The four judgement lines inside a counted section
   are carried through, never recomputed**: `Levels:` and `Blocked by (top unknowns):` in `# Summary`,
   `E2E journeys:` and `Demoted by the minimum-set pass:` in the level section. `qa-scenario-generator` runs
-  `--apply-summary` to build its counted sections and the plain lint as the first half of its self-check,
-  and may not return until it exits `0`; `qa-scenario-classifier` runs `--apply-levels` to write its
-  summary and the plain lint to check it, and holds `Bash` for nothing else; `qa-scenario-reviewer` runs
+  `--apply-summary` after writing the blocks and `--apply-all` after assigning the levels — a sixth mode
+  that runs the two apply passes **as two sub-invocations**, because rewriting `# Summary` moves every
+  line below it and a single parse would splice the level section at a line number that had already
+  moved — plus the plain lint as the first half of its self-check, and it may not return until that
+  exits `0`; `qa-scenario-reviewer` runs
   the plain form as Step 1a and reads the output as pre-computed evidence instead of recounting — and is
   barred by name from both apply modes, since a reviewer that repairs the document's arithmetic before
   judging it is reviewing its own work.
@@ -294,6 +272,27 @@ Rules that matter when touching `.claude/agents/`:
   alias) is the only non-Playwright test suite here, and it exists because two agents now trust this
   script instead of counting. The check list is the script itself and the cases in
   `scripts/__tests__/`; no prose copy of it is kept anywhere.
+- **The same argument, pointed at TypeScript: `scripts/spec-lint.mjs` is the fifth script here, and
+  both halves of both streams run it.** A test-code review used to spend most of its rows on greps with
+  a rule attached — an import from the wrong module, a fixed wait, a URL or credential literal, a title
+  that misses the house form, a phase comment appearing twice, an `expect` in a page object, a builder
+  chain in a UI spec, a selector outside the tier ladder, a snapshot ref, a `--changed` path outside the
+  stream's write boundary. A model finds those slowly and misses one per file; a script finds every one
+  or none. Fifteen `SL-E<nn>` checks, and **the split against `SL-W<nn>` is the load-bearing part**: an
+  error is a rule the code broke and the script holds all the evidence, while a warning is a *shape*
+  whose verdict lives in the code around it — a negative assertion that may or may not be paired, a soft
+  one that may be on a precondition, an existence check that may be guarding a loop, a module-scope
+  helper that may only be reading a response. Warnings print under their own heading and exit `0`,
+  because reporting them as defects would be a linter ruling without evidence and omitting them would
+  send a reviewer back to grepping by hand. Creators gate their self-check on exit `0`; reviewers raise
+  every `SL-E` under their own `[API-*]`/`[UI-*]` id and **grade the severity themselves** — the script
+  has no opinion about severity and nobody inherits one. Comments are blanked before most rules run, so
+  a `setTimeout` named in a comment explaining why the code avoids one is prose rather than a fixed
+  wait; the three rules that must read a comment work from the raw text. Every body that holds it
+  carries a `Must not` against reading a clean run as evidence about the assertions, for the same reason
+  `test-design-lint.mjs` does: it rules on form, and whether a test asserts the value its scenario named
+  is the whole of what a review is for. `--root` exists only so the fixtures can be scanned — every rule
+  is scoped by path prefix, so a fixture that did not live at `tests/api/…` would exercise nothing.
 - **The workflow state file is validated by a script for the same reason.** `scripts/workflow-state.mjs`
   is the third script here and the only one the orchestrator runs rather than an agent. `validate` carries
   eleven `WS-E<nn>` errors and two `WS-W<nn>` warnings; `get` prints one value raw, so a multi-line
@@ -395,12 +394,11 @@ Rules that matter when touching `.claude/agents/`:
   line — `linked SCN-NNN`, `not needed — <why>` or `not applicable — <why>`, with a link resolving to an
   `E2E API` scenario in the same document. The rule is written once, in the API-coverage bullet of
   `docs/automation/references/test-design-document-shape.md`, and the design step writes it from there.
-  The classification step gets the **one** exception to its byte-identical rule: when its own promotion
-  to `E2E UI` creates the obligation, it writes the decision and reports it on `API_COVERAGE_ADDED:`,
-  because the design step will not run again on a classified document and nobody else holds both the
-  promotion and the list of `E2E API` scenarios. The script rules on presence and shape only — whether a
-  `not needed` is *true* is the design review's judgement, and a decision the classification step wrote
-  has been reviewed by nobody at all, which is why it is on a receipt line rather than only in the file.
+  **The decision is written by the same step that assigns the level**, at the point the assignment
+  creates the obligation, since that step holds both the level and the list of `E2E API` scenarios in
+  front of it. The script rules on presence and shape only — whether a `not needed` is *true* is the
+  design review's judgement, and no decision has been read by anybody before that review, which is why
+  every one of them is on the `API_COVERAGE_DECISIONS:` receipt line rather than only in the file.
 - **A test level, automation readiness and test packaging are three different questions.** `Assigned Level:` names the lowest
   technical layer at which a scenario has an assertable, truthful oracle; `Automation Suitability:` names
   whether that test can be automated now; `Folds Into:` names which test executes it. None is evidence about
@@ -465,7 +463,9 @@ Rules that matter when touching `.claude/agents/`:
 - **Reviewers get no `Edit`/`Write`.** A reviewer that can fix what it finds returns `Pass` and the
   Needs-Revision signal disappears. `qa-scenario-reviewer` holds `Bash` for exactly
   `node scripts/test-design-lint.mjs` and nothing else — not the suite, not the type check, not git, not
-  `playwright-cli`. A read-only reporter is safe to grant; the Edit/Write rule is untouched by it.
+  `playwright-cli`. The two code reviewers hold the stream's own suite, `npx tsc --noEmit` and
+  `node scripts/spec-lint.mjs`, and nothing else either. A read-only reporter is safe to grant however
+  many of them a reviewer runs; the Edit/Write rule is untouched by it.
 - Phase 1 agents (`qa-*`) write only to `requirements/` and `test-design/`. Only Phase 2 agents
   (`aqa-api-*`, `aqa-ui-*`) write to `tests/` — the `aqa-` prefix marks every agent that writes or reviews
   test code, and the stream segment after it says which half. Slug prefix and tool grant must always agree.
@@ -477,8 +477,9 @@ Rules that matter when touching `.claude/agents/`:
   this safe with both streams in flight: a collision lands on different lines rather than the same line
   twice. Every addition goes on the receipt's `SHARED_ADDITIONS:` line. Same shape as the `utils/**` rule.
 - **An agent that modifies nothing is named for the domain it reads.** `git-change-analyst` reads the git
-  working tree and returns a proposed commit message and PR facts; it holds no `Write` or `Edit` and
-  commits nothing. The `git-*` **skills** are the only things here that stage, commit, push or open a PR,
+  working tree and returns a proposed commit message and the file lists behind it; it holds no `Write` or
+  `Edit` and commits nothing. It used to compose pull-request facts as well — a title, the commit
+  subjects ahead of base, changed-file groups — and no caller ever read them, so that mode is gone. The `git-*` **skills** are the only things here that stage, commit, push or open a PR,
   and they keep their user confirmations because they run on the main thread. Same prefix, opposite
   powers — the tool grant is what tells them apart.
 - Requirements and test-design documents have a fixed section/field contract — several agents parse them.
@@ -492,7 +493,10 @@ Rules that matter when touching `.claude/agents/`:
 - **Every agent runs more than once, and the second run is scoped.** Each writing agent resolves a mode
   before it writes: `first_run` (no output yet), `EXISTS` (output present, nothing new asked — stop and
   change nothing), `revision` (findings supplied — change only what they name, everything else
-  byte-identical), `regenerate` (explicit token — full rewrite). Reviewers write nothing, so they take
+  byte-identical), and — **for a document-owning Phase 1 agent only** — `regenerate` (explicit token,
+  full rewrite). The two Phase 2 creators have no `regenerate`: they own test code a review has already
+  cited by file and line, so `revision-contract.md` §1 defines three modes and says why the fourth is
+  absent. Reviewers write nothing, so they take
   `previous_findings` instead and switch to `re_review`: the style pass narrows to prior findings and
   changed files, while the suite, the type check and the coverage pass stay full every iteration.
   **Validation narrows in one place and one place only: a creator's fix-and-re-run loop, which runs just
@@ -560,7 +564,7 @@ wall time closely. The cumulative spend is not obtainable from outside the conve
 estimates it. **The run mode is declared, never inferred**: every delegation prompt carries a `run_mode:`
 line, the pre-hook reads it so an interrupted run keeps the mode it started in, and a prompt without one
 records `undeclared` — which is never read as `first_run`, because the report used to derive a `Run i/N`
-ordinal positionally and read a two-scenario reclassify identically to a revision. `prompt_chars`
+ordinal positionally and read a two-scenario revision identically to a first run. `prompt_chars`
 measures the delegation prompt alone; whatever a step reads on its own lands inside `end_context`.
 `metrics-report.mjs --json` carries a `records` array, one entry per run, so a per-agent question no
 longer means hand-parsing the jsonl.
@@ -605,14 +609,14 @@ matcher is legitimate and is not news.
 
 Shared knowledge the agents `Read` at runtime lives in `docs/automation/` — a doc, never a skill, because
 no agent's `tools:` list includes `Skill`. **Anything reusable across agents takes this form: a doc here,
-or a script under `scripts/`. A skill is not available to them.** Twelve files in three folders, and the
+or a script under `scripts/`. A skill is not available to them.** Thirteen files in three folders, and the
 folder a file sits in says *when its text loads*:
 
 | Folder | What it is | The files |
 |---|---|---|
 | `etalons/` | a form to copy, read unconditionally by both halves of a stream | `api-spec-etalon.md`, `ui-spec-etalon.md` — one per stream, read by that stream's creator *and* its reviewer so the two cannot calibrate against different code |
 | `contracts/` | a process rule for a run | `e2e-stream-scope.md` (both halves of a stream — the one that selects and the one that checks the selection), `revision-contract.md` (the creators), `review-verdict-contract.md` (the reviewers), `implementation-report.md` (written by one half, parsed by the other), plus the two the triage workflow owns |
-| `references/` | knowledge read on demand at one anchored step | `api-surface-reading.md` (all four Phase 2 agents), `browser-exploration.md`, `test-basis-modelling.md`, `test-design-document-shape.md` |
+| `references/` | knowledge read on demand at one anchored step | `api-surface-reading.md` (all four Phase 2 agents), `browser-exploration.md`, `test-basis-modelling.md`, `test-design-document-shape.md`, `level-assignment.md` |
 
 `docs/automation/README.md` is the index and states the rationale. **None of these files may name
 an agent** — they speak in stream terms, or the no-sibling-names rule leaks through the back door.
@@ -623,8 +627,8 @@ fails only at run time and several delegations in.
 the mechanics of the four ISTQB techniques and is read whenever a run will *derive* a scenario;
 `test-design-document-shape.md` holds the document body, section by section, and is read only by a run
 writing or rewriting the whole document. Both used to sit inline in a 725-line agent body that loaded in
-full on every invocation — including a revision correcting one `Expected:` line, and a reclassify of two
-scenarios that cost 208 seconds. The body is 546 lines now. External lazy loading was already mature
+full on every invocation — including a revision correcting one `Expected:` line, and a two-scenario
+re-run that cost 208 seconds. The body is 546 lines now. External lazy loading was already mature
 here (`revision-contract.md` is read only on a revision); this is the same mechanism pointed the other
 way, at the first-run theory rather than the revision rules. Each extraction ships with an anchored
 `Read` at the step that needs it **and** a `Must not` against working from memory, because a reference an

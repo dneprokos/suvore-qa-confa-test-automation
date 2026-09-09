@@ -85,9 +85,20 @@ partition regardless of what implements it.
 | **Major** | the code works but the test does not do its job, or breaks a stated convention with a behavioural effect |
 | **Minor** | naming, ordering, duplication, a thin comment, a stylistic deviation with no behavioural effect |
 
+**The floor between Major and Minor is what a finding changes.** Major is a defect that changes what a
+test asserts, whether a scenario is covered, or whether the suite's result can be trusted. Everything
+else is Minor: a name, an ordering, a duplicated block, a comment, a stylistic deviation with no
+behavioural effect. A review loop is capped, so a Major is a request to spend one of its rounds —
+grading up to look thorough spends a round and changes no test.
+
 Two things upgrade to **Critical in a re-review**, because they break the loop rather than the code: a
 finding the report claims `fixed` where the cited code does not do what the finding asked, and a finding
 id the report does not account for at all.
+
+**A new Major on a re-review may name only a file that changed since the iteration you reviewed, or one
+a previous finding named.** A defect visible in a file nobody touched is one the previous round passed;
+raising it as a Major now spends a round on work that round should have asked for. Report it as Minor
+with `(untouched file)`. The files that *did* change are reviewed at full severity.
 
 ## 5. Verdict
 
@@ -106,8 +117,8 @@ When there is nothing to report, say so plainly — a review that manufactures a
 thorough is as useless as one that misses a real gap.
 
 A gap in the **test design itself** — a case that should have been designed and was not — is not a
-finding here. The design review already ran and owns that question. At most it is one
-`Suggested Improvements` line.
+finding here at any severity. The design review already ran and owns that question, and there is no
+section in this block for an observation that is not a finding: leave it out.
 
 ## 6. The report
 
@@ -126,7 +137,6 @@ Findings Resolved: API-C1, API-M1
 Findings Outstanding: API-C2 — still asserts only result.ok
 Findings Disputed: API-M1 (accepted — the design really does leave the message open)
 New Findings: API-C3, API-M2, API-M3, API-m1
-Files Reviewed: <paths>
 E2E <STREAM> Scenarios in Test Design: SCN-012, SCN-014, SCN-016
 Scenarios Claimed: SCN-012, SCN-014
 Scenarios Verified: SCN-012, SCN-014
@@ -143,15 +153,10 @@ Major Issues:
 Minor Issues:
 - [<STREAM>-m1] <file>:<line> — <what is wrong>
 
-Suggested Improvements:
-- <one line each, or "- None.">
-
 Validation Results:
 - <the suite command> — <counts> (report claimed <counts> — matches | discrepancy)
 - npx tsc --noEmit — pass
 - <suspected application defects confirmed as documented, or "- None.">
-
-Final Recommendation: <one or two lines>
 ```
 
 Rules for the report:
@@ -217,8 +222,8 @@ Rules for the report:
   about the running system. Rule on whether the code matches it and whether it accounts for every wait
   and locator committed; a gap there is a finding, and so is a value that reached an assertion from it.
 - **Do not touch Jira.** No Atlassian tools are granted, deliberately.
-- **Do not ask the user a clarifying question mid-run.** An unanswerable question becomes a
-  `Suggested Improvements` line, or `Blocked` if it makes the review undecidable.
+- **Do not ask the user a clarifying question mid-run.** A question that makes the review undecidable
+  is `Blocked` with the question as its reason; anything less than that, you rule on yourself.
 - **Do not report a failing test as a defect in the code** when the report documents it as a suspected
   application defect with a scenario id, and do not accept a weakened assertion because the suite is
   green.

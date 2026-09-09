@@ -24,6 +24,11 @@
  *   --apply-summary write what --emit-summary prints into the document, in place: `# Summary` and
  *                   the three matrix sections, and nothing else. Prints one line per section
  *                   changed and exits 0. Idempotent — a second run reports no change.
+ *   --apply-all     run --apply-summary and then --apply-levels over the same document, as two
+ *                   passes. It is two passes rather than one because the summary rewrite changes how
+ *                   many lines sit above every later section, so a single parse would splice the
+ *                   level section at a line number that had already moved. Output and exit code are
+ *                   the second pass's; a failing first pass stops the run.
  *   --apply-levels  write what --emit-levels prints into the document, in place: the `Levels:` line
  *                   of `# Summary` and the whole `# Level Assignment Summary` section, appending
  *                   that section when it does not exist yet. An unclassified design is left
@@ -87,6 +92,8 @@
  */
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const EXIT_CLEAN = 0;
 const EXIT_VIOLATIONS = 1;
@@ -115,9 +122,14 @@ const SECTION_ORDER = [
 const TRAILING_SECTIONS = ["Level Assignment Summary"];
 
 /**
- * The eleven named fields, in order. Counted with the `## SCN-NNN:` heading they sit under, this
- * is the "twelve fields" the block format calls for. `Assigned Level:` and `Level Rationale:` are
- * added later by the classification step and are optional here.
+ * The named fields, in the order a block writes them. Counted with the `## SCN-NNN:` heading they
+ * sit under, this is the "twelve fields" the block format calls for.
+ *
+ * `Suggested Level:` sits in this order and is **not required**. It was the writing step's proposal
+ * back when a separate step finalised levels; the two are one step now, which writes
+ * `Assigned Level:` directly and has nothing to propose to itself. Documents from before the merge
+ * still carry it, they are still valid, and where it is present it is still checked and still
+ * reported as an override — so a design written either way lints the same.
  */
 const FIELD_ORDER = [
   "Requirement",
@@ -145,6 +157,12 @@ const FIELD_ORDER = [
  * test. The id, the level and the traceability all survive; only the second browser session does not.
  */
 const OPTIONAL_FIELDS = ["Assigned Level", "Level Rationale", "Folds Into"];
+
+/**
+ * The fields TD-E02 requires. `Suggested Level:` keeps its slot in `FIELD_ORDER` — a document that
+ * carries it must still carry it in the right place — but its absence is not a defect.
+ */
+const REQUIRED_FIELDS = FIELD_ORDER.filter((f) => f !== "Suggested Level");
 
 const API_COVERAGE_DECISIONS = ["linked", "not_needed", "not_applicable"];
 const API_COVERAGE_RE = /\bAPI coverage:\s*(linked\s+SCN-\d{3}|not needed|not applicable)(?:\s+[—-]\s*(.*))?/i;
@@ -229,7 +247,7 @@ function usage(message) {
   process.stderr.write(
     "usage: node scripts/test-design-lint.mjs <test-design-path> " +
       "[--requirements <path>] [--emit-summary] [--emit-levels] [--emit-manifest] " +
-      "[--apply-summary] [--apply-levels] [--implemented-levels <list>] [--json]\n",
+      "[--apply-summary] [--apply-levels] [--apply-all] [--implemented-levels <list>] [--json]\n",
   );
   process.exit(EXIT_USAGE);
 }
@@ -242,6 +260,7 @@ let emitLevels = false;
 let emitManifest = false;
 let applySummary = false;
 let applyLevels = false;
+let applyAll = false;
 let implementedLevels = DEFAULT_IMPLEMENTED_LEVELS;
 let asJson = false;
 
@@ -260,6 +279,8 @@ for (let i = 0; i < argv.length; i += 1) {
     applySummary = true;
   } else if (arg === "--apply-levels") {
     applyLevels = true;
+  } else if (arg === "--apply-all") {
+    applyAll = true;
   } else if (arg === "--implemented-levels") {
     const value = argv[++i] ?? null;
     if (!value) usage("--implemented-levels needs a comma-separated list of levels");
@@ -289,11 +310,34 @@ for (let i = 0; i < argv.length; i += 1) {
     ["--emit-manifest", emitManifest],
     ["--apply-summary", applySummary],
     ["--apply-levels", applyLevels],
+    ["--apply-all", applyAll],
   ].filter(([, on]) => on);
   if (modes.length > 1) usage(`${modes.map(([name]) => name).join(" and ")} are mutually exclusive`);
 }
 
 if (!designPath) usage("no test design path given");
+
+// `--apply-all` is two passes over the same file, not one pass doing two things. Each apply mode
+// splices by line number into a parse taken at startup, and rewriting `# Summary` moves every line
+// below it — including the `# Level Assignment Summary` section the second pass edits. Re-running
+// the whole script between them is what re-parses, and it makes the combined mode exactly the two
+// commands it replaces rather than a third code path to keep in step with them.
+if (applyAll) {
+  const passArgs = argv.filter((a) => a !== "--apply-all");
+  for (const mode of ["--apply-summary", "--apply-levels"]) {
+    const pass = spawnSync(process.execPath, [fileURLToPath(import.meta.url), ...passArgs, mode], {
+      encoding: "utf8",
+    });
+    if (pass.error) {
+      process.stderr.write(`test-design-lint: could not run ${mode}: ${pass.error.message}\n`);
+      process.exit(EXIT_UNPARSEABLE);
+    }
+    if (pass.stdout) process.stdout.write(pass.stdout);
+    if (pass.stderr) process.stderr.write(pass.stderr);
+    if (pass.status !== EXIT_CLEAN) process.exit(pass.status ?? EXIT_UNPARSEABLE);
+  }
+  process.exit(EXIT_CLEAN);
+}
 if (!existsSync(designPath)) {
   process.stderr.write(`test-design-lint: ${designPath} does not exist\n`);
   process.exit(EXIT_UNPARSEABLE);
@@ -763,9 +807,9 @@ if (doc.title === null) fail("DOCUMENT", "TD-E01", "no `# Test Design — …` t
 for (const block of blocks) {
   const id = block.id;
 
-  // TD-E02: the eleven named fields, in order, one per line, no blank line between them.
+  // TD-E02: the named fields, in order, one per line, no blank line between them.
   const names = block.fields.map((f) => f.name);
-  for (const required of FIELD_ORDER) {
+  for (const required of REQUIRED_FIELDS) {
     if (!names.includes(required)) fail(id, "TD-E02", `field \`${required}:\` is missing`, block.line);
   }
   {
@@ -1638,8 +1682,7 @@ function emitLevelsBlock() {
   out.push("# Level Assignment Summary");
   out.push("");
   out.push(
-    "_Levels assigned by the classification step. Suggested Level lines above are the original " +
-      "proposals and are preserved deliberately._",
+    "_Recounted from the `Assigned Level:` lines of the scenario blocks above._",
   );
   out.push("");
   out.push("| Level | Count | Scenarios |");
@@ -1667,14 +1710,20 @@ function emitLevelsBlock() {
         ? "— none"
         : multiLevelBlocks.map((b) => `${b.id} (${assignedLevelsOf(b).join(" + ")})`).join(", ")),
   );
-  out.push(
-    "Overridden suggestions: " +
-      (overriddenBlocks.length === 0
-        ? "— none"
-        : overriddenBlocks
-            .map((b) => `${b.id} (${valueOf(b, "Suggested Level")} -> ${assignedLevelsOf(b).join(", ")})`)
-            .join(", ")),
-  );
+  // `Overridden suggestions:` is emitted only for a document that still carries `Suggested Level:`
+  // lines — one written before the writing and classifying steps were merged. After the merge there
+  // is no proposal to override, and a line reading "none" would report a comparison nobody made as a
+  // finding that nothing was overridden.
+  if (blocks.some((b) => valueOf(b, "Suggested Level") !== null)) {
+    out.push(
+      "Overridden suggestions: " +
+        (overriddenBlocks.length === 0
+          ? "— none"
+          : overriddenBlocks
+              .map((b) => `${b.id} (${valueOf(b, "Suggested Level")} -> ${assignedLevelsOf(b).join(", ")})`)
+              .join(", ")),
+    );
+  }
   // Arithmetic, not judgement: which scenarios carry a `Folds Into:` line is on disk, and so is how
   // many tests the E2E set therefore implies. Which scenarios *should* have been folded is the
   // judgement, and it is on the carried line below.
