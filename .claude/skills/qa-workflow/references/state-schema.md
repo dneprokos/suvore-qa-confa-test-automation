@@ -18,7 +18,15 @@ schema quietly — which is the exact failure generating it was meant to prevent
 whole file is not the check, because the prose around the table is hand-written on purpose.
 
 The state file is **never hand-written**. `init`, `set`, `set-block`, `append`, `clear-in-flight`,
-`normalize` and `reset` are how it changes; the schema below is what they accept.
+`normalize` and `reset` are how it changes; the schema below is what they accept. `validate`, `get`,
+`check-artifacts`, `check-streams` and `print-schema` only read.
+
+`normalize` does two things, both of them repairs rather than routing. It collapses a duplicated key
+to the last value — the one every YAML reader was already seeing — and it **back-fills the
+`configuration.*` keys a document predates**, at the value `init` would have written, printing one
+line per key. It never replaces a value already on disk and never touches anything outside
+`configuration:`: an absent setting is reported by the banner as a `default` nobody chose, which is a
+different problem from a run whose phase or counters need moving.
 
 `reset` is the odd one and defines no field of its own: it archives the document by rename, writes
 the `init` skeleton in its place, carries `mode` and the whole `configuration:` subtree forward, and
@@ -46,10 +54,12 @@ proper; `validate --json` lists them under `promote_candidates`.
 | `configuration.review_requirements` | scalar | — |  |
 | `configuration.non_e2e_coverage_strategy` | scalar | — |  |
 | `configuration.max_review_iterations` | int | — |  |
+| `configuration.max_design_iterations` | int | — | the design review's own cap, separate from the code reviews' because the two loops converge differently; on reaching it the design is approved_with_open_findings and the open ids travel to the pull request |
 | `configuration.batch_threshold` | int | — |  |
 | `configuration.batch_size` | int | — |  |
 | `configuration.jira_target_status` | scalar | — |  |
 | `configuration.on_blocked_alternative_flow` | enum(escalate | continue) | — | auto mode only — continue relaxes the no-coverage escalation for alternative-flow requirements, never for a main flow |
+| `configuration.on_missing_api_surface` | enum(escalate | ignore) | — | auto mode only — what the automation gate does when the design wants API coverage and no surface was mapped; ignore settles the API stream as not_applicable instead of stopping the run |
 | `configuration.notes` | free | — |  |
 | `iterations` | map | yes | one counter per review loop, never shared |
 | `iterations.design` | int | yes |  |
@@ -69,7 +79,7 @@ proper; `validate --json` lists them under `promote_candidates`.
 | `artifacts.api_surface.decided_at` | scalar | — |  |
 | `artifacts.notes` | free | — |  |
 | `test_design` | map | yes |  |
-| `test_design.status` | enum(pending | generated | classified | approved) | yes |  |
+| `test_design.status` | enum(pending | generated | classified | approved | approved_with_open_findings) | yes |  |
 | `test_design.review_status` | enum(pending | passed | needs_revision | blocked) | yes |  |
 | `test_design.batches` | seq | — |  |
 | `test_design.open_questions` | seq | — |  |
@@ -130,6 +140,7 @@ violations, `2` usage, `3` the file is missing or holds a construct the parser w
 | `WS-E32` | error | `phase: done` while `jira.handback_status` is still `pending` |
 | `WS-E33` | error | a review counter past `configuration.max_review_iterations`. Reaching the cap is legal; passing it is not |
 | `WS-E34` | error | a pull request recorded before the run reached `ship` |
+| `WS-E35` | error | `phase: ship` or `done` with a stream that is neither `passed` nor `not_applicable` |
 | `WS-E90` | error | a YAML construct outside the supported subset — reported rather than guessed at |
 | `WS-W10` | warning | a key the schema does not know. `--strict` promotes it |
 | `WS-W20` | warning | a `history` entry carrying a cost figure with no matching record in the metrics log |
@@ -138,6 +149,26 @@ violations, `2` usage, `3` the file is missing or holds a construct the parser w
 `test_design.last_findings` twice — an 1800-character routing block, then `null` — and every consumer
 read `null`. A whole review round ran without the findings it was routing on, and nothing in the
 transcript said so, because the document parsed.
+
+`check-streams` asks the third question — not what the document says, and not what is on disk, but
+whether the two stream decisions still match the design they were taken from. It reads its counts from
+`test-design-lint.mjs --emit-manifest`, refuses an unclassified design rather than reading its zeros as
+answers, and exits `5` on a disagreement:
+
+| Code | Rule |
+|---|---|
+| `CS-E01` | the design is not classified, so no stream conclusion can be drawn from it |
+| `CS-E02` | a stream settled `not_applicable` while the design assigns it scenarios |
+| `CS-E03` | a stream carrying work while the design assigns it no scenario |
+
+`CS-E02` is the one nothing downstream re-derives: the work is never launched, and the ship gate cannot
+tell a stream nobody needed from one nobody ran. A stream still `pending` is not a violation — that is
+every stream between the automation gate and its implementing step.
+
+`WS-E35` is the early half of a check the ship step already makes. That step treats an unknown stream
+verdict as *not passed* and stops, so a stream nobody settled has always been caught — but only after
+the run was routed on a document that said it was shippable. Here it is caught while the document is
+still the thing being read, before the ship delegation is made.
 
 `WS-W20` is the honesty check. `SKILL.md` forbids inventing a cost figure, and a reader cannot tell a
 correctly transcribed number from an invented one, so the check is on provenance rather than on value.

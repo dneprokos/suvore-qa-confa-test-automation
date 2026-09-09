@@ -28,7 +28,7 @@ Assigned Level: E2E UI
 Level Rationale: The row renders from the real list response reaching the real panel — factor 3.
 Folds Into: SCN-003
 Automation Suitability: High
-Notes: —
+Notes: API coverage: not needed — folded UI rendering case only; no independent backend contract selected.
 
 ## SCN-002: A visitor is refused the admin list
 Requirement: FR-1.2
@@ -43,7 +43,7 @@ Suggested Level: E2E API
 Assigned Level: E2E API
 Level Rationale: An authorization boundary is only real at the public surface — factor 1.
 Automation Suitability: High
-Notes: —
+Notes: API coverage: not needed — UI navigation and rendering only; no independent backend contract selected.
 
 ## SCN-003: The owner reaches the admin panel after signing in
 Requirement: AC-1
@@ -58,7 +58,7 @@ Suggested Level: E2E UI
 Assigned Level: E2E UI
 Level Rationale: A journey across routes with a real session — factor 3, no stub reproduces it.
 Automation Suitability: High
-Notes: —
+Notes: API coverage: not needed — sign-in and the panel fetch are session mechanics for this journey; the admin-list authorization contract is covered by SCN-002.
 
 # Traceability Matrix
 

@@ -27,7 +27,7 @@ Suggested Level: E2E UI
 Assigned Level: E2E UI
 Level Rationale: A journey across routes with a real session — factor 3, no stub reproduces it.
 Automation Suitability: High
-Notes: —
+Notes: API coverage: not needed — UI navigation and rendering only; no independent backend contract selected.
 
 ## SCN-002: A visitor is refused the admin list
 Requirement: FR-1.2
@@ -72,7 +72,7 @@ Suggested Level: E2E UI
 Assigned Level: Requirement Gap
 Level Rationale: Requirement gap — the scenario records missing expected behavior, so it is not executable coverage until the oracle is specified.
 Automation Suitability: High
-Notes: unknown: what the panel shows once a delete is refused — not assertable
+Notes: unknown: what the panel shows once a delete is refused — not assertable; API coverage: not needed — the backend refusal only sets up the unspecified UI outcome.
 
 # Traceability Matrix
 

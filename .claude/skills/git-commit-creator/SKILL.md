@@ -57,7 +57,6 @@ warning and one proposed Conventional Commits message — so the diff never ente
 | Parameter | Value |
 |---|---|
 | `staged_only` | `true` when the user chose **No** at step 1; `false` when they chose **Yes**, because stage-all has not run yet and the whole working tree is what will be committed |
-| `include_pr_facts` | `false` — this skill commits, it does not open a pull request |
 | `context` | the user's commit context, when they supplied any |
 
 Map its `GIT_CHANGE_ANALYST_RESULT` onto this workflow:

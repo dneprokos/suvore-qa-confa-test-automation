@@ -22,9 +22,7 @@ matter records which pass produced it.
 `.workflow/` is workflow state, not source. It is not part of the pull request.
 
 `Review Findings Addressed` (§2, last section) is required of every report, including a `first_run`,
-where it reads `- None.`. A report written before that section existed would therefore be malformed —
-which costs nothing, because `.workflow/` has never been created in this repository and no report
-predates the contract.
+where it reads `- None.`.
 
 ## 2. Structure
 
@@ -44,6 +42,14 @@ evidence behind every wait and every dialog handler committed to `tests/ui/`. A 
 observed tier-1 locators can still be raced by one guessed wait, which is why the second map is not a
 column of the first.
 
+**The front matter carries every value a reviewer has to rule on but cannot see.** A reviewer receives
+this report and the changed files; it never sees the receipt block the writing stream returned to its
+caller. So the six lines that used to live only on the receipt — `api_surface`, `explored_app`,
+`locator_gaps`, `mechanics_observed`, `cleanup_gaps`, `shared_additions` — are front-matter keys here,
+carrying the same values in the same vocabulary. `cleanup_gaps` is written by both streams; the other
+five are `ui` only, and an `api` report omits them rather than writing `n/a`. A rule that cites "the
+receipt" as the reviewer's evidence is citing a document the reviewer does not hold.
+
 ````markdown
 ---
 ticket: SCRUM-139
@@ -53,6 +59,13 @@ generated_at: 2026-08-06T14:22:00Z
 iteration: 1
 test_design_source: test-design/SCRUM-139-test-design.md
 scenarios_implemented: 2
+cleanup_gaps: none
+# ui stream only, in this order, after cleanup_gaps:
+# api_surface: read | script | none (<reason>)
+# explored_app: true | false
+# locator_gaps: Owner Panel ships no data-testid; all locators are role-based
+# mechanics_observed: yes | no | n/a
+# shared_additions: none
 ---
 
 # Implementation Report — SCRUM-139 (api)
@@ -155,7 +168,7 @@ The `ui` stream's two extra sections take this shape, between `Reused Framework`
 | Skipped Scenarios | Every selected scenario that produced no test, with a reason. A selected scenario appearing in neither table is a contract violation. A folded scenario belongs here only when its `Expected:` could not be asserted, and then it appears in both tables — once for the fold, once for the reason. |
 | Changed Files | Repo-relative paths with `new` or `modified` and a one-clause summary. Every path must exist on disk. |
 | Reused Framework | What already existed and was used. An empty list on a repo that has fixtures is a reuse failure, not an empty section. |
-| Explored Locators | **`ui` stream only.** The selector map from `docs/automation/references/browser-exploration.md` §5 — one table per route, including its `Tier` column, every row traceable to a snapshot taken in this run **or carried forward from a previous iteration's report for a locator still in `pages/`**. Every row whose tier is not 1 also appears under `LOCATOR_GAPS` in the receipt. `- None.` only when the map is genuinely empty, with a clause saying why (`every locator already existed in pages/`). Never a snapshot ref (`e5`). |
+| Explored Locators | **`ui` stream only.** The selector map from `docs/automation/references/browser-exploration.md` §5 — one table per route, including its `Tier` column, every row traceable to a snapshot taken in this run **or carried forward from a previous iteration's report for a locator still in `pages/`**. Every row whose tier is not 1 also appears in the front matter's `locator_gaps`. `- None.` only when the map is genuinely empty, with a clause saying why (`every locator already existed in pages/`). Never a snapshot ref (`e5`). |
 | Observed Mechanics | **`ui` stream only.** The mechanics map from `docs/automation/references/browser-exploration.md` §5 — one row per action a test in this report performs, `Action \| Request \| Trigger \| Result shape \| Dialog`, every row traceable to an action performed and a `network` or `snapshot` output read in this run **or carried forward from a previous iteration for an action the specs still perform**. Every `waitForResponse` pattern and every dialog handler in the diff traces to a row here or to a `Known Limitations` entry saying the mechanic was not observed; the inverse also holds — a row recording a request with no wait in the code is the same defect from the other end. **No cell holds a rendered string, a count or any other assertable value**: this map records how an observable is reached, never what it says. `- None.` only when there was genuinely nothing to read, with a clause saying why. Never a snapshot ref (`e5`). |
 | Execution Result | The real command and the real counts, copied from the run. Never estimated, never carried over from a previous iteration. |
 | Failing Tests | Test title, `file:line`, expected vs actual, and why it still ships. |
@@ -211,7 +224,7 @@ three times over, so it cannot be mistaken for an oversight —
 1. in the run output, by pushing the label to the `uncleanableResources` fixture, which prints
    `[cleanup] NOT CLEANED UP: <label> - no delete endpoint`,
 2. here, naming the resource and the missing route,
-3. on the `CLEANUP_GAPS:` line of the receipt.
+3. in the front matter's `cleanup_gaps` key, and on the `CLEANUP_GAPS:` line of the receipt.
 
 A gap entry names the route that is missing, not just the fact of the leak:
 
@@ -245,7 +258,8 @@ delete anything already there, and `fixtures/api-fixture.ts` stays closed to it 
 Additive-only is what makes this safe with both streams running at once: every conflict is different
 lines of the same file rather than the same line twice. If the API stream's report already lists the
 controller, reuse it instead of adding a second, and list every addition on the receipt's
-`SHARED_ADDITIONS:` line so the next reader can see across the boundary.
+front matter's `shared_additions` key and on the receipt's `SHARED_ADDITIONS:` line, so the next
+reader can see across the boundary.
 
 ## 5. A red test is a valid result
 

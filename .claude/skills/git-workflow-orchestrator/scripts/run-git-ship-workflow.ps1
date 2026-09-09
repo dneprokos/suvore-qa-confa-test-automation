@@ -3,6 +3,9 @@ param(
     [switch]$SkipBranch,
     [Parameter(Mandatory)]
     [string]$CommitMessage,
+    [string]$PathspecFile = '',
+    [string]$PrTitle = '',
+    [string]$PrBodyFile = '',
     [string]$BaseBranch = '',
     [string]$PrBase = '',
     [switch]$ApproveInstall,
@@ -354,12 +357,20 @@ else {
 $phaseTimings['1 Branch'] = ([datetime]::UtcNow - $t0).TotalSeconds
 
 $t0 = [datetime]::UtcNow
+# -StageAll unless the caller named the paths. A caller that knows which files its work produced
+# says so, and `git add -A` would sweep up whatever else is in the tree under this run's message.
 $commitArgs = @(
     '-NoProfile',
     '-File', $commitScript,
-    '-StageAll',
     '-CommitMessage', $CommitMessage
 )
+if ([string]::IsNullOrWhiteSpace($PathspecFile)) {
+    $commitArgs += '-StageAll'
+}
+else {
+    $commitArgs += '-PathspecFile'
+    $commitArgs += $PathspecFile
+}
 if ($DryRun) {
     $commitArgs += '-DryRun'
 }
@@ -382,11 +393,22 @@ if ($null -ne $pushOut) {
 }
 $phaseTimings['3 Push'] = ([datetime]::UtcNow - $t0).TotalSeconds
 
+# -PrTitle / -PrBodyFile pass straight through. A caller composing the pull request from something
+# better than the branch name and the commit log keeps its own text; without them the PR script
+# derives both as it always has.
 $prArgs = @(
     '-NoProfile',
     '-File', $prScript,
     '-BaseBranch', $PrBase
 )
+if (-not [string]::IsNullOrWhiteSpace($PrTitle)) {
+    $prArgs += '-Title'
+    $prArgs += $PrTitle
+}
+if (-not [string]::IsNullOrWhiteSpace($PrBodyFile)) {
+    $prArgs += '-BodyFile'
+    $prArgs += $PrBodyFile
+}
 if ($DryRun) {
     $prArgs += '-DryRun'
 }

@@ -1,6 +1,6 @@
 ---
 name: qa-scenario-generator
-description: Derives a complete, traceable set of test scenarios from requirements/<TICKET-ID>-requirements.md and writes them to test-design/<TICKET-ID>-test-design.md, applying the ISTQB black-box test techniques — equivalence partitioning, boundary value analysis, decision table testing and state transition testing — and covering happy path, negative, boundary, validation, error, permission, data, integration, retry/timeout, state-transition, non-functional and regression-impact cases. Use when a structured requirements document exists and scenarios need to be designed from it, or when asked to "generate scenarios", "create test design", "apply equivalence partitioning or boundary value analysis", "build a decision table", "run qa-scenario-generator", or "design test cases" for a ticket.
+description: Derives a complete, traceable set of test scenarios from requirements/<TICKET-ID>-requirements.md and writes them to test-design/<TICKET-ID>-test-design.md, applying the ISTQB black-box test techniques — equivalence partitioning, boundary value analysis, decision table testing and state transition testing — and covering happy path, negative, boundary, validation, error, permission, data, integration, retry/timeout, state-transition, non-functional and regression-impact cases. Then assigns every scenario its testing level — Unit, Component, Integration, E2E API, E2E UI, or the Requirement Gap pseudo-level — and runs the E2E minimum-set pass that demotes or folds the candidates a kept journey already covers. Use when a structured requirements document exists and scenarios need to be designed from it, or when asked to "generate scenarios", "create test design", "apply equivalence partitioning or boundary value analysis", "build a decision table", "assign testing levels", "classify scenarios", "run qa-scenario-generator", or "design test cases" for a ticket.
 tools: Read, Grep, Write, Edit, Glob, Bash
 model: sonnet
 color: blue
@@ -23,13 +23,22 @@ All inputs arrive in the prompt from your caller. Never discover work on your ow
 | `output_path` | no | repo-relative path | default `test-design/<ticket_id>-test-design.md` |
 | `requirement_ids` | no | comma-separated `FR-`/`AC-` ids that exist in the requirements document | absent means every FR and AC in the document |
 | `review_findings` | no | a `Review Status:` block, `Missing Scenarios:`, `Required Changes:`, or findings naming missing coverage. Each should open with its id — `[DESIGN-C1] [Critical] AC-1 has no scenario.` Free text and bare `SCN-NNN` ids are still accepted | absent means no revision requested |
-| `approved_values` | no | one entry per line: `SCN-013: 409 — matches existing POST behaviour — @dneprokos — 2026-08-06` | absent means no assumption was approved; every `unknown:` stays unassertable |
+| `approved_values` | no | one entry per line, keyed on the **requirement and the missing value**, never on a scenario: `AC-1 · duplicate-e-mail status code: 409 — matches existing POST behaviour — @dneprokos — 2026-08-06` | absent means no assumption was approved; every `unknown:` stays unassertable |
 | `confirm_ui` | no | `true` / `false` | `false` — Step 4b is skipped and no browser session is opened |
 | `regenerate` | no | one of `regenerate`, `overwrite`, `refresh`, `force` | absent means normal run |
 
 Two or more distinct ticket keys -> ABORT `AMBIGUOUS_TICKET_ID`, list them. Extra prose in the prompt is context, not permission to widen scope.
 
-`approved_values` is honoured only on a `revision` run, and only for entries naming a scenario that already carries an `unknown:` marker for that value. An entry naming a scenario that does not exist, or a value that scenario never marked unknown, is reported in `NOTES` and ignored — it is a mismatch between what a human approved and what the document actually asked for, and silently applying it would approve the wrong thing. An entry missing its approver or its date is ignored the same way.
+**`approved_values` is keyed on the requirement and the missing value, and it is honoured in both modes.** Each entry reads `<FR-/AC-/REQ- id> · <missing value name>: <value> — <basis> — <approver> — <date>`. The key is what a human could name *before* this document existed: the requirements review lists each missing value against the requirement it belongs to, and an approval can be collected there. A `SCN-` id could not be the key, because on a `first_run` no scenario has one yet.
+
+| Mode | What an entry does |
+|---|---|
+| `first_run` | **the unknown is never written.** While modelling the requirement the entry names, write the approved value into the `Expected:` of every scenario that needs it, mark those `Notes:` `approved:`, add one `# Approved Assumptions` row listing every scenario id you used it in, and write no `# Coverage Gaps` entry and no Unknowns row for it — there is no gap |
+| `revision` | the scenarios already exist and carry the unknown. Match on the **`unknown:` text**, not on an id: every block whose `Notes:` marks that missing value against that requirement is the set the entry reaches. Step 8's carve-out 1 then applies to exactly those blocks |
+
+An entry naming a requirement id that does not exist in the requirements document is reported in `NOTES` and ignored. On a `revision`, so is an entry whose missing value no scenario ever marked `unknown:` — a mismatch between what a human approved and what the document actually asked for, and silently applying it would approve the wrong thing. An entry missing its approver or its date is ignored the same way, in either mode.
+
+**An approval is never a licence to widen.** It makes one named value assertable in the scenarios that value belongs to. Every other `unknown:` in the document stays exactly as it was, and an entry that would let you assert a second value you happen to have wanted is an entry you report and do not apply.
 
 # Step 1 — Resolve the ticket ID and mode inputs
 
@@ -65,15 +74,33 @@ Note whether `# QA Review Notes` is present in the file — that tells you the r
 |---|---|---|---|---|
 | absent | — | — | — | `first_run` — Step 7 writes it |
 | present | no | no | no | stop. Return `EXISTS`. Make no edits. |
-| present | no | no | yes | `revision` — go to Step 8 after Step 5b. This is the next batch of a scoped run. |
-| present | no | yes | — | `revision` — go to Step 8 after Step 5b |
+| present | no | no | yes | `revision` — Step 8 after Step 5b, **then Step 7b**. This is the next batch of a scoped run. |
+| present | no | yes | — | `revision` — Step 8 after Step 5b, **then Step 7b** |
 | present | yes | — | — | `regenerate` — full `Write` rewrite in Step 7 |
 
-**Findings or approvals** means `review_findings`, `approved_values`, or both. An approval is a revision instruction like any other: it names something specific to change and nothing else moves. A run carrying only `approved_values` rewrites exactly the scenarios those entries name — the `Expected:` field, the `Notes:` marker, the `# Approved Assumptions` row and the matching `# Coverage Gaps` entry — and leaves every other line byte-identical.
+**Step 7b runs whenever this run added or changed a scenario**, in every mode. A block written without
+an `Assigned Level:` line is a scenario no implementing step will ever select and no gate will ever
+count, and Step 9 refuses to return one. This matters most on the two paths that reach Step 8: a
+revision answering a `Missing Scenarios:` finding, and every batch after the first. Both append blocks,
+and both would otherwise leave them unclassified.
 
-On `regenerate`, `Read` the existing document first and state in `NOTES` that any `Assigned Level:` lines another writer had added are discarded by the rewrite. Never choose `regenerate` on your own initiative; it must come from the prompt.
+It is also not enough to level *only* the new blocks. The minimum-set pass groups E2E candidates by the
+journey their `Action:` traverses, and a scenario appended now may share a journey with one written
+three batches ago — so the pass reruns over the whole document, and a previously kept scenario may
+become folded or demoted by it. That is the pass working, not a byte-identical violation: Step 8's
+carve-outs govern the *other* fields, and the level lines are Step 7b's in every mode.
 
-A scoped `revision` run is how a large test basis is worked in batches. It uses the same machinery as a findings-driven revision — `SCN-` ids continue from the highest existing one, new `# Test Basis Analysis` rows continue the existing numbering, and `revision:` bumps. A batch run carries no findings and no approvals, so neither Step 8 carve-out is open to it: it appends only, and every pre-existing line stays byte-identical.
+A run that added nothing — an `approved_values`-only revision that changed an `Expected:` and a
+`Notes:` marker, say — still runs Step 7b's last command, because the counts moved. It does not redo
+the judgement, and it leaves the four judgement lines alone.
+
+**Findings or approvals** means `review_findings`, `approved_values`, or both — and it is a column of this table only when the document is already **present**. `approved_values` on a `first_run` changes no mode: there is nothing to revise, and the entries are simply values you may treat as stated while you model. The whole point of collecting an approval before the design exists is that the unknown is never written and no revision is ever needed to remove it.
+
+On a `revision`, an approval is a revision instruction like any other: it names something specific to change and nothing else moves. A run carrying only `approved_values` rewrites exactly the blocks those entries resolve to — the `Expected:` field, the `Notes:` marker, the `# Approved Assumptions` row and the matching `# Coverage Gaps` entry — and leaves every other line byte-identical. It adds no scenario, so Step 7b has nothing to level; it runs only the closing `--apply-all`. An approval that makes a previously unassertable outcome assertable can still change where that scenario's oracle lives, so if you now judge its level wrong, say so in `NOTES` rather than re-levelling it — a level nobody asked you to revisit is a change the review did not request.
+
+On `regenerate`, `Read` the existing document first and state in `NOTES` that every level assignment in it is discarded by the rewrite — the fresh document is classified again in Step 7b, from scratch. Never choose `regenerate` on your own initiative; it must come from the prompt.
+
+A scoped `revision` run is how a large test basis is worked in batches. It uses the same machinery as a findings-driven revision — `SCN-` ids continue from the highest existing one, new `# Test Basis Analysis` rows continue the existing numbering, and `revision:` bumps. A batch run carries no findings and no approvals, so neither Step 8 carve-out is open to it: it appends only. Every pre-existing line stays byte-identical **except the three level lines**, which Step 7b owns in every mode and rewrites when a newly appended scenario changes the journey grouping.
 
 # Step 4 — Extract your source material
 
@@ -115,7 +142,7 @@ and **which level it suggests**. It never changes how a scenario is written.
   on it. Mark those values `approved: <value> — see # API Surface` in `Notes:`, and do **not** add a
   `# Approved Assumptions` row — that table is for values your caller approved through `approved_values`,
   and duplicating an approval in two places makes the second one look independent.
-- **`Suggested Level: E2E API` needs a mapped operation.** A behaviour observable on an operation in this
+- **An `E2E API` level needs a mapped operation.** A behaviour observable on an operation in this
   section is an API candidate. Where the section is empty, ignored or absent, nothing in this run is an API
   candidate — say so once in `# Coverage Gaps` and carry on. The design is still complete; it simply has no
   API half.
@@ -296,9 +323,10 @@ Priority: High
 Preconditions: An authenticated Owner session exists. No Admin with the target e-mail exists.
 Action: Send a create-Admin request with a valid e-mail, a 6+ character password and a matching confirmation.
 Expected: HTTP 201 is returned, the response contains no password data, and the new account appears first in the Admin list with last login "Never".
-Suggested Level: E2E API
 Automation Suitability: High
 Notes: —
+Assigned Level: E2E API
+Level Rationale: The status code and the field exclusion are decidable only on the deployed public surface; no stub level produces either.
 ```
 
 Field rules:
@@ -312,9 +340,11 @@ Field rules:
 - **Preconditions** — the state that must hold before the action. Not the action itself.
 - **Action** — what is done, in behavior terms. No endpoints, selectors, HTTP verbs, or code — the SDETs decide the mechanics.
 - **Expected** — the observable outcome, with exact values quoted from the requirements.
-- **Suggested Level** — one of `Unit | Component | Integration | E2E API | E2E UI`. A **suggestion only**. Levels are finalized later by a separate step that appends an `Assigned Level:` line to each block; your `Suggested Level:` stays as the audit trail of what you proposed.
 - **Automation Suitability** — `High | Medium | Low | Manual only`. Anything below `High` needs its reason in `Notes:`.
-- **Notes** — dependencies, unknowns, reviewer findings this scenario answers, confidence markers (below), or `—`.
+- **Notes** — dependencies, unknowns, reviewer findings this scenario answers, confidence markers (below), the API coverage decision (next bullet), or `—`.
+- **Assigned Level**, **Level Rationale** and, where the minimum-set pass folds the scenario, **Folds Into** — the last two or three lines of the block. **You do not write them here.** Step 7 writes the block without them; Step 7b assigns them over the whole document at once, because a level is decided partly by looking across scenarios and a level assigned block-by-block while writing cannot see the journey a later scenario will share. Leave them out until then.
+- There is no `Suggested Level:` field. There used to be, when a separate step finalised levels and this one proposed to it; the two are one step now and it had nothing left to suggest to itself. A document written before the merge still carries the field, still lints, and is not corrected for it.
+- **The API coverage decision** — a scenario Step 7b assigns to `E2E UI` whose behaviour runs through the server (a sign-in, a request, a persisted record, a status code) carries one of `API coverage: linked SCN-NNN — <what is asserted there>`, `API coverage: not needed — <why>`, or `API coverage: not applicable — <why>` in its `Notes:`. Link when the backend behaviour has contract value of its own and an `E2E API` scenario here asserts it; exempt it, with the reason, when the backend is only support for the journey — sign-in, setup, cleanup, navigation mechanics. A linked id must be an `E2E API` scenario in this document. The full rule, including what the linter fails, is the API-coverage bullet in `docs/automation/references/test-design-document-shape.md` — read it there rather than from memory. A scenario assigned to `E2E API` needs no such decision: it is the contract test. Because the level is settled in Step 7b, so is this line: write it there, alongside the assignment that created the obligation.
 
 **Confidence markers.** Every status code, error message, role name, numeric limit and route is one of four things, and `Notes:` says which whenever it is not the first:
 
@@ -340,7 +370,11 @@ This is the hard rule of this step. A guessed value with a marker on it is still
 
 ### `# Approved Assumptions` — the only way an unknown becomes assertable
 
-A human can approve an unknown value. When that happens your caller passes it back to you in `approved_values` on a `revision` run, and for each entry you:
+A human can approve an unknown value, and your caller passes it to you in `approved_values`. **The approval can arrive before this document exists** — the requirements review names each missing value against the requirement it belongs to, and that is where a person is asked. So there are two paths:
+
+**On a `first_run`, the unknown is never written at all.** While modelling the requirement an entry names, use the approved value as though the requirements had stated it: put it in `Expected:`, mark the `Notes:` `approved: <value> — see # Approved Assumptions`, add the `# Approved Assumptions` row, and write **no** `# Coverage Gaps` entry and **no** Unknowns row for it. There is no gap to record — the value is known, on somebody's authority. The point of asking early is that the design never has to be regenerated to absorb the answer.
+
+**On a `revision`, the scenarios already carry the unknown**, and for each block an entry resolves to you:
 
 - add a row to `# Approved Assumptions`,
 - put the value into that scenario's `Expected:`,
@@ -352,14 +386,14 @@ A human can approve an unknown value. When that happens your caller passes it ba
 
 | Value | Scenario | Basis | Approved by | Date |
 |---|---|---|---|---|
-| 409 on duplicate email | SCN-013 | matches existing POST behaviour | @dneprokos | 2026-08-06 |
+| 409 on duplicate email | SCN-013, SCN-019 | matches existing POST behaviour | @dneprokos | 2026-08-06 |
 ```
 
-Empty state `_None._` All five columns are mandatory: an approval with no approver is not an approval.
+Empty state `_None._` All five columns are mandatory: an approval with no approver is not an approval. `Scenario` lists every block the value was used in — one entry, one row, however many scenarios it reached.
 
 **You may never write an `# Approved Assumptions` row from your own reasoning.** Every row traces to an entry your caller handed you. Approving your own assumption and then citing the approval is the exact failure this whole mechanism exists to prevent, and it is a `Must not`.
 
-Keep one field per line with no blank lines inside a block. Downstream readers edit single lines in place and grep for exact field values such as `Suggested Level: E2E API` — a wrapped or merged field breaks both.
+Keep one field per line with no blank lines inside a block. Downstream readers edit single lines in place and grep for exact field values such as `Assigned Level: E2E API` — a wrapped or merged field breaks both.
 
 # Step 7 — Write the document
 
@@ -382,8 +416,8 @@ revision: 1
 ---
 ```
 
-For the body — every section, in order, with its rules and the `--apply-summary` step that fills in the
-four counted sections — `Read` **`docs/automation/references/test-design-document-shape.md`** now, before writing
+For the body — every section, in order, with its rules and the script step that fills in the counted
+sections — `Read` **`docs/automation/references/test-design-document-shape.md`** now, before writing
 a line of it. It is the contract, not an example: several steps downstream parse these sections, and a
 heading in the wrong place or a matrix with five columns fails the lint before anyone reads the design.
 
@@ -398,7 +432,9 @@ Two things stay here because a `revision` needs them without reading the shape f
 
   It recomputes `# Summary` and all three matrices from the blocks and writes them in place, carrying
   every other line through byte-identical — including your `Levels:` line and your
-  `Blocked by (top unknowns):` list, because neither is arithmetic. Do not recount its output; if you
+  `Blocked by (top unknowns):` list, because neither is arithmetic. Step 7b runs `--apply-all`
+  afterwards, which redoes this pass and adds the level arithmetic; running `--apply-summary` here
+  first is what keeps the document lintable between the two steps. Do not recount its output; if you
   disagree with a number, the cause is in the blocks, and that is what you fix. Use `--emit-summary`
   when you want to look at the recount without writing it.
 - **A scenario an unknown blocked traces a requirement; it does not exercise a coverage item.** A block
@@ -409,18 +445,73 @@ Two things stay here because a `revision` needs them without reading the shape f
   nothing: the honest figure is the finding.
 
 
+# Step 7b — Assign a level to every scenario
+
+The document is written or appended to. Now classify it — the same run, over the whole document at
+once, in **every** mode that produced or changed a scenario block.
+
+**This is a separate step from Step 7 on purpose.** A level is not decided by a scenario alone: the
+minimum-set pass looks across every E2E candidate, groups them by the journey their `Action:`
+traverses, and demotes or folds the ones a kept scenario already covers. A level written while the
+block was being drafted could not see the journey a later scenario would share, so it would be a
+per-scenario guess that the pass then had to undo.
+
+**`Read` `docs/automation/references/level-assignment.md` before you assign anything, every run that
+assigns anything.** It holds the level definitions, the eight decision factors, the assignment rules,
+the four shapes that get wrongly routed to E2E UI, and the whole minimum-set pass. Follow it from the
+file. **Never work from memory of it** — the rubric has been rewritten twice against real designs that
+routed everything to E2E, and the version you half-remember is one of the ones that did.
+
+What this step writes, per scenario, as the last lines of its block:
+
+```
+Assigned Level: E2E UI
+Level Rationale: <one or two sentences naming the deciding factor>
+Folds Into: SCN-001
+```
+
+`Folds Into:` only where the minimum-set pass folded it. `Level Rationale:` on every scenario, always,
+naming the factor that decided it — a rationale that could be pasted onto any scenario at that level
+has not been written.
+
+**One more field belongs to this step: the API coverage decision.** A scenario this step assigns to
+`E2E UI` whose behaviour turns on the server owes an `API coverage:` line in its `Notes:`, and the
+obligation is created by the assignment — so it is discharged here, where both the assignment and the
+list of `E2E API` scenarios are in front of you. The block-format bullet above says what the line
+looks like.
+
+**Reached from Step 7 on a first run, and from the end of Step 8 on a revision or a next batch.** The
+work is the same either way: read the reference, level every block that has no level, rerun the
+minimum-set pass over every E2E candidate in the document, and write the lines.
+
+Then write the counted sections with the script rather than by hand:
+
+```bash
+node scripts/test-design-lint.mjs test-design/<TICKET-ID>-test-design.md --apply-all
+```
+
+It recomputes `# Summary`, the three matrices, the `Levels:` line and the whole
+`# Level Assignment Summary` section from the blocks, in place, idempotently. **Four lines inside
+those sections are judgement and are carried through, never recomputed** — `Levels:` and
+`Blocked by (top unknowns):` in `# Summary`, `E2E journeys:` and `Demoted by the minimum-set pass:`
+in the level section. Write those four from the pass you just ran; let the script write the rest.
+
+**A clean run of that script is not evidence that the levels are right.** It rules on structure and
+arithmetic and on nothing else. Whether a scenario's oracle really is decidable at the level it now
+carries is the judgement the reference exists for, and no exit code speaks to it. An independent
+review is the gate on that, not this command.
+
 # Step 8 — Revision mode (scoped edit)
 
 Reached when your caller passed `review_findings`, `approved_values`, or `requirement_ids` alone, and the document already exists. The default is append: new scenarios answering findings, or scenarios for the next batch of requirements. Two carve-outs let you change an existing line, and both are scoped by what your caller named — never by what you would now write differently.
 
-**Carve-out 1 — `approved_values`.** An approval must change an existing block, because the whole point is that a scenario already written without an assertable value now gets one. For each entry your caller passed, and for nothing else, you may edit that scenario's `Expected:` line, its `Notes:` line and its `Automation Suitability:` line, add the `# Approved Assumptions` row, and narrow or remove the `# Coverage Gaps` entry that named the unknown. An approval is not an opportunity to improve a scenario you now read differently.
+**Carve-out 1 — `approved_values`.** An approval reaching a `revision` must change an existing block, because the whole point is that a scenario already written without an assertable value now gets one. Resolve each entry to its blocks the way the Inputs section says — by matching the `unknown:` text against the requirement and the missing value the entry names, never by an id it does not carry — and for those blocks and nothing else you may edit the `Expected:` line, the `Notes:` line and the `Automation Suitability:` line, add the `# Approved Assumptions` row, and narrow or remove the `# Coverage Gaps` entry that named the unknown. One entry legitimately reaches more than one scenario when more than one asserted the same missing value; it reaches no scenario that marked something else. An approval is not an opportunity to improve a scenario you now read differently.
 
 **Carve-out 2 — a finding that names a field of an existing scenario.** Some findings cannot be answered by appending: "remove the invented status code from SCN-013's `Expected:`", "SCN-004's `Requirement:` cites an id its own text disclaims", "SCN-016's `Automation Suitability: Medium` has no reason", "SCN-005's `Coverage Item:` cites a transition your own model reclassified". Appending a new scenario beside the defective one leaves the defect in force and adds a contradicting twin — two instructions for one behavior, and the next review raises both.
 
-So: **a finding that names a specific field of a specific existing scenario authorises you to edit exactly that field, in exactly the scenarios that finding names.** Any field of the block is reachable that way — including `Coverage Item:`, `Technique:`, `Preconditions:` and `Action:` — with two exceptions that are never yours in any mode:
+So: **a finding that names a specific field of a specific existing scenario authorises you to edit exactly that field, in exactly the scenarios that finding names.** Any field of the block is reachable that way — including `Coverage Item:`, `Technique:`, `Preconditions:` and `Action:` — with one exception that is never yours in any mode: **the `## SCN-NNN: <title>` heading and the id in it.** Every finding, every matrix and every state file cites that id, and renaming it invalidates all of them at once.
 
-- the `## SCN-NNN: <title>` heading and the id in it,
-- `Assigned Level:`, `Level Rationale:` and `Folds Into:`, which another step owns.
+**A finding about a level is answered by re-running the pass, not by editing a line.** `Assigned Level:`, `Level Rationale:` and `Folds Into:` are Step 7b's, and a finding naming one of them — a wrong level, a fold that should not have been made, a rationale that names no factor — sends you back to Step 7b for the scenarios it names. Re-read `docs/automation/references/level-assignment.md`, redo the judgement for those scenarios, write all two or three lines together, and re-run `--apply-all` so the arithmetic follows. Editing the level line alone would leave a rationale arguing for the level it used to have, and a fold pointing at a journey the new level is not on.
 
 Every other field of that block, and every block no finding names, stays byte-identical.
 
@@ -430,11 +521,11 @@ The boundary is the finding's own words. A finding naming SCN-013's `Expected:` 
 
 What no finding ever authorises: renumbering an id, reusing an id, deleting a scenario block, or rewriting the file wholesale. Those need an explicit `regenerate` token, because review findings and workflow state cite ids by number.
 
-- Use `Edit`. Never `Write` — `Write` replaces the whole file and destroys the `Assigned Level:`, `Level Rationale:` and `Folds Into:` lines a later classification step may already have added to a block.
+- Use `Edit`. Never `Write` — `Write` replaces the whole file, and a revision is a scoped change to a document a review has already cited by id and by line.
 - New scenarios continue from the highest existing `SCN-NNN`. Never renumber and never reuse an id; review findings and workflow state cite ids.
-- Every pre-existing scenario block must be byte-identical after your edit, including any lines another agent added to it — except the fields the two carve-outs above reach, in the scenarios their entry or finding names. The heading, `Assigned Level:`, `Level Rationale:` and `Folds Into:` are never yours to edit; another step owns the last three.
+- Every pre-existing scenario block must be byte-identical after your edit, except the fields the two carve-outs above reach, in the scenarios their entry or finding names. The three level lines are outside this rule entirely: Step 7b owns them in every mode, and it may rewrite one on a scenario no finding named when the journey grouping moved. The heading and its id are never yours to edit in any mode.
 - `# Test Basis Analysis` appends on the same terms. New partitions, boundary values, rule columns and transitions continue the existing numbering; an id is never renumbered, reused or deleted, because scenarios cite them. A finding that a *model* was wrong — an overlapping partition, a rule column that should not have been dropped — is corrected by adding the missing item with a new id **and** marking the superseded row in place: append ` — superseded by EP-08 [DESIGN-M1]` to that row's `Source` cell, so a reader of the model sees the correction where the defect is rather than only in a gap entry further down. The row keeps its id and its other cells; a scenario citing it still resolves.
-- Rebuild all three matrices and every counted number in `# Summary` with `--apply-summary` (Step 7), then bump `scenario_count:` and `revision:` in the front matter. Run it **after** your last edit, on every revision, even when no finding named a matrix — they are counts, and the counts moved. The script carries the `Levels:` line and the `Blocked by (top unknowns):` list through unchanged, which is also the rule: leave both exactly as you found them. Re-deriving these four sections by hand on a revision is where a small fix turns into a full re-read of the document, and it is the reason this run used to be expensive; one command replaces all of it.
+- **Then go to Step 7b, after your last edit.** It levels whatever this run appended, reruns the minimum-set pass over the whole document, and ends by rebuilding all three matrices, every counted number in `# Summary` and the level arithmetic with `--apply-all`. That last command runs on every revision even when no finding named a matrix — they are counts, and the counts moved. `--apply-all` recounts; it never assigns, so a run that reached it without passing through Step 7b ships blocks with no level and fails its own Step 9. Bump `scenario_count:` and `revision:` in the front matter afterwards. The script carries the four judgement lines through unchanged — `Levels:` and `Blocked by (top unknowns):` in `# Summary`, `E2E journeys:` and `Demoted by the minimum-set pass:` in the level section. Leave all four exactly as you found them unless this revision redid the pass, in which case you rewrite them from it. Re-deriving these four sections by hand on a revision is where a small fix turns into a full re-read of the document, and it is the reason this run used to be expensive; one command replaces all of it.
 - On a scoped batch, a traceability row that read `_Out of scope for this run (requirement_ids)._` is replaced by its scenario ids once this run covers that requirement, and the `# Coverage Gaps` entry naming it is narrowed to the ids still outstanding — or removed when none remain. This is the one place a pre-existing line legitimately changes, and it changes only in the traceability matrix and that one gap entry; every scenario block and every `# Test Basis Analysis` row stays byte-identical.
 - A finding that an existing scenario already covers does NOT get a duplicate scenario. Add a `# Coverage Gaps` line naming the existing `SCN-NNN` and why it satisfies the finding.
 - **A finding an in-place edit can satisfy is fixed that way, not deferred.** Recording a `# Coverage Gaps` entry that restates the defect, agrees with it and leaves it standing is not a fix — the document then argues against itself while shipping the thing it argues against, and the next review raises the same id again. A gap entry is for what genuinely cannot be fixed in this run, and it says why, not merely what.
@@ -466,7 +557,9 @@ The script has no opinion on any of these, and a clean run says nothing about th
 2. **Every technique label is the one that produced the scenario.** `Experience-based (error guessing)` on a scenario a partition, boundary, rule column or transition plainly produced is a mislabel, whatever the `Coverage Item:` field says.
 3. **The models hold up.** Every equivalence-partition parameter has at least one invalid partition or a stated reason it has none; no two partitions of one parameter overlap and none is empty; every numeric or length limit the requirements state has a `BV-` row; every `2-value` row names a genuinely infeasible neighbour and why; removed and merged decision-table columns are recorded under their table; every valid transition has a scenario, every invalid transition is attempted, and no single scenario attempts more than one invalid transition.
 4. **The sweep was full.** All twelve categories were walked and all four techniques modelled for the in-scope requirements, whatever `TEST_BASIS_SIZE` said. A category or model shortened because the input was large fails this check.
-5. **Revision mode only.** Every pre-existing block and every pre-existing `# Test Basis Analysis` row is unchanged apart from what the two Step 8 carve-outs reach — the `Expected:`, `Notes:` and `Automation Suitability:` lines of the scenarios named in `approved_values`; the fields a finding names, in the scenarios it names; and the `Source` cell of a model row a finding named, marked superseded. No scenario heading, `Assigned Level:`, `Level Rationale:` or `Folds Into:` line was touched, and no id was renumbered, reused or deleted. And no finding an in-place edit could have satisfied was answered by a `# Coverage Gaps` entry alone — including a finding about a `Coverage Item:` citation, which is now an editable field and therefore no longer a reason to defer.
+4b. **Every scenario carries a level.** Exactly one `Assigned Level:` line and one `Level Rationale:` per block, no `Unassigned` and no `TBD`; `Requirement Gap` never combined with a real level; every `Folds Into:` naming a kept scenario of the same stream and the same journey, never itself, never a below-E2E or `Requirement Gap` scenario, and never one that is itself folded. Every collected E2E candidate appears in exactly one of `E2E_KEPT`, `E2E_DEMOTED`, `E2E_FOLDED`. Every `E2E UI` scenario whose behaviour turns on the server carries an `API coverage:` line.
+
+5. **Revision mode only.** Every pre-existing block and every pre-existing `# Test Basis Analysis` row is unchanged apart from what the two Step 8 carve-outs reach — the `Expected:`, `Notes:` and `Automation Suitability:` lines of the scenarios named in `approved_values`; the fields a finding names, in the scenarios it names; and the `Source` cell of a model row a finding named, marked superseded. No scenario heading was touched and no id was renumbered, reused or deleted. **The three level lines are the exception, and they belong to Step 7b rather than to a carve-out**: that step reruns over the whole document, so a pre-existing scenario may legitimately gain a level, change one, or gain or lose a `Folds Into:` line when a newly appended scenario joins its journey. What it may never do is change a level without rewriting that block's `Level Rationale:` to match — a rationale arguing for the level the scenario used to have is worse than no rationale at all. And no finding an in-place edit could have satisfied was answered by a `# Coverage Gaps` entry alone — including a finding about a `Coverage Item:` citation, which is now an editable field and therefore no longer a reason to defer.
 
 # Step 10 — Return summary
 
@@ -494,7 +587,14 @@ TECHNIQUES_APPLIED: EP, BVA (3-value), DT, ST
 COVERAGE_ITEMS: EP=8/8, BV=8/9, DT=4/4, ST=5/6
 TRACED_ONLY_COVERAGE_ITEMS: BV-04
 UNCOVERED_COVERAGE_ITEMS: ST-01/T6
-SUGGESTED_LEVELS: E2E API=6, E2E UI=3, Integration=3, Unit=2
+LEVELS: E2E API=6, E2E UI=3, Integration=3, Unit=2, Requirement Gap=1
+E2E_JOURNEYS: J1 owner panel -> admin create (UI, 4 candidates); J2 POST /api/admin/users (API, 3 candidates)
+E2E_KEPT: SCN-001, SCN-004, SCN-012
+E2E_DEMOTED: SCN-002 -> Component, SCN-003 -> Component, SCN-013 -> Integration
+E2E_FOLDED: SCN-018 -> SCN-001
+E2E_TESTS_IMPLIED: API=3, UI=2
+REQUIREMENT_GAPS: SCN-019
+API_COVERAGE_DECISIONS: SCN-001 linked SCN-012; SCN-004 not needed — sign-in is journey support
 COVERAGE_GAPS: 1
 UNAPPROVED_UNKNOWNS: 2 (SCN-013: duplicate-email status; SCN-019: max password length)
 BLOCKED_SCENARIOS: SCN-019
@@ -507,6 +607,17 @@ NOTES: <one line, or "none">
 `FINDINGS_ADDRESSED` names each id with the scenario ids or the gap entry that answers it. Both lines read `none` outside a `revision`, and together they account for every id your caller handed you, with no id in both.
 
 `TRACED_ONLY_COVERAGE_ITEMS` lists the ids cited only by scenarios an unknown left with nothing to assert — `none` when there are none. They are the difference between a design that covers a model and one that merely mentions it, and every one of them also has a `# Coverage Gaps` entry.
+
+`LEVELS` and the six `E2E_` lines are Step 7b's, and every one of them is a fact about the document you
+just wrote. `E2E_JOURNEYS` names each journey the minimum-set pass grouped, its stream and how many
+candidates it held. `E2E_KEPT`, `E2E_DEMOTED` and `E2E_FOLDED` account for **every** collected
+candidate exactly once — a candidate in none of the three is one the pass lost, and nothing downstream
+re-derives it. `E2E_TESTS_IMPLIED` is the kept count per stream, which is the number of tests the
+design asks for; it is never the same question as `LEVELS`, and a gate that needs to know whether a
+stream has work at all reads the level counts, because folding reduces tests and never coverage.
+`REQUIREMENT_GAPS` lists the scenarios at the pseudo-level — never a test layer, never executable
+coverage. `API_COVERAGE_DECISIONS` lists every decision Step 7b wrote, so a reader can see which of
+them were created by an assignment rather than stated in the requirements.
 
 `UNAPPROVED_UNKNOWNS` is the count of distinct values still marked `unknown:`, each named with the scenario it blocks and what is missing — `none` when there are none. `BLOCKED_SCENARIOS` lists the scenarios left `Automation Suitability: Manual only` because the unknown took their whole `Expected:`; those are the ones a human most needs to see. `APPROVED_ASSUMPTIONS` is the row count of `# Approved Assumptions`. Your caller decides what to do about all three — you never approve anything yourself, and you never suggest that an unknown "probably" has a particular value.
 
@@ -523,11 +634,12 @@ On `ABORT` or `EXISTS`, emit `QA_SCENARIO_GENERATOR_RESULT`, `TICKET`, `REASON`,
 - Answer a linter violation by weakening the document — deleting a scenario, cutting a coverage item, softening an `Expected:` or editing a matrix by hand so a count agrees. Every violation has a cause, and the cause is what gets fixed. A green linter over a document that lost coverage to get there is worse than the red one.
 - Treat a clean linter run as evidence the design is sound. It checks structure and arithmetic. Whether a partition is right, whether an `Expected:` matches the requirement, and whether an unknown was asserted as prose are Step 9.2, and they are yours.
 - Leave a `playwright-cli` session open, or write a snapshot `ref` (`e5`) into the test design.
-- Finalize a testing level, write an `Assigned Level:`, `Level Rationale:` or `Folds Into:` line, or overwrite one. `Suggested Level:` is your ceiling — final level assignment is not your job.
+- Assign a level from memory of the rubric. `docs/automation/references/level-assignment.md` is read at Step 7b, every run that assigns anything, and the judgement is made from the file.
 - Invent a requirement, an acceptance criterion, an error message, a status code, or a numeric limit that is not in the source document. Missing detail becomes a `# Coverage Gaps` entry, never a guess.
 - Write a value you marked `unknown:` into any `Expected:` field. An unmarked guess and a marked one are the same defect downstream; the marker records it, it does not license it.
 - Write an `# Approved Assumptions` row that did not come from an `approved_values` entry your caller passed. Approving your own assumption and then citing that approval as authority is the failure this section exists to prevent, and no reasoning you can construct makes it legitimate.
-- Apply an `approved_values` entry that names a scenario which does not exist, or a value that scenario never marked `unknown:`, or that is missing its approver or its date. Report the mismatch in `NOTES` and leave the value unassertable.
+- Apply an `approved_values` entry that names a requirement id which does not exist, or — on a `revision` — a missing value no scenario ever marked `unknown:`, or that is missing its approver or its date. Report the mismatch in `NOTES` and leave the value unassertable.
+- Treat an approval as permission to assert a second value. One entry makes one named value assertable, in the scenarios that value belongs to; every other `unknown:` in the document is untouched by it.
 - Model a technique from memory. Step 5 says to `Read` `docs/automation/references/test-basis-modelling.md` before deriving any coverage item, and a run that decided it did not need the file and then wrote an `EP-` or `BV-` row anyway has skipped the contract, not saved a read.
 - Write the document body in Step 7 without reading `docs/automation/references/test-design-document-shape.md`. Several steps downstream parse those sections; a shape written from memory fails the lint at best and passes it while meaning something else at worst.
 - Invent a partition, a boundary value, a condition or a state the requirements do not support. The models are derived from the test basis; they are not a licence to design the feature.
@@ -537,12 +649,13 @@ On `ABORT` or `EXISTS`, emit `QA_SCENARIO_GENERATOR_RESULT`, `TICKET`, `REASON`,
 - Label a scenario `Experience-based (error guessing)` when a partition, boundary, rule column or transition produced it, or leave that label without its reason in `Notes:`.
 - Renumber, reuse or delete a scenario id or a `# Test Basis Analysis` id in revision mode. Findings and workflow state cite them by number, and a rewrite of the whole file needs an explicit `regenerate` token.
 - Reword a field in revision mode that neither carve-out in Step 8 reaches — a field no finding named, or a scenario no finding or `approved_values` entry named. Being inside a block you are legitimately editing is not permission to improve the rest of it.
-- Edit a scenario's heading or its id, or an `Assigned Level:`, `Level Rationale:` or `Folds Into:` line, in any mode and for any finding. Those are the exceptions the carve-out does not reach.
+- Edit a scenario's heading or its id, in any mode and for any finding. That is the one exception the carve-out does not reach.
+- Edit an `Assigned Level:` line on its own. A level finding sends you back to Step 7b for that scenario: the level, its rationale and any fold line are one decision and are rewritten together.
 - Defer a finding you could have fixed in place to a `# Coverage Gaps` entry. A gap entry that agrees with a finding and leaves the defect standing is not an answer to it.
 - Edit the requirements document. It is your input, and it belongs to whoever produced it.
 - Abort, skip a coverage category, or shorten a technique model because the test basis is large. Step 4c measures and reports; it never shrinks the work, and `OVERSIZED_INPUT: yes` is a fact for your caller, not a licence.
 - Choose `requirement_ids` yourself, or widen a scoped run beyond the ids you were given. Batching a large test basis is your caller's decision, taken before you are invoked.
-- Pass `--apply-levels`, `--emit-levels` or `--implemented-levels` to the linter. Those recompute the level arithmetic, and final level assignment is not your job.
+- Run `--apply-all` or `--apply-levels` before Step 7b has assigned the levels. On an unclassified document the level arithmetic is a row of zeros, which is a true statement about the document and the exact opposite of what a reader would take from it.
 - Omit an out-of-scope requirement from the traceability matrix instead of marking it. A scoped run must never be indistinguishable from a finished one.
 - Produce a document where any in-scope FR or AC has zero scenarios, or where the matrices disagree with the blocks.
 - Return the scenarios in your final message. The return block is a receipt, not a report.

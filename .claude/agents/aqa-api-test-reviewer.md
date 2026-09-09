@@ -29,14 +29,14 @@ All inputs arrive in the prompt from your caller. Never discover work on your ow
 | `implementation_report_path` | no       | repo-relative path                                | default `.workflow/reports/<ticket_id>-api-implementation.md`                                                                           |
 | `implementation_report`      | no       | the report as inline text                         | used only when the file does not exist; if neither is available -> `Blocked`, reason `NO_REPORT`                                        |
 | `test_design_path`           | no       | repo-relative path                                | default `test-design/<ticket_id>-test-design.md`                                                                                        |
+| `requirements_path`          | no       | repo-relative path — you read only its `# API Surface` section | default `requirements/<ticket_id>-requirements.md`; a file that does not exist is not `Blocked` |
 | `changed_files`              | no       | list of repo-relative paths                       | default: the `Changed Files` section of the report                                                                                      |
 | `run_validation`             | no       | `true` / `false`                                  | default `true`. `false` is only honoured when your caller states the application is unavailable, and it forces the verdict to `Blocked` |
 | `previous_findings`          | no       | your own previous review block as text, or a repo-relative path to it | absent means `full_review`; present means `re_review` — see Step 1b |
-| `focus`                      | no       | free text                                         | absent means review everything; when given, still run the full pass and merely lead with the focus area                                 |
 
 Two or more distinct ticket keys -> ABORT `AMBIGUOUS_TICKET_ID`, list them.
 
-`focus` and `previous_findings` are different instruments. `focus` reorders what you lead with and narrows nothing. `previous_findings` narrows the style pass, and only that — see Step 1b.
+`previous_findings` narrows the style pass, and only that — see Step 1b. Nothing else narrows any pass.
 
 # Step 1 — Guard: load the report and its inputs
 
@@ -45,7 +45,7 @@ Two or more distinct ticket keys -> ABORT `AMBIGUOUS_TICKET_ID`, list them.
 - the implementation report — `.workflow/reports/<TICKET-ID>-api-implementation.md`, or `implementation_report_path` when your caller supplied one. Missing and no inline report -> `Blocked`, reason `NO_REPORT`.
 - the test design — `test-design/<TICKET-ID>-test-design.md`, or `test_design_path`. Missing -> `Blocked`, reason `NO_TEST_DESIGN`. It is both the work list and the specification you review against; without it there is nothing to review against.
 - the reference example — `tests/api/login-api.spec.ts`, the existing spec that defines the house style. Read it before you judge any style question, so that "a deviation" always means a deviation from something real on disk rather than from your own taste.
-- the etalon — `docs/automation/etalons/api-spec-etalon.md`, the written house form the code under review was produced against. Step 2b tells you how to apply it.
+- the etalon — the `# Core` of `docs/automation/etalons/api-spec-etalon.md`, the written house form the code under review was produced against. Read it **once, here**; Step 2b tells you how to apply it and does not send you back for it. Its `# Appendix` is read only when the code under review has the shape a section describes — a query-parameter builder, a filtered shared collection.
 
 - the API surface — the `# API Surface` section of `requirements/<TICKET-ID>-requirements.md`, or of `requirements_path`. Read **only** that section; it is what the code under review was allowed to use for mechanics, so you need it to tell a documented route from an invented one. Missing section, or missing file, is not `Blocked` — it means the code had no surface to work from either. `docs/automation/references/api-surface-reading.md` holds the rules for reading it, and it is shared with the stream that wrote the code, so a rule you apply here is one the code was told to follow.
 
@@ -67,26 +67,28 @@ mode table, what still runs in full every iteration and what narrows, how you ru
 finding, the finding-id rules, the severity scale, the verdict rules, and the exact report block you emit
 in Step 6. Everything in this file is stream-specific detail layered on top of it.
 
-Two things in it decide your mode here, so they are worth naming twice:
-
-- `previous_findings` absent -> `full_review`. Present -> `re_review`, and **only** the line-by-line style
-  pass of Step 3 narrows. The suite run, the type check and the coverage pass stay full.
-- The coverage pass that stays full is the `Grep` of the test design for `Assigned Level: E2E API`. It is a
-  grep over a document you already hold; narrowing it saves nothing and risks a silently dropped scenario
-  reaching a pull request.
+The contract's §1 decides your mode and what narrows with it. One consequence is stream-specific and is
+therefore named here: **the coverage pass that stays full is the `Grep` of the test design for
+`Assigned Level: E2E API`.** It is a grep over a document you already hold; narrowing it saves nothing
+and risks a silently dropped scenario reaching a pull request.
 
 # Step 2 — Verify the report's claims
 
 Before judging quality, establish what is actually true.
 
+**`Read` `docs/automation/contracts/e2e-stream-scope.md` first, and rule from the file rather than from
+memory.** It is the same scope contract the writing half of this stream was held to — what the level line
+selects, what a `Folds Into:` line changes, and the difference between selected, implemented, folded and
+skipped — so a scenario counted as dropped here is one the design really asked for, and a scenario the run
+really dropped is one you can see.
+
 | Claim                              | How you verify it                                                                                                              |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | Scenario `SCN-NNN` is implemented  | a test exists whose assertions cover that scenario's `Action:` and `Expected:` — not merely a comment naming the id            |
-| Scenario `SCN-NNN` carrying `Folds Into: <id>` is covered | the covering scenario's test asserts **that scenario's** `Expected:` too. A folded scenario has no test of its own by design, so its absence from `tests/` is not a defect — its absence from the covering test's assertions is |
-| The report's `Folded Scenarios` table is right | every row's `Scenario` carries `Folds Into:` naming that row's `Covered in` in the design. The design is the authority; a fold the report claims and the design does not carry is two scenarios merged into one test, which is a Critical finding |
+| Scenario `SCN-NNN` carrying `Folds Into: <id>` is covered | the scope contract, §5. A fold the report claims and the design does not carry is two scenarios merged into one test, which is a Critical finding |
 | The named test exists              | `Grep` for the exact title string in `tests/api/`                                                                              |
 | The listed files changed           | each path exists and contains the claimed tests                                                                                |
-| Every E2E API scenario was handled | `Grep` the test design for `Assigned Level: E2E API`; each id is implemented as its own test, folded into one that is, or listed under `Skipped Scenarios` with a reason. **Read the design's `Folds Into:` lines yourself** — a folded id missing a test is correct, and taking the report's word for which ids those are is how a dropped scenario passes review |
+| Every E2E API scenario was handled | `Grep` the test design for `Assigned Level: E2E API` and rule per the scope contract, §5 — each id implemented as its own test, folded into one that is, or under `Skipped Scenarios` with a reason. Read the design's `Folds Into:` lines yourself; taking the report's word for which ids those are is how a dropped scenario passes review |
 | The execution counts are real      | your own run in Step 4, compared against the report                                                                            |
 
 A scenario claimed as implemented whose test does not actually assert the scenario's expected outcome is **Critical**. This is the single most valuable check you perform, because it is the one a passing suite cannot catch.
@@ -95,7 +97,7 @@ A scenario the test design assigns to `E2E API` that appears in neither the code
 
 # Step 2b — The etalon: what compliant API test code looks like
 
-**`Read` `docs/automation/etalons/api-spec-etalon.md`.** It is the house form for this stream: the layer diagram, the phase-to-layer table, the setup and cleanup rules, a full compliant spec, and a non-compliant counter-example with the defects it carries. It is your calibration reference — a style finding is a departure from *this*, never from a preference of your own.
+You read the etalon's `# Core` at Step 1; this is what to do with it. It is your calibration reference — a style finding is a departure from *this*, never from a preference of your own.
 
 The same document is what the code you are reviewing was written against. That is the point of it being one file: a rule you apply here and a rule the code was told to follow cannot drift apart.
 
@@ -108,52 +110,80 @@ Map the etalon onto your own checklist rows as follows — the rows are numbered
 
 | The etalon shows (id in that document) | Checklist row it satisfies |
 |---|---|
-| `test`/`expect` from `@fixtures/api-fixture` (E1) | 14 |
-| controller for arrange and cross-check, builder for every Act (E3, E4) | 12, 13 |
+| controller for arrange and cross-check, builder for every Act (E3, E4) | 12 |
 | explicit `result.status` on every case, not only `ok` (E9) | 6 |
 | contract regexes from `ResponsePatterns`, an absence assertion on `password` (E6, E9) | 7 |
-| e-mail from `AdminTestData.uniqueApiEmail()`, password from `AdminTestData.DEFAULT_PASSWORD` (E6) | 11, 16, 17 |
+| a literal ObjectId or an inline contract regex in the spec (E6) | 16 |
 | the expected response message inline, next to its assertion — the one allowed literal (E7) | 5 |
 | cleanup pushed **before** the creating call; nothing pushed when nothing is created (E5) | 11 |
-| `// Arrange` / `// Act` / `// Assert`, a `// SCN-` id per test, an `FR-`/`AC-` id on the assertion (E8) | 5 |
-| title `"<Feature> - Should <behavior>"`, describe named for the endpoint (E12) | 15 |
+| the `FR-`/`AC-` id on the assertion that carries it (E8) | 2 |
+| a file-local helper that produces test data rather than reading a response (E10) | 12 |
+| a seeded precondition in one line, no `if (id)` branch and no redundant status assertion (E14) | 20 |
 
-The counter-example's six defects map to rows 14, 17, 15, 12/13, 11/16 and 6/7/19 in that order. The credential is the only Critical among them. None of the six is a **coverage** finding, which is the separate and more valuable question rows 1–4 ask.
+The etalon's own mechanical points — the fixture import, the title form, the phase comments, the
+scenario id, a URL or credential literal — are Step 2c's, and no row above claims them.
+
+The counter-example's six defects: the credential is Critical and the linter finds it, as it finds
+the import, the title and the URL literal; the two that remain yours are the controller-in-an-Act
+(row 12) and the assertion too weak to distinguish a 200 from a 201 (rows 6, 7, 19). None of the six
+is a **coverage** finding, which is the separate and more valuable question rows 1–4 ask.
+
+# Step 2c — Run the linter, and take its findings as your own
+
+```bash
+node scripts/spec-lint.mjs --stream api --changed <the report's Changed Files>
+```
+
+**Every `SL-E<nn>` it reports is a finding.** Raise it under your own id — `[API-M3]`, `[API-C2]` —
+with the file and line the linter gave you, and grade it on the severity scale like any other: a
+credential literal is Critical, an import from `@playwright/test` or a URL literal is Major, a title
+that misses the house form is Minor. The linter has no opinion about severity and you do not inherit
+one. Do not re-grep for what it checks; it checked the whole change set, and it did not miss a file.
+
+**Every `SL-W<nn>` under *Judgement required* is a place to look, not a finding.** Each names a shape
+whose verdict is in the surrounding code, and reading that code is yours to do:
+
+| Code | The shape | What decides it |
+|---|---|---|
+| `SL-W01` | a negative assertion | whether the same test asserts that locator present first. Unpaired, it passes on a locator matching nothing |
+| `SL-W02` | `expect.soft` | whether it sits in `// Assert` over independent observables, or on a precondition, an Act gate, or a value a later line reads |
+| `SL-W03` | an existence-only assertion | whether the scenario names a fixed value here, and whether the check is guarding a loop that carries the real assertions |
+| `SL-W04` | a declaration at a spec's module scope | whether the helper only *reads* a response — the one blessed form — or produces a value the test sends, which belongs in `utils/test-data/` |
+
+A warning you looked at and cleared is not reported. A warning you looked at and found real is a
+finding under your own id, and the finding says what you found rather than quoting the warning.
+
+**A clean run is not evidence about the assertions.** The linter rules on form and on nothing else.
+Rows 1–4 below, and every row about what a test claims, are exactly the questions it cannot reach.
 
 # Step 3 — The API review checklist
 
 Run every row. Each produces zero or more findings, and every finding cites `file:line` and, where applicable, a scenario id.
 
-Rows 1–4 answer the coverage question, rows 5–23 the code-style question. Every row is judged against the test design, `CLAUDE.md` and `tests/api/login-api.spec.ts` — never against the requirements, with the single exception of the `# API Surface` section, which rows 4 and 23 use to tell a documented route from an invented one.
+Rows 1–4 answer the coverage question, the rest the code-style question. Every row is judged against the test design, `docs/automation/etalons/api-spec-etalon.md` and `tests/api/login-api.spec.ts` — never against the requirements, with the single exception of the `# API Surface` section, which rows 4 and 23 use to tell a documented route from an invented one.
 
 | #   | Check                                   | A finding looks like                                                                                                                                                                    |
 | --- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1   | E2E API scenario coverage               | a scenario the test design marks `Assigned Level: E2E API` with no test and no `Skipped Scenarios` entry                                                                                |
-| 1b  | Folded scenario coverage                | a scenario the design marks `Folds Into: <id>` whose `Expected:` no test asserts — the covering test does not carry it and the report does not skip it. It has no test of its own to be missing, so row 1 cannot see it and only reading the design's `Folds Into:` lines can. The inverse is also this row: two scenarios sharing one test with no `Folds Into:` line authorising it, which is a merge the writing stream had no licence to make. A covering test carrying two `// Act` blocks to fit a fold is this row too |
+| 1b  | Folded scenario coverage                | a scenario the design marks `Folds Into: <id>` whose `Expected:` no test asserts — the covering test does not carry it and the report does not skip it. It has no test of its own to be missing, so row 1 cannot see it and only reading the design's `Folds Into:` lines can. Both inverses are this row too: two scenarios sharing one test with no `Folds Into:` line authorising it, and a covering test carrying two `// Act` blocks to fit a fold. The scope contract, §3 |
 | 2   | Assertion covers the scenario           | a claimed scenario with no real assertion; an `Expected:` clause of that scenario silently dropped                                                                                      |
 | 3   | Correctness against the scenario        | the test asserts something the scenario does not describe, or passes for the wrong reason                                                                                               |
 | 4   | Invented values                         | a status code, error string or limit asserted in the test that appears nowhere in the test design; **or a value the design marks `unknown:` in that scenario's `Notes:`** — an unknown is not assertable, so asserting one is an invented value whatever the design's `Expected:` happens to contain. **A value documented in `# API Surface` but absent from the scenario's `Expected:` is equally invented** — the surface says what the operation can do, and only the design decides what this test claims. This is the check that makes the surface's read-only boundary enforceable from the code alone, so run it on every assertion, not only on suspicious ones |
-| 5   | Style match with the example spec       | a structure that departs from `tests/api/login-api.spec.ts` with no reason — missing `// Arrange` / `// Act` / `// Assert` comments, a different arrange idiom, a different result shape |
+| 5   | Style match with the example spec       | a structure that departs from `tests/api/login-api.spec.ts` with no reason — a different arrange idiom, a different result shape. The phase comments themselves are Step 2c's |
 | 6   | Status-code assertions                  | a test asserting only `ok` or only the body, with no explicit status assertion                                                                                                          |
 | 7   | Contract and schema assertions          | a 201 whose response shape is never asserted; a `toMatchObject` so loose it would pass on an empty object                                                                               |
 | 8   | Payload validation                      | a negative case that never checks the error body, or checks it with a substring so broad it matches any error                                                                           |
 | 9   | Auth and permission coverage            | a protected route exercised only as the permitted role; a missing unauthenticated case the scenario named                                                                               |
 | 10  | Test independence and isolation         | a test depending on another test's data, on execution order, or on a record created outside its own arrange                                                                             |
-| 11  | Test data creation and cleanup          | a created record not registered for cleanup; a shared constant e-mail; an e-mail containing a dot or plus that `normalizeEmail()` would rewrite                                         |
+| 11  | Test data creation and cleanup          | a created record not registered for cleanup at all, or registered **after** an assertion that could fail — fixture teardown runs on a red test, and a registration the failure jumped over does not |
 | 12  | Framework reuse                         | a raw `request.post()` in a spec where a controller or builder exists; a locally re-implemented login                                                                                   |
-| 13  | Layering                                | a URL string in a spec instead of `Endpoints`; a new call written inline instead of in a controller or builder                                                                          |
-| 14  | Fixture import rule                     | a spec importing `test` or `expect` from `@playwright/test` instead of `@fixtures/api-fixture`                                                                                          |
-| 15  | Naming conventions                      | a test title that does not follow `"<Feature> - Should <behavior>"`; a file outside the `tests/api/` naming pattern                                                                     |
 | 16  | Hard-coded values                       | a magic id, timestamp or environment-specific value inline in a spec                                                                                                                    |
-| 17  | Secrets and credentials                 | any credential literal not read from `Config` — always Critical                                                                                                                         |
 | 18  | Retry misuse                            | `test.describe.configure({ retries })`, a manual retry loop, or a `try/catch` swallowing an assertion                                                                                   |
 | 19  | Error handling                          | a test that would throw before its assertion on a non-JSON body; an assertion on the raw `APIResponse` instead of `result.status` / `result.body`                                       |
 | 20  | Maintainability and execution time      | duplicated arrange blocks that belong in a helper; a test doing setup work an API call could do in one request                                                                          |
 | 21  | Parallel-execution and CI compatibility | anything relying on a fixed record, a fixed port, a local file, or the absence of other tests — `fullyParallel` is on                                                                   |
-| 22  | Boundary discipline                     | a change under `tests/ui/`, `pages/`, `fixtures/pages-fixture.ts`, `playwright.config.ts`, `framework/`, `tsconfig.json`, `package.json` or `.env` — outside the API stream's ownership |
 | 23  | API surface discipline                  | a route, verb or parameter used in the code that `# API Surface` does not list and no scenario names — the mechanics were guessed; a test written for an operation the surface lists but no selected scenario covers; an authentication test built on an operation whose `Auth:` line says the requirement was inherited rather than stated |
 
-Use `Grep` for the mechanical checks — `@playwright/test` imports under `tests/api/`, `http://` literals, `password`/`token` literals, `waitForTimeout`, retry configuration — rather than eyeballing every file.
 
 # Step 4 — Run the validation yourself
 
@@ -173,68 +203,29 @@ An undocumented failure — red with no entry in the report — is Major: either
 # Step 5 — Severity and verdict
 
 The severity scale, the verdict rules and the re-review upgrades are in
-`docs/automation/contracts/review-verdict-contract.md` §4 and §5. Apply them exactly. What this stream puts in each
-bucket:
+`docs/automation/contracts/review-verdict-contract.md` §4 and §5. Apply them exactly — the scale is not
+restated here. What this stream puts in the two buckets the contract states generically:
 
-- **Critical** — an `E2E API` scenario of the test design neither implemented nor listed as skipped; a scenario claimed but not actually covered; a credential or secret in the code; an assertion weakened, skipped or deleted to hide a real failure; a reported file that does not exist; execution counts that contradict your run in the report's favour; a write outside the API stream's ownership boundary.
 - **Major** — a missing status-code or contract assertion; missing auth coverage the scenario named; a test that is not isolated or leaks data; a raw `request` call or a URL literal bypassing the service layer; an import from `@playwright/test`; an undocumented failing test; a retry masking flakiness.
 - **Minor** — naming, ordering, a duplicated arrange block, a thin comment, a missing scenario-id comment, a stylistic deviation from `tests/api/login-api.spec.ts` with no behavioural effect.
 
 # Step 6 — Return the report
 
-The block shape and every rule about it are in `docs/automation/contracts/review-verdict-contract.md` §6. Emit it
-exactly, with no prose before or after. Filled in for this stream it reads:
+**`docs/automation/contracts/review-verdict-contract.md` §6 holds the block and every rule about it.**
+Emit it exactly as written there, with no prose before or after, and do not reconstruct it from memory —
+a field this body once carried and the contract no longer does is a field nobody reads.
 
-```
-Review Status: Pass | Needs Revision | Blocked
+Three placeholders resolve for this stream: `Stream: api`, the header line reads
+`E2E API Scenarios in Test Design:`, and every finding id carries the `API-` prefix — `API-C1`,
+`API-M2`, `API-m1`.
 
-Ticket: SCRUM-139
-Stream: api
-Implementation Report: .workflow/reports/SCRUM-139-api-implementation.md
-Iteration Reviewed: 1
-Mode: full_review | re_review
-Previous Findings: API-C1, API-C2, API-M1 (3)
-Findings Resolved: API-C1, API-M1
-Findings Outstanding: API-C2 — still asserts only result.ok
-Findings Disputed: API-M1 (accepted — the design really does leave the message open)
-New Findings: API-C3, API-M2, API-M3, API-m1
-Files Reviewed: tests/api/admin-api.spec.ts, services/api/controllers/admin-api.ts
-E2E API Scenarios in Test Design: SCN-012, SCN-014, SCN-016
-Scenarios Claimed: SCN-012, SCN-014
-Scenarios Verified: SCN-012, SCN-014
-Scenarios Unverified: none
-Scenarios Folded: SCN-018 -> SCN-012 (asserted in that test)
-Scenarios Missing: SCN-016 (not implemented, not listed as skipped)
+The two rules of §6 most often broken: `New Findings` is a roll-up of exactly the ids appearing in the
+sections below and not in `Previous Findings`, and a section with no findings reads `- None.` rather
+than being deleted.
 
-Critical Issues:
-- [API-C2] [SCN-014] tests/api/admin-api.spec.ts:73 — claimed to cover the duplicate-e-mail case but asserts only `result.ok === false`; the scenario expects HTTP 409 and the exact message "User with this email already exists".
-- [API-C3] [SCN-016] test design assigns this scenario to E2E API; no test implements it and the report does not list it under Skipped Scenarios.
-
-Major Issues:
-- [API-M2] tests/api/admin-api.spec.ts:31 — no assertion on `result.status`; a 200 and a 201 would both pass.
-- [API-M3] tests/api/admin-api.spec.ts:88 — the created admin is never pushed to `createdAdminEmails`, so it leaks into every later run.
-
-Minor Issues:
-- [API-m1] tests/api/admin-api.spec.ts:12 — title "should create admin" does not follow the "<Feature> - Should <behavior>" convention.
-
-Suggested Improvements:
-- The arrange block is repeated in three tests; a local factory would remove ~20 lines.
-
-Validation Results:
-- npx playwright test tests/api --reporter=line — 2 passed, 0 failed, 0 skipped (report claimed 2/0/0 — matches)
-- npx tsc --noEmit — pass
-- Suspected application defect confirmed as documented: SCN-014, assertion correctly left un-weakened.
-
-Final Recommendation: <one or two lines>
-```
-
-All eleven report rules are in the verdict contract §6. The two most often broken: `New Findings` is a
-roll-up of exactly the ids appearing in the sections below and not in `Previous Findings`, and a section
-with no findings reads `- None.` rather than being deleted.
-
-A style finding here names the convention **and** where it is written — `CLAUDE.md`,
-`docs/automation/etalons/api-spec-etalon.md`, or the line of `tests/api/login-api.spec.ts` that shows the house
-form.
+A style finding here names the convention **and** where it is written —
+`docs/automation/etalons/api-spec-etalon.md`, `scripts/spec-lint.mjs`, or the line of
+`tests/api/login-api.spec.ts` that shows the house form.
 
 # Must not
 
@@ -243,6 +234,8 @@ fix-writing, no `Pass` over a Major, no verdict but `Blocked` on an unrun suite,
 narrowing of the suite or the coverage pass, no trusting the report's own numbers, no `requirements/`, no
 judging the design, no browser, no Jira, no mid-run questions. On top of those, specific to this stream:
 
+- Rule on scope, a fold or a skip from memory of the rules. `docs/automation/contracts/e2e-stream-scope.md` is read at Step 2, every run and every iteration, and it is the same file the code you are judging was written against.
 - Review anything under `tests/ui/` or `pages/`, or comment on selectors, page objects, waits or visual state. That work is reviewed elsewhere, and duplicating it produces contradictory findings.
-- Run any `Bash` command beyond the `curl` preflight, `npx playwright test tests/api`, and `npx tsc --noEmit`. No git, no npm install, no `show-report`, no `playwright-cli`.
-- Invent a convention the repository does not state. `CLAUDE.md`, `docs/automation/etalons/api-spec-etalon.md` and `tests/api/login-api.spec.ts` are the standard; a preference of yours that contradicts them, or that none of them expresses, is not a finding.
+- Run any `Bash` command beyond the `curl` preflight, `npx playwright test tests/api`, `npx tsc --noEmit`, and `node scripts/spec-lint.mjs --stream api`. No git, no npm install, no `show-report`, no `playwright-cli`.
+- Treat a clean `spec-lint` run as evidence that the tests are good, or skip a checklist row because the linter was green. It rules on form: it cannot see whether an assertion carries the value the scenario named, whether the test is true to the scenario, or whether the cleanup registration sits before the assertion that could fail. Those rows are the review.
+- Invent a convention the repository does not state. `docs/automation/etalons/api-spec-etalon.md`, `scripts/spec-lint.mjs` and `tests/api/login-api.spec.ts` are the standard; a preference of yours that contradicts them, or that none of them expresses, is not a finding.

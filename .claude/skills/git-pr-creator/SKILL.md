@@ -111,6 +111,32 @@ pwsh -NoProfile -File ./.claude/skills/git-pr-creator/scripts/create-pr.ps1 -App
 
 If installation fails or `gh` cannot authenticate with the token, stop and return the exact error.
 
+### Composing the PR yourself: `-Title` and `-BodyFile`
+
+A caller that already knows what the pull request should say passes it in, and the script uses it
+verbatim:
+
+```powershell
+pwsh -NoProfile -File ./.claude/skills/git-pr-creator/scripts/create-pr.ps1 `
+  -Title "[SCRUM-139] E2E automation — list and create admin accounts" `
+  -BodyFile ./.workflow/SCRUM-139-pr-body.md
+```
+
+- Both are optional and independent. Omit one and that half is derived as before.
+- **`-BodyFile`, not `-Body`**: a pull-request body is multi-line markdown with backticks, quotes and
+  blank lines in it, and that is exactly what a PowerShell command line mangles. A file survives.
+- A `-BodyFile` that does not exist, or that is empty, **stops the run before anything is created**.
+  A caller that composed a body and lost it wants an error, not a pull request describing itself from
+  the commit log.
+- The derivation this replaces exists because the script usually has nothing better than the branch
+  name and the commits. A caller holding a test design and two implementation reports does have
+  something better, and overwriting it with the guess would be the worse outcome.
+
+**The branch prefix accepts a `<kind>/` segment.** `test/SCRUM-139-e2e-automation` and
+`feat/2056_thing` both yield their ticket prefix now. Before, the leading segment made the whole name
+fail to match, the prefix came back empty, and the duplicate-PR check silently did not run — the one
+failure mode of that check that looks exactly like success.
+
 ### 6. Create the PR
 
 Run the helper script:
@@ -127,7 +153,8 @@ The script will:
 - require a GitHub token for non-DryRun runs (env, SecretManagement `GitHubToken`, interactive prompt-and-save, then legacy JSON fallback)
 - ask approval before auto-installing `gh` when needed
 - keep the remote branch name the same as the local one
-- generate a title from the branch name or current changes
+- generate a title from the branch name or current changes, **unless `-Title` was given**, and a body
+  from the branch's commits, **unless `-BodyFile` was given**
 - build the PR description from **commit subjects** on this branch versus the base (oldest first), not generic skill boilerplate
 - check for duplicate ticket-prefix PRs
 - create the PR against the resolved core base branch by default

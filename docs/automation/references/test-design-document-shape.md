@@ -19,7 +19,7 @@ arithmetic is not yours to do; see *Building the counted sections* below.
 ````markdown
 # Test Design — SCRUM-139: List and create admin accounts
 
-_Derived from requirements/SCRUM-139-requirements.md. Testing levels below are suggestions only and are finalized by a later classification step._
+_Derived from requirements/SCRUM-139-requirements.md._
 
 # Summary
 
@@ -168,8 +168,10 @@ is what you fix. Use `--emit-summary` to look at the recount without writing it.
   - `Scenarios:` the number of `## SCN-` blocks. `Automatable:` and `Manual only:` split them on the
     `Automation Suitability:` field — `Manual only` on one side, everything else on the other. The two
     must add up to the first.
-  - `Levels:` reads `_pending classification._` and nothing else is ever written there. This step
-    assigns `Suggested Level:`, not the final level; the step that finalizes levels owns that line.
+  - `Levels:` reads `_pending classification._` while the document is being written, and is replaced
+    with the level counts once every scenario carries an `Assigned Level:` line. It is one of the four
+    lines the script carries through rather than recomputes, so it is written from the level pass and
+    from nothing else.
   - `Requirements:` the FR and AC counts from the traceability matrix — covered over total, where total
     is every id in the requirements document.
   - `Techniques:` exercised over total per technique, the same four numbers as
@@ -180,6 +182,23 @@ is what you fix. Use `--emit-summary` to look at the recount without writing it.
     there are none — do not write "none".
   - A summary that disagrees with the matrices below it is worse than no summary, because it is the one
     section a reader trusts without checking. Build it last, from the finished document.
+- **A UI scenario that leans on the backend states an API coverage decision in `Notes:`.** A scenario
+  whose level is `E2E UI` and whose text turns on server behaviour — a sign-in, a request, a persisted
+  record, a status code — is covering two things at once: what the screen does, and what the contract
+  underneath it does. The design says which of those it means, in one of three forms:
+
+  | Form | When |
+  |---|---|
+  | `API coverage: linked SCN-NNN — <what is asserted there>` | the backend behaviour has contract value of its own, and an `E2E API` scenario in this document asserts it |
+  | `API coverage: not needed — <why>` | the backend is only support for the journey: sign-in, setup, cleanup, navigation mechanics. The reason is required — an exemption nobody can review is not an exemption |
+  | `API coverage: not applicable — <why>` | no API surface is in play for this scenario at all |
+
+  The linked id must be a scenario in this document carrying `E2E API`; a link to any other level is
+  the same silence wearing an id, because a scenario at another level does not assert the contract.
+  The decision is not required of a scenario that *is* an `E2E API` scenario — it carries its own
+  contract, so asking it to name another would be circular. `scripts/test-design-lint.mjs` fails a
+  missing or malformed decision as `TD-E22`; it rules on presence and shape, never on whether the
+  decision was the right one.
 - The document leads with `# Summary` and `# Scenarios` because that is what a reader came for; the
   matrices audit them, and `# Test Basis Research` and `# Test Basis Analysis` close the file as the
   appendix the models live in.

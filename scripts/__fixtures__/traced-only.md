@@ -25,7 +25,7 @@ Action: The owner deletes the admin account.
 Expected: Not assertable — the requirements do not state what the panel shows once a delete is refused.
 Suggested Level: E2E UI
 Automation Suitability: Manual only
-Notes: unknown: what the panel shows once a delete is refused — not assertable
+Notes: unknown: what the panel shows once a delete is refused — not assertable; API coverage: not needed — the backend refusal only sets up the unspecified UI outcome.
 
 ## SCN-002: The owner reaches the admin panel after signing in
 Requirement: FR-1.2
@@ -38,7 +38,7 @@ Action: The owner signs in and navigates to the admin panel.
 Expected: The admin panel is reached and lists the existing admin accounts.
 Suggested Level: E2E UI
 Automation Suitability: High
-Notes: —
+Notes: API coverage: not needed — UI navigation and rendering only; no independent backend contract selected.
 
 ## SCN-003: A signed-out visitor is refused the admin panel
 Requirement: FR-1.3
@@ -51,7 +51,7 @@ Action: A signed-out visitor opens the admin panel.
 Expected: The sign-in page is shown and no admin account is listed.
 Suggested Level: E2E UI
 Automation Suitability: High
-Notes: —
+Notes: API coverage: not needed — UI authorization rendering only; no independent backend contract selected.
 
 # Traceability Matrix
 

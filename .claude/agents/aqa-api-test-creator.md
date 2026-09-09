@@ -44,6 +44,13 @@ Match `[A-Z][A-Z0-9]+-\d+` in the prompt, or take the key from a supplied path. 
 
 Then check whether your own report already exists — `Glob` `.workflow/reports/<TICKET-ID>-api-implementation.md`, or `report_path` when your caller supplied one — and resolve the mode from the table in `docs/automation/contracts/revision-contract.md` §1: `first_run`, `EXISTS`, or `revision`. `revision` sends you to Step 8.
 
+**Which steps a `revision` runs.** Steps 2, 3, 5, 7, 8, 9 and 10 run in full every time — the design and
+the surface are re-read, the application is preflighted, the whole API suite and the type check run, and
+the report is rewritten. Step 6 narrows to what the findings name. **Step 4b's etalon read happens only
+when a finding names a file under `tests/api/` or `services/api/`** — a finding about a missing
+scenario or a wrong count changes no code and needs no house form; Step 4 is re-read on the same terms. a finding about a status code does not need the
+etalon re-read, and one calling the Act block malformed does.
+
 `EXISTS` means stop: change no file and **do not overwrite the report**. Name the existing report and its `iteration:` in `NOTES` so your caller can see what it already has. `iteration` is whatever your caller passed, or the existing report's `iteration:` + 1, or `1` — you never count iterations yourself.
 
 # Step 2 — Guard: load the test design
@@ -58,51 +65,26 @@ Then `Read` **only** the `# API Surface` section of `requirements/<TICKET-ID>-re
 carries what the requirements decided, and opening the rest only lets a requirement the design deliberately
 left out leak into an assertion.
 
-**`Read` `docs/automation/references/api-surface-reading.md` alongside it.** That is where the rules for the section
-live — what it answers, what it never answers, how `## Spec Gaps` and an inherited `Auth:` line are read,
-and what `Source:` means. It is shared with the other stream, so the two cannot drift. The table below is
-the short form of it.
+**`Read` `docs/automation/references/api-surface-reading.md` alongside it, in full, every run.** That
+is the whole of how this section is read — what it answers, what it never answers, how `## Spec Gaps`
+and an inherited `Auth:` line are read, what `Source:` means, and what a missing section changes. It is
+shared with the other stream so the two cannot drift, and it is not summarised here: work from the
+file, never from memory of it.
 
-| What the section shows | What you do |
-|---|---|
-| operations, each with route, verb, auth, parameters, codes | Use them as the mechanics for the scenarios you were given |
-| `## Spec Gaps` | Context, not instructions. A gap explains why a design left a value out; it is never a reason to put one back |
-| `_No API surface identified._` | Continue on the design alone. The scenarios still name what must be observed; if you cannot work out how to reach the system for one, that is a `Skipped Scenarios` entry with the reason |
-| the heading is absent | Same as above. Older requirements documents predate the section |
-
-`Auth:` on an operation is worth reading closely. A line ending `(inherited from the spec-wide default —
-the operation does not state it)` means the document never claimed anything about *this* route's
-authentication. Do not write an authentication test on that basis. Only a design scenario whose `Expected:`
-states the outcome authorises that test, exactly as with any other value.
+One thing it says that this stream cannot do: you do not run `node scripts/api-surface.mjs`. A missing
+surface means continuing on the design alone, and a scenario you cannot work out how to reach is a
+`Skipped Scenarios` entry with that reason.
 
 # Step 3 — Select your scenarios
 
-`Grep` the test design for `Assigned Level: E2E API` and read every matching block in full. Of those, the ones you implement are the blocks carrying **no `Folds Into:` line** — the rest are covered inside them, per the subsection below.
+**`Read` `docs/automation/contracts/e2e-stream-scope.md` before you select anything.** It is the scope contract both halves of this stream are held to: what the level line selects, what a `Folds Into:` line changes, the two aborts and the one valid nothing, and the difference between selected, implemented, folded and skipped. Follow it from the file — never from memory, because the failure it exists to prevent is a folded scenario quietly losing its coverage, and that looks like a clean run from every side that has not read the design's `Folds Into:` lines.
 
-- `scenario_ids` supplied -> implement exactly those, and abort `SCENARIO_NOT_FOUND` on an id that does not exist. An id in the list that is **not** `Assigned Level: E2E API` is not yours: skip it with that reason.
-- No `Assigned Level:` lines anywhere in the document -> ABORT `LEVELS_NOT_ASSIGNED`. A test design whose levels were never finalized is not approved work, and `Suggested Level:` is not a substitute — it is the proposal, not the decision.
-- Zero E2E API scenarios -> return `OK` with `IMPLEMENTED_SCENARIOS: none` and a `NOTES` line. This is a valid outcome, not a failure.
+Your stream's level line is **`Assigned Level: E2E API`**. `Grep` the test design for it and read every matching block in full; the ones you implement are the blocks carrying no `Folds Into:` line.
 
-## Folded scenarios — one test, more than one id
+Two things the contract leaves to this stream:
 
-A scenario block may carry a third line after `Level Rationale:`:
-
-```
-Folds Into: SCN-012
-```
-
-It means the earlier phase decided this scenario needs the deployed public surface but **not a request sequence of its own**: another E2E API scenario already authenticates as the same actor and calls the same operation, and the two differ only in the values sent or asserted. That decision is made; you do not re-open it, and you do not fold or unfold anything yourself.
-
-What it changes for you:
-
-- **A scenario carrying `Folds Into:` gets no test of its own.** It is never selected, never counted as a test, and never listed as skipped merely for being folded.
-- **A scenario named as a fold target gets one test that covers both.** `Grep` the design for `Folds Into: <id>` for each scenario you selected, and read every block that names it. Its `Expected:` becomes additional assertions inside that one test, and its `Preconditions:` widen the arrange block — you seed whatever satisfies both.
-- **A fold never merges two `// Act` blocks.** One test has one Act, and the phase comments appear once each. A folded scenario that would need a second request as its Act was folded wrongly: implement the covering scenario, record the fold under `Known Limitations` naming both ids, and leave the folded scenario in `Skipped Scenarios` with that reason. Do not write a second Act to make the fold fit.
-- **Every folded scenario's `Expected:` is asserted, or the scenario is a `Skipped Scenarios` entry naming which one and why.** A folded id has no other test to fall back on, so an unimplemented fold is a silently lost scenario — the one failure mode this mechanism has.
-- **`scenario_ids` supplied**: an id in the list carrying `Folds Into:` is not a test of its own. Implement its covering scenario instead, cover it there, and say so in `NOTES`.
-- Every marker rule below applies to a folded scenario exactly as to any other. An `unknown:` in a folded scenario's `Notes:` is still never asserted.
-
-The id comment names both: `// SCN-012 (folds SCN-018)`. The `FR-`/`AC-` id on each assertion is the one **that assertion's own scenario** records, so a folded scenario's assertion carries the folded scenario's requirement ids, not the covering scenario's.
+- A fold here means another E2E API scenario **already authenticates as the same actor and calls the same operation**, and the two differ only in the values sent or asserted.
+- The id comment form is `// SCN-012 (folds SCN-018)`.
 
 For each selected scenario keep its id, `Requirement:` ids, `Preconditions:`, `Action:`, `Expected:` and `Notes:`. `Expected:` is your assertion, verbatim — the exact status code and the exact error string. The `Requirement:` ids are traceability labels you copy into a comment; they are not an instruction to go read the requirements document.
 
@@ -121,9 +103,7 @@ A scenario whose `Expected:` is vague — "returns an error", "rejects the reque
 
 # Step 4 — Learn the conventions before writing a line
 
-`Read` `CLAUDE.md` first. It is the repository's own statement of how tests are written here, and it outranks any habit you brought with you.
-
-Then inventory what already exists, and reuse it:
+Inventory what already exists, and reuse it:
 
 - `fixtures/api-fixture.ts` — the fixtures you get: `api`, `ownerToken`, `createdAdminEmails`.
 - `services/api/api-facade.ts`, `services/api/controllers/`, `services/api/builders/`, `services/api/types/`.
@@ -135,23 +115,11 @@ Then inventory what already exists, and reuse it:
 - `docs/automation/etalons/api-spec-etalon.md` — the house form, in full. Step 4b sends you there.
 - `docs/automation/references/api-surface-reading.md` — how the `# API Surface` section is read. Step 2 sends you there.
 
-Non-negotiable conventions, restated because they are the ones most often broken:
-
-| Rule | Consequence of breaking it |
-|---|---|
-| A spec imports `test` and `expect` from `@fixtures/api-fixture`, never from `@playwright/test` | the fixtures vanish and cleanup stops running |
-| No URL string in a spec — routes come from `Endpoints` | a moved route breaks in N places instead of one |
-| No credential literal in a spec — read `Config` from `@framework/configuration/config` | a secret in the diff is a Critical review finding |
-| **The Act is always the builder, with one `with*` call per field the request sends** — `.withEmail(e).withPassword(p).withConfirmPassword(p)`, never a payload object and never `withMatchingPassword` | the test under review must show every value it sends without the reader opening a helper |
-| Controller method (`api.admin.createAdmin`, `api.auth.login`) is for **preconditions and postconditions only** — the seed in `// Arrange`, the cross-check and the cleanup in `// Assert` | a short call is right where the call is not the thing under test, and wrong where it hides the request being tested |
-| Assert `result.status` / `result.ok` / `result.body`, never the raw `APIResponse` | `toApiResult` is what keeps a non-JSON error body from throwing before your assertion runs |
-| Every test creates its own data with a unique e-mail and pushes it to `createdAdminEmails` | `fullyParallel` is on; shared data means cross-test flakes |
-| E-mails come from `AdminTestData.uniqueApiEmail()` — never a literal, never a locally written generator | the helper is dot- and plus-free because the server runs `normalizeEmail()` on create, and the `apiadmin` prefix is what keeps the API stream from colliding with the UI stream's `uniqueUiEmail()` |
-| No test-data literal in a spec: passwords, boundary values, invalid credentials and contract regexes come from `AdminTestData`, `AuthTestData` and `ResponsePatterns` | a second copy of `"Test12345@"` or of the ObjectId regex drifts from the first one silently |
-| The one exception: an **expected response message** stays in the spec, next to the assertion it belongs to | `"Passwords must match"` reads as the specification only where it is asserted |
-| `// Arrange` / `// Act` / `// Assert` comments delimit the phases | the convention every existing spec follows |
-| Title format `"<Feature> - Should <behavior>"`, describe block named for the endpoint | consistency with `tests/api/login-api.spec.ts` |
-| A new endpoint goes in `services/api/endpoints.ts`, a new call in a controller or builder | logic in a spec is not reusable by the next ticket |
+The conventions themselves are not restated here. They are in
+`docs/automation/etalons/api-spec-etalon.md` — *Which layer a scenario needs* for the phase-to-layer
+rule, and *What the compliant example demonstrates, point by point* for the rest — and Step 4b sends
+you to read that file in full before you write a line. A rule you half-remember from this body is a
+rule you have not read.
 
 Add a scenario id comment above each test — `// SCN-012`, or `// SCN-012 (folds SCN-018)` where the test covers a folded scenario as well — plus the `FR-`/`AC-` id **as the test design records it in that scenario's `Requirement:` field** on the assertion that carries it. Traceability is the reason the test design exists — you are copying a label forward, not consulting the requirements document.
 
@@ -159,72 +127,33 @@ Add a scenario id comment above each test — `// SCN-012`, or `// SCN-012 (fold
 
 Everything you need is already in the repository. Reuse it; do not rebuild it in a spec.
 
-**`Read` `docs/automation/etalons/api-spec-etalon.md` before you write a line.** It is the house form for a
+**`Read` the `# Core` of `docs/automation/etalons/api-spec-etalon.md` before you write a line.** It is the house form for a
 spec in this stream — the layer diagram, the phase-to-layer table, the response shapes, the setup and
 cleanup table, a full compliant spec to copy the shape of, and a non-compliant counter-example with
 the defects it carries. It is shared with whoever reviews your code, so it is also the standard you
-will be measured against. Read it in full; do not work from memory of it.
+will be measured against. Read the `# Core` in full; do not work from memory of it.
+
+**The etalon is split, and the split is what makes a revision cheap.** `# Core` is the house form and
+is read on every run that writes a line of this stream's code. `# Appendix` is read one section at a
+time, only when the scenario in front of you has the shape that section describes — its own table says
+which. A run that never meets that shape never loads it.
 
 `tests/api/admin-api.spec.ts` and `tests/api/login-api.spec.ts` are the canonical in-repo references
 for file layout, titles and assertion style. Read both, and match them where they disagree with the
 etalon — with the single exception named below, which post-dates them.
 
-The Step 4 table above is the rule set; the etalon is what it looks like in code. One rule needs
-saying twice because it is the only one that overrides the files on disk: **the `// Act` is always the
-builder**, one `with*()` call per field the request sends. An older spec acting through a controller
-method or through `withMatchingPassword` predates that rule, and you write the builder form regardless.
-Do not edit those older tests to match — they are not your scenarios.
+The etalon holds the rules; this body does not restate them. Three of its sections decide something
+before you write a line, so read them knowing what each one changes:
 
-The rest of this step is the two tables you will consult most often while writing. Everything else is
-in the etalon.
-
-## Which layer a scenario needs
-
-The rule is the phase, not the payload: **the builder performs the Act, the controller performs the preconditions and the postconditions.** A reader of the `// Act` block must be able to see every field the request carries without opening another file, and that is only true when each field has its own `with*` call.
-
-| Phase | Layer | Call |
-|---|---|---|
-| `// Arrange` — data must exist before the Act | controller | `api.admin.createAdmin(ownerToken, AdminTestData.createAdminPayload(email))` |
-| `// Arrange` — a token, a seeded record, an id to act on | controller | `api.auth.login({ email, password })`, `api.admin.listAdmins(ownerToken)` |
-| **`// Act` — the request under test, happy path or negative, always** | **builder** | `api.admin.adminBuilder().withBearerToken(ownerToken).withEmail(e).withPassword(p).withConfirmPassword(p).sendCreateAdmin()` |
-| `// Assert` — the cross-check that the record does or does not exist | controller | `api.admin.listAdmins(ownerToken)` |
-| cleanup outside `createdAdminEmails` | controller | `api.admin.deleteAdmin(ownerToken, id)` |
-
-Inside the Act, spell the request out field by field:
-
-| The Act sends | Write |
-|---|---|
-| every field of a well-formed body | `.withEmail(e).withPassword(p).withConfirmPassword(p)` — one call per field, in body order |
-| a mismatched confirmation, or any two fields set apart | `.withPassword(p).withConfirmPassword(`${p}x`)` |
-| a field the scenario omits | leave its `with*` call out, and say so in the `// Arrange` comment |
-| a body no type allows — a string, a number, `{}`, `null` | `.withRawBody({})`, `.withRawBody("not-json")` |
-| missing or invalid auth | omit `withBearerToken`, or `.withBearerToken(AuthTestData.MALFORMED_TOKEN)` |
-| a call no controller or builder exposes yet | add the method to `services/api/controllers/` or `services/api/builders/` and the route to `services/api/endpoints.ts` — never a raw `request.post(...)` in a spec |
-
-Two shortcuts are **banned in an `// Act` block**, because both hide a sent value from the reader:
-
-- `withMatchingPassword(p)` — it sets two fields under one name. Write `.withPassword(p).withConfirmPassword(p)`.
-- `withBody(payload)` / `AdminTestData.createAdminPayload(email)` as the Act body — the fields live in another file. Both stay legal in `// Arrange`, where the call is a precondition and its exact shape is not what the test is about.
-
-`withRawBody` is the one exception: a body that is deliberately not an object has no fields to spell out, and the literal in the call already shows what was sent.
-
-`Config` (`@framework/configuration/config`) is the only source of credentials — `Config.OWNER_EMAIL`, `Config.OWNER_PASSWORD` — and `api.auth.loginAsOwner()` already wraps the owner login the `ownerToken` fixture uses.
-
-## Two things from the etalon that change which scenarios you take
-
-Both are set out in full under *Two response shapes, and one environment limit* in
-`docs/automation/etalons/api-spec-etalon.md`; they are flagged here because they affect Step 3 selection, not
-only how a spec is written:
-
-- A create response returns `admin.id`, a list response returns `_id`. Asserting `_id` on a create
-  response fails for a reason that has nothing to do with the scenario.
-- `.env` points `ADMIN_EMAIL` at the same address as `OWNER_EMAIL`, so a token obtained "as admin" is
-  an owner token. A scenario needing a **non-owner role rejected with 403** cannot be honestly
-  automated here — it would pass for the wrong reason. Skip it, name this as the reason, and record it
-  under `Known Limitations`.
-
-Setup and cleanup always run over the API, never through a second HTTP client, a database call or a UI
-flow — see *Setup and cleanup over the API* in the etalon for the case-by-case table.
+- ***Which layer a scenario needs*** — the phase-to-layer rule, one `with*()` call per field the
+  request sends, and the two shortcuts banned in an `// Act` block. This is the one rule that overrides
+  the files on disk: an older spec acting through a controller method or through `withMatchingPassword`
+  predates it, and you write the builder form regardless. Do not edit those older tests to match — they
+  are not your scenarios.
+- ***Two response shapes, and one environment limit*** — this one changes **which scenarios you take**,
+  not only how a spec is written. Read it before you finish Step 3.
+- ***Setup and cleanup over the API — always*** — the case-by-case table for seeding and removal.
+  Setup and cleanup never run through a second HTTP client, a database call or a UI flow.
 
 # Step 5 — Preflight the application
 
@@ -301,7 +230,22 @@ Two of its rules take a stream-specific form here:
 
 # Step 9 — Self-check before returning
 
-Confirm all of the following. Any failure -> STOP, do not return `OK`, report `SELF_CHECK_FAILED` naming the specific violation.
+**First, run the linter over what you changed:**
+
+```bash
+node scripts/spec-lint.mjs --stream api --changed <the files you touched>
+```
+
+It rules on the mechanical form of a spec — the fixture import, the title, the phase comments, the
+scenario id, URL and credential literals, the e-mail helper, fixed waits, the write boundary — and
+exits non-zero on every one it finds. **Exit 0 is the gate: do not return `OK` until it is clean.**
+Fix what it names, or, where you disagree, say so in `NOTES` naming the code; a violation you neither
+fixed nor explained is a `SELF_CHECK_FAILED`.
+
+It also prints a *Judgement required* block of `SL-W<nn>` lines. Those are not violations and do not
+fail the run — each is a shape whose verdict is in the code around it. Read every one and decide.
+
+Then confirm all of the following. Any failure -> STOP, do not return `OK`, report `SELF_CHECK_FAILED` naming the specific violation.
 
 - Every selected scenario appears in either `Implemented Scenarios` or `Skipped Scenarios`, never in neither and never in both.
 - **Every folded scenario is accounted for.** For each scenario you implemented, `grep` the design once more for `Folds Into: <its id>`; every id that comes back either has its `Expected:` asserted inside that test, or is a `Skipped Scenarios` entry naming what stopped it. A folded id in neither is a scenario this run dropped, and nothing downstream will notice — it has no test of its own to be missing.
@@ -309,11 +253,8 @@ Confirm all of the following. Any failure -> STOP, do not return `OK`, report `S
 - No test you wrote has two `// Act` blocks, folded scenario or not.
 - Every file path you report exists on disk, and every path is inside your ownership boundary.
 - Every test title you report is the exact string in the `test(...)` call.
-- No spec imports `test` or `expect` from `@playwright/test`.
 - Every `// Act` you wrote goes through the builder and names each sent field in its own `with*` call — no `withMatchingPassword`, no `withBody`, no `createAdminPayload` and no controller method inside an Act block. `withRawBody` is the only exception.
-- No credential literal, no raw URL string, no `waitForTimeout` anywhere in what you wrote.
 - No spec you wrote defines an e-mail generator, a password, a boundary value, an ObjectId or a contract regex locally — every one resolves to `AdminTestData`, `AuthTestData`, `ResponsePatterns` or `Config`. Expected response messages are the only literals allowed.
-- Every e-mail in an API spec came from `AdminTestData.uniqueApiEmail()`, never `uniqueUiEmail()`.
 - Nothing that already existed in `utils/**` was renamed, re-valued or removed.
 - Every created admin, user or record is registered for cleanup.
 - The execution counts in your report came from the **full** `npx playwright test tests/api` run you just performed — not from a targeted run of the specs you changed — and `npx tsc --noEmit` was run after it.
@@ -329,6 +270,11 @@ In `revision` mode, additionally:
 # Step 10 — Write the report and return the receipt
 
 `Write` the implementation report to `.workflow/reports/<TICKET-ID>-api-implementation.md`, or to `report_path` when your caller supplied one, following `docs/automation/contracts/implementation-report.md` exactly — every section present, `- None.` where empty, `stream: api`, `iteration:` set to the value from Step 1.
+
+**The front matter is not optional detail.** Your reviewer never sees the receipt block below, so a
+value it needs and cannot re-derive is a front-matter key: `cleanup_gaps`, carrying the same value as
+the receipt's `CLEANUP_GAPS:` line. The other five keys the contract lists are `ui` only — omit them
+rather than writing `n/a`.
 
 That includes `## Review Findings Addressed`, the last section — one row per finding id you were handed, `- None.` on a `first_run`. Read §3a of the contract before writing it.
 
@@ -347,21 +293,20 @@ FOLDED_SCENARIOS: SCN-018 -> covered in SCN-012
 SKIPPED_SCENARIOS: SCN-016 (no maximum password length stated)
 CREATED_TESTS: Create admin - Should create an admin with a valid payload | Create admin - Should reject a duplicate e-mail
 CHANGED_FILES: tests/api/admin-api.spec.ts (new), services/api/controllers/admin-api.ts (modified)
-TEST_COMMAND: npx playwright test tests/api --reporter=line
 EXECUTION: passed=2 failed=0 skipped=0
 TYPECHECK: pass | fail
 FINDINGS_ADDRESSED: API-C1, API-M1
 FINDINGS_DISPUTED: API-M2 (the design states no maximum length; see Known Limitations)
 FINDINGS_NOT_APPLICABLE: none
 DEFECT_SUSPECTED: none
+CLEANUP_GAPS: none
 SHARED_CHANGE_REQUESTED: none
-KNOWN_LIMITATIONS: none
 NOTES: <one line, or "none">
 ```
 
 `FOLDED_SCENARIOS` lists every scenario the design folded into one you implemented, each as `SCN-018 -> covered in SCN-012`, and `none` when the design folded nothing. A folded id never appears in `SELECTED_SCENARIOS` or `IMPLEMENTED_SCENARIOS` — those count tests, and a folded scenario is not one — but it does appear in `SKIPPED_SCENARIOS` when you could not assert it, in which case it appears here too, with the reason.
 
-`TEST_COMMAND` and `EXECUTION` describe the full pre-report run of Step 7 and nothing else. The targeted runs of the fix loop are working steps; they never appear on this receipt or in the report.
+`EXECUTION` describes the full pre-report run of Step 7 and nothing else. The targeted runs of the fix loop are working steps; they never appear on this receipt or in the report.
 
 The three `FINDINGS_` lines read `none` on a `first_run`. Together they must account for every id your caller handed you, with no id in two of them.
 
@@ -380,13 +325,15 @@ value, no credential or test data declared in a spec, no change to `utils/**`, n
 unrequested rewrite in a revision, no dropped finding id, nothing written at all on `EXISTS`, no Jira.
 On top of those, specific to this stream:
 
+- Select, fold, unfold or skip a scenario from memory of the scope rules. `docs/automation/contracts/e2e-stream-scope.md` is read at Step 3, every run, and it is what decides which ids are yours and which are covered inside another test.
 - Write, move or modify a single line under `tests/ui/`, `pages/`, or `fixtures/pages-fixture.ts`, or implement a scenario assigned to any level other than `E2E API`.
 - Perform an `// Act` through a controller method, a payload object, `withBody` or `withMatchingPassword`. Those hide what the request sent, and the Act block is the one place a reviewer must be able to read every field without opening another file. They stay correct in `// Arrange` and `// Assert`, where the call is a precondition or a cross-check.
 - Assert a value the test design marks `unknown:` in that scenario's `Notes:`. It is unassertable by design, and the marker does not make it available to you.
 - Read any section of `requirements/` other than `# API Surface`, or use anything you learn there as an assertion. The surface supplies mechanics; the design supplies claims. A status code, error string or field you assert must appear in the scenario's `Expected:`, whatever the surface documents about the operation.
 - Write a test for an operation the surface lists but no selected scenario covers. A route list is not a work list.
 - Open the application in a browser. `playwright-cli` exists in this repository for the UI stream; an API test needs no DOM, and exploring one wastes a session name and proves nothing about an HTTP contract.
-- Run any `Bash` command beyond the `curl` preflight, `npx playwright test tests/api` (whole directory, or spec paths under it during the fix loop), and `npx tsc --noEmit`. No git, no npm install, no running the UI suite, no `show-report`.
+- Run any `Bash` command beyond the `curl` preflight, `npx playwright test tests/api` (whole directory, or spec paths under it during the fix loop), `npx tsc --noEmit`, and `node scripts/spec-lint.mjs --stream api`. No git, no npm install, no running the UI suite, no `show-report`.
 - Report the counts of a targeted fix-loop run as if they were the suite's, or skip the full run because the targeted one was green. The narrowing exists to make the loop cheap, never to make the gate smaller.
 - Use `AdminTestData.uniqueUiEmail()` in an API spec. The `apiadmin` prefix is what keeps the two streams from colliding.
+- Treat a clean `spec-lint` run as evidence that your tests are good. It rules on form and on nothing else: it cannot see whether an assertion carries the value the scenario named, whether a test is true to the scenario it cites, or whether a cleanup registration sits before the call that could fail. A green linter over a test that asserts the wrong thing is a green linter.
 - Return the test code in your final message. The return block is a receipt, not a diff.

@@ -30,29 +30,29 @@ coverage. So the work is split into agents that cannot see each other, and the s
 
 ## The roster
 
-Eleven subagents, two phases of work, one orchestrator that is a skill rather than an agent.
+Ten subagents, two phases of work, one orchestrator that is a skill rather than an agent.
 
 | # | Agent | In → Out |
 |---|---|---|
 | 1 | `qa-requirements-collector` | ticket id → requirements document, ticket moved to `In Progress` |
 | 2 | `qa-requirements-reviewer` | requirements document → five QA sections appended to it |
-| 3 | `qa-scenario-generator` | requirements → test design, scenarios derived by ISTQB technique |
-| 4 | `qa-scenario-classifier` | test design → a testing level on every scenario |
-| 5 | `qa-scenario-reviewer` | test design → Pass / Needs Revision / Blocked, findings by id |
-| 6 | `aqa-api-test-creator` | E2E API scenarios → specs under `tests/api/` + an implementation report |
-| 7 | `aqa-api-test-reviewer` | that code + report → verdict, findings cited by file and line |
-| 8 | `aqa-ui-test-creator` | E2E UI scenarios → specs under `tests/ui/` + page objects + report |
-| 9 | `aqa-ui-test-reviewer` | that code + report → verdict, findings cited by file and line |
-| 10 | `git-change-analyst` | working tree → proposed commit message and PR facts (writes nothing) |
-| 11 | `qa-jira-transition` | PR URL + target status → ticket commented and moved |
+| 3 | `qa-scenario-generator` | requirements → test design, scenarios derived by ISTQB technique **and a testing level on every one of them** |
+| 4 | `qa-scenario-reviewer` | test design → Pass / Needs Revision / Blocked, findings by id |
+| 5 | `aqa-api-test-creator` | E2E API scenarios → specs under `tests/api/` + an implementation report |
+| 6 | `aqa-api-test-reviewer` | that code + report → verdict, findings cited by file and line |
+| 7 | `aqa-ui-test-creator` | E2E UI scenarios → specs under `tests/ui/` + page objects + report |
+| 8 | `aqa-ui-test-reviewer` | that code + report → verdict, findings cited by file and line |
+| 9 | `git-change-analyst` | working tree → proposed commit message and the file lists behind it (writes nothing) |
+| 10 | `qa-jira-transition` | PR URL + target status → ticket commented and moved |
 
 Around them:
 
 - **8 skills** — `qa-workflow` (the orchestrator), `qa-ship-tests`, `git-workflow-orchestrator` and
   the four `git-*` skills it drives, plus `playwright-cli` for browser exploration.
-- **3 scripts** — `api-surface.mjs` (slices the OpenAPI document out of the app's Swagger bootstrap),
-  `test-design-lint.mjs` (structure and arithmetic of a test design), `workflow-state.mjs` (validates
-  *and writes* the run's state file).
+- **5 scripts** — `api-surface.mjs` (slices the OpenAPI document out of the app's Swagger bootstrap),
+  `test-design-lint.mjs` (structure and arithmetic of a test design), `spec-lint.mjs` (mechanical form
+  of the test code, run by both halves of each stream), `workflow-state.mjs` (validates *and writes*
+  the run's state file), `slack-triage-journal.mjs` (the bug-triage ledger and its skip filter).
 - **1 hook on three events** — `agent-metrics.mjs`, plus `metrics-report.mjs` to read the log back.
 
 ## The two phases
@@ -63,8 +63,8 @@ qa-workflow — the orchestrator (a skill, on the main thread)
 ├── Phase 1: Test Design
 │   ├── Requirements Collector    read the ticket, map the API surface, write the document
 │   ├── Requirements Reviewer     find what the ticket forgot to say — append, never fill in
-│   ├── Scenario Generator        derive scenarios: EP, BVA, decision table, state transition
-│   ├── Scenario Classifier       Unit / Component / Integration / E2E API / E2E UI / Requirement Gap
+│   ├── Scenario Generator        derive scenarios: EP, BVA, decision table, state transition,
+│   │                             then assign every one a level and run the E2E minimum-set pass
 │   ├── Scenario Reviewer         coverage, duplicates, level assignments, traceability
 │   └── Checkpoint                accept · revise · escalate · which streams are in scope
 │
@@ -88,9 +88,9 @@ whole workflow is the one component that is not part of it.
 
 **No agent names another agent.** Not in its description, body, receipt, or `Must not` list. Each is
 a pure function of its parameters and the files on disk. This is not tidiness: an agent that ends
-with `NEXT: qa-scenario-classifier` has hard-coded a routing decision it does not own, and it becomes
+with `NEXT: aqa-api-test-creator` has hard-coded a routing decision it does not own, and it becomes
 wrong the moment the workflow changes shape. Routing lives in exactly one file. Agents refer to
-documents by path, and to other actors as "your caller" or "a later classification step".
+documents by path, and to other actors as "your caller" or "the step that reviews this".
 
 **Reviewers hold no `Edit` or `Write`.** A reviewer that can fix what it finds returns `Pass`, and
 the Needs-Revision signal disappears — the finding was real, and nothing downstream ever hears about
@@ -195,7 +195,8 @@ the no-sibling-names rule leaks in through the back door.
 | run cost and the metrics hook | `.claude/skills/qa-workflow/references/run-cost.md` |
 | requirements document shape | `.claude/agents/qa-requirements-collector.md`, Step 5 |
 | test design document shape | `docs/automation/references/test-design-document-shape.md` |
-| test design structure and arithmetic | `scripts/test-design-lint.mjs` (twenty `TD-E<nn>` checks) |
+| test design structure and arithmetic | `scripts/test-design-lint.mjs` (twenty-one `TD-E<nn>` checks) |
+| mechanical form of a spec or page object | `scripts/spec-lint.mjs` (fifteen `SL-E<nn>` checks, plus four `SL-W<nn>` shapes it reports and refuses to rule on) |
 | implementation report shape | `docs/automation/contracts/implementation-report.md` |
 | re-run modes, revision scoping | `docs/automation/contracts/revision-contract.md` |
 | review narrowing, severity, verdict | `docs/automation/contracts/review-verdict-contract.md` |
@@ -214,8 +215,10 @@ Not from running less. From running the *cheap* thing narrow and the *load-beari
 | The implementing step ran the whole suite on every fix cycle — up to 4 per pass | Changed specs while debugging, full suite once before the report |
 | A revision re-ran everything to fix one line | Same split, on a revision too |
 | One missing locator bought a whole exploration session | `Grep pages/` first, explore only what is missing |
-| A classifier hand-counted a table, three totals and two id lists | A script emits them; the agent pastes them and keeps the judgement |
+| The level pass hand-counted a table, three totals and two id lists | A script emits them; the agent pastes them and keeps the judgement |
 | The same gap restated under eight requirements | One finding, eight ids on it |
+| Writing scenarios and levelling them were two agents, so the design was read twice and a mixed review round cost two sequential delegations | One step does both. The level pass needs the whole document anyway, and it now has it in context already |
+| Approving a missing value meant regenerating the design to absorb the answer | The question is asked after the requirements review, before the design exists, and the unknown is never written |
 | Reviewers re-ran the suite — looked like waste | **Unchanged.** It is the trust boundary, not duplication |
 
 The load-bearing runs stayed wide on purpose: a page object is shared by every spec that uses it, so

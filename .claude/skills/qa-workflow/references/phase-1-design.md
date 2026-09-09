@@ -7,9 +7,13 @@ the one that no file here names an agent.
 
 ## Sizing 1.3 — batch a large test basis
 
-**Before the first 1.3 delegation, count the test basis yourself.** Read
-`requirements/<TICKET-ID>-requirements.md` and collect every `### FR-<n>.<n>` and `### AC-<n>`
-heading, in document order. That count decides how 1.3 runs:
+**The test basis has already been counted — take it from the 1.1 receipt, never from the document.**
+The receipt's `FR_IDS` and `AC_IDS` lines are every `### FR-<n>.<n>` and `### AC-<n>` heading of
+`requirements/<TICKET-ID>-requirements.md`; **`FR_IDS` then `AC_IDS` is document order**, since the
+requirements section writes the stated FRs above the stated ACs. `FR_COUNT + AC_COUNT` is the size.
+Persist the joined list at 1.1 under `test_design.notes.requirement_ids`, and **on a resume read it
+from there** — 1.1 will not run again, and a list the receipt already stated is exactly what the state
+file is for. That count decides how 1.3 runs:
 
 | In-scope requirements | How 1.3 runs |
 |---|---|
@@ -38,14 +42,54 @@ How a batched run goes:
 5. In manual mode, pause once after the last batch, not after each one — a half-generated design is
    not a decision anyone can take. Print the batch list at that pause so the split is visible.
 
-Only when every batch is done does 1.4 run. **1.4 and 1.5 run once, over the whole document** — a
-partial design is never handed to the review, whose partial-design finding exists for the run that
-stopped early rather than for one still in progress.
+**The last batch is the one that classifies**, over every scenario written, and only then does 1.5 run.
+Both are single passes over the whole document — a partial design is never classified and never
+reviewed. The minimum-set pass groups scenarios by the journey their `Action:` traverses, so a pass
+that has seen half the design groups half of it and folds nothing into the half it cannot see; and the
+review's partial-design finding exists for the run that stopped early, not for one still in progress.
 
 An abort mid-batch leaves a real design covering the batches that finished, and the traceability
 matrix says so: the ids not yet reached read `_Out of scope for this run (requirement_ids)._` Record
-where it stopped in `test_design.open_questions` and stop — never hand a partial design to 1.4 to
-"make progress".
+where it stopped in `test_design.open_questions` and stop — never classify a partial design, and never
+hand one to 1.5 to "make progress".
+
+## Approvals are collected after 1.2, not after 1.3
+
+**The cheapest moment to ask about a missing value is before the design is written.** The requirements
+review already found them: every `# Missing Information` bullet it writes reads
+`- **[<id>] missing value: <short name>** — <what is missing>. Applies to <FR/AC ids>.`, which is
+exactly the pair an approval is keyed on. Asking here means an approved value is written into the
+design on the **first** pass — no `unknown:` marker, no `# Coverage Gaps` entry, no second 1.3
+delegation to absorb the answer. Asking after 1.3 means regenerating a document to change a value a
+human had already decided.
+
+**Manual mode — after 1.2, at Checkpoint A.** List every `[REQ-C*]` and `[REQ-M*]` bullet, each as its
+short name, the requirements it applies to, and what a test would have to assert. Then offer:
+
+| Option | Effect |
+|---|---|
+| **Approve some** | collect value, basis, approver and date for each. Pass them to 1.3 as `approved_values`, one per line: `AC-1 · duplicate-e-mail status code: 409 — matches existing POST behaviour — @dneprokos — 2026-08-06`. Append them to `test_design.approved_assumptions` |
+| **Leave unknown** (recommended when the value is genuinely undecided) | 1.3 marks each `unknown:` and records the gap. That is an honest design, not a degraded one |
+| **Escalate** | the ticket needs an answer before design can start. Record in `test_design.open_questions` and stop |
+| **Decline** | end the run. Nothing is written |
+
+Approving is a decision the user makes with their own name attached, so collect the approver rather
+than filling it in yourself. An approval with no approver is not an approval, and 1.3 ignores it.
+
+**Auto mode stops here for one case, and only one.** A `[REQ-C*]` against an **in-scope AC** means the
+primary behaviour of the ticket has no stated outcome: stop with `status: escalated`,
+`final_decision: escalate`, naming the AC and the short name of the missing value. An `AC-` id is main
+flow by definition, so nothing has to be read out of a design to know it.
+
+**A `[REQ-C*]` against an FR is not judged here**, and that is deliberate. Whether an FR is main flow
+is read off the design manifest — an FR cited by a `category: "Happy path"` scenario — and no design
+exists yet at this point. Those keep the existing escalation at the design gate below, where the
+manifest can answer the question. Guessing it here from the requirement's wording would be the kind of
+re-derivation these gates exist to remove.
+
+**The question after 1.3 stays.** It handles what this one could not see: a value the requirements
+review never flagged, which the modelling step discovered while deriving scenarios from the same text.
+An approval collected here does not make that gate redundant; it makes it smaller.
 
 ## Unapproved assumptions — the one decision no agent may make
 
@@ -66,8 +110,11 @@ Handle a non-zero `UNAPPROVED_UNKNOWNS` at this gate, before Accept:
   | **Escalate** | the ticket needs an answer before design can finish. Record in `open_questions` and stop |
 
   Approving is a decision the user makes with their own name attached, so collect the approver rather
-  than filling it in yourself. `approved_values` entries are one per line:
-  `SCN-013: 409 — matches existing POST behaviour — @dneprokos — 2026-08-06`.
+  than filling it in yourself. `approved_values` entries are one per line and carry the same key here
+  as they do at Checkpoint A — the requirement and the missing value, never a scenario id:
+  `AC-1 · duplicate-e-mail status code: 409 — matches existing POST behaviour — @dneprokos — 2026-08-06`.
+  A `SCN-` id would key an approval to a block the next revision may renumber, and could not have been
+  written down at all before the design existed.
 
 * **Auto mode never approves.** Record every unknown in `test_design.open_questions`, note them in
   `history`, and continue to Phase 2 with the design as written. The one exception is escalation: if
@@ -127,7 +174,7 @@ Rules that do not move:
 * **Manual mode ignores it entirely.** The three options above are already the whole decision there, and
   a human at the gate is a better answer than a rule about categories. Passing it in manual mode is not
   an error; it simply has nothing to do.
-* **An unclassified design is not evidence.** `classified: false` in the manifest means step 1.4 has not
+* **An unclassified design is not evidence.** `classified: false` in the manifest means step 1.3 has not
   run, which is fine here — `category` is written by the generating step, not the classifying one, so
   this test works before classification. But a manifest with `counts.scenarios: 0` decides nothing:
   stop rather than reading an empty model as "no main flow was harmed".

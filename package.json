@@ -10,6 +10,7 @@
     "test:debug": "playwright test --debug",
     "report": "playwright show-report",
     "test:scripts": "node --test \"scripts/__tests__/*.test.mjs\"",
+    "lint:spec": "node scripts/spec-lint.mjs",
     "test:lint": "node --test \"scripts/__tests__/*.test.mjs\"",
     "typecheck": "tsc --noEmit"
   },

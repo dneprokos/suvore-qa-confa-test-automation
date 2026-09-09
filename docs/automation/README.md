@@ -26,7 +26,7 @@ need it** (below).
 |---|---|---|
 | `etalons/` | a **form to copy** — the house shape of a spec, with a compliant example and a counter-example | unconditionally, by both steps of a stream |
 | `contracts/` | a **process rule for a run** — how a second run is scoped, how a verdict is reached, what an artifact must contain | on the run it governs |
-| `references/` | **knowledge read on demand** at one named step — how to read an API surface, how to explore a browser, how to model a test basis, what shape a document takes | at the anchored step, conditionally |
+| `references/` | **knowledge read on demand** at one named step — how to read an API surface, how to explore a browser, how to model a test basis, what shape a document takes, how a level is assigned | at the anchored step, conditionally |
 
 ```
 docs/automation/
@@ -34,6 +34,7 @@ docs/automation/
     api-spec-etalon.md               the house form for an API spec
     ui-spec-etalon.md                the house form for a UI spec and its page object
   contracts/
+    e2e-stream-scope.md              what a stream implements, folds, skips and counts as a test
     revision-contract.md             mode resolution and revision scoping for a second run
     review-verdict-contract.md       narrowing, finding ids, severity, verdict
     implementation-report.md         the report shape the two streams hand over
@@ -44,6 +45,7 @@ docs/automation/
     browser-exploration.md           browsing the running app: sessions, locator tiers, mechanics
     test-basis-modelling.md          the four ISTQB black-box techniques
     test-design-document-shape.md    the test design document, section by section
+    level-assignment.md              the level rubric and the E2E minimum-set pass
 ```
 
 ## Who reads what
@@ -54,6 +56,7 @@ Stated by role, never by agent — see the rule at the bottom.
 |---|---|
 | `etalons/api-spec-etalon.md` | the API stream's implementing step **and** its review step |
 | `etalons/ui-spec-etalon.md` | the UI stream's implementing step **and** its review step |
+| `contracts/e2e-stream-scope.md` | both streams — the implementing step at selection, the review step at its coverage pass |
 | `contracts/revision-contract.md` | both streams' implementing steps, on a revision |
 | `contracts/review-verdict-contract.md` | both streams' review steps |
 | `contracts/implementation-report.md` | both streams — written by the implementing step, parsed by the review step |
@@ -63,6 +66,7 @@ Stated by role, never by agent — see the rule at the bottom.
 | `references/browser-exploration.md` | any step that drives a browser |
 | `references/test-basis-modelling.md` | a design step that will **derive** a scenario |
 | `references/test-design-document-shape.md` | a design step writing or rewriting the whole document |
+| `references/level-assignment.md` | a design step that will **assign** a level — the rubric, the eight factors and the E2E minimum-set pass |
 
 An etalon is read by **both** halves of a stream on purpose. A reference is read by whoever reaches
 the step that needs it.
@@ -70,7 +74,7 @@ the step that needs it.
 ## Conditional reads, and why they matter
 
 The last two references used to sit inline in a 725-line agent body, loaded in full on every
-invocation — including a revision correcting a single line, and a two-scenario reclassify that cost
+invocation — including a revision correcting a single line, and a two-scenario re-run that cost
 208 seconds. They are now read only by a run that derives scenarios, or writes the whole document.
 
 Each extraction ships with two things, and needs both:

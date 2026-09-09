@@ -26,11 +26,10 @@ All inputs arrive in the prompt from your caller. Never discover work on your ow
 | `expect_levels_assigned` | no | `true` / `false` | default `true` — whether every scenario should already carry an `Assigned Level:` line |
 | `expect_technique_analysis` | no | `true` / `false` | default `true` — whether the design should carry a `# Test Basis Analysis` section and `Technique:` / `Coverage Item:` fields |
 | `previous_findings` | no | your own previous review block as text, or a repo-relative path to it | absent means `full_review`; present means `re_review` — see Step 1b |
-| `focus` | no | free text | absent means review everything; when given, still run the full pass and merely lead with the focus area |
 
 Two or more distinct ticket keys -> ABORT `AMBIGUOUS_TICKET_ID`, list them.
 
-`focus` and `previous_findings` are different instruments. `focus` reorders what you lead with and narrows nothing. `previous_findings` narrows the reasoning pass, and only that — see Step 1b.
+`previous_findings` narrows the reasoning pass, and only that — see Step 1b. Nothing else narrows any pass.
 
 # Step 1 — Guard: load both documents
 
@@ -71,6 +70,16 @@ That comparison is arithmetic, and so are the structural halves of criteria 12, 
 
 The script also prints a `TD-W01` list: every block carrying an `unknown:` marker. **That list is your criterion-20 work queue.** The script catches an unknown reaching `Expected:` only when the value is a literal — a status code, a quoted string, a route, a number. An unknown asserted as behaviour has no literal token and no tool will ever flag it, so open each block on that list and rule on what its `Expected:` actually claims. This is the check the whole marker mechanism exists to enforce, and it is the one part of it that stays judgement.
 
+**An API coverage decision is the same shape of split.** `TD-E22` fails a backend-backed `E2E UI`
+scenario carrying no `API coverage:` decision, and a decision whose link points at a scenario that is
+absent or not `E2E API`. It cannot rule on whether the decision is *true* — whether the backend
+behaviour really has no independent contract value, or whether the linked scenario really asserts what
+the exemption claims it does. That is yours: read each decision against the scenario it exempts or
+links, and a `not needed` covering real contract behaviour is a coverage finding, not a formatting one.
+Every decision is on the writing step's `API_COVERAGE_DECISIONS:` receipt line, and none of them has
+been reviewed by anybody before you — the step that wrote the level also wrote the decision the level
+created, so this review is the first independent read either one gets.
+
 A clean lint is not a passing design. It says the counts add up and the fields are where they belong. Criteria 3–11 and 14–17 and 19 are why this review runs at all.
 
 When `expect_technique_analysis` is `true` and the document has no `# Test Basis Analysis` section, that is a Major finding under criterion 14 — not `Blocked`. Review everything else in full and say so plainly; a design without the models is still reviewable against the requirements.
@@ -94,6 +103,13 @@ The per-scenario reasoning of Step 2 — the technique soundness, duplication an
 
 If you cannot establish what changed — no `revision:` bump in the front matter, or scenario ids that moved — run `full_review` and say so in `NOTES`. An uncertain delta is not a delta.
 
+**A new Major on a re-review may name only a block that changed since the iteration you reviewed, or
+one a previous finding named.** A defect you can now see in a block nobody touched is a defect you
+passed last time, and raising it as a Major now spends a revision round on work the previous round
+was supposed to have asked for. Report it as Minor with `(untouched block)` in the finding text, so
+it is on the record and the loop still converges. This is not a licence to under-report: the block
+that *did* change is reviewed at full severity, and so is any block a finding of yours named.
+
 ## Ruling on every previous finding
 
 Every id you raised last time gets exactly one ruling now: **resolved** (open the scenario and confirm), **still outstanding**, or **accepted** where the design's author answered it under `# Coverage Gaps` with reasoning you judge sound. A previous finding you leave unruled is not a review.
@@ -101,6 +117,26 @@ Every id you raised last time gets exactly one ruling now: **resolved** (open th
 Ids are yours and they are stable — a finding outstanding on iteration 3 keeps the number you gave it on iteration 1, new findings continue from the highest already used for that severity, and a resolved id is never reused.
 
 A finding whose subject the design now answers under `# Coverage Gaps` by naming an existing `SCN-NNN` is **resolved**, not outstanding: the gap was a duplicate you asked for, and pointing at the scenario that already covers it is the correct response.
+
+# Step 1c — Read the rubric the levels were written against
+
+**`Read` `docs/automation/references/level-assignment.md` before you judge criteria 9 or 10**, on every
+run that reviews a classified design. Skip it only when `expect_levels_assigned` is `false`, where there
+are no levels to rule on.
+
+It holds the level definitions, the eight decision factors, the assignment rules, the four shapes that
+get wrongly routed to E2E UI, and the E2E minimum-set pass — demotion, folding, and the journey grouping
+that decides both.
+
+**It is the same file the writing step reads.** That is the point of reading it rather than judging from
+this body: a rule the design is written against and the rule it is reviewed against have to be the same
+words, or the two drift the first time somebody narrows a definition and edits one of them. Criteria 9
+and 10 below say what a *finding* looks like; the rubric says what *correct* looks like, and you need
+both.
+
+**Never work from memory of it.** It has been rewritten twice against real designs that routed
+everything to E2E, and a reviewer applying the old version passes exactly the designs it was rewritten
+to catch.
 
 # Step 2 — The twenty review criteria
 
@@ -118,7 +154,7 @@ Criteria 1–13 audit the scenarios against the requirements. Criteria 14–18 a
 | 6 | Duplicate scenarios | two scenarios whose `Action:` and `Expected:` differ only in wording |
 | 7 | Contradictory scenarios | two scenarios asserting different outcomes for the same input and preconditions |
 | 8 | Invalid assumptions | an `Expected:` value — status code, error string, limit, field name, role, route — that appears nowhere in the requirements document **and** carries no `inferred:` or `approved:` marker in that scenario's `Notes:`. An untagged value is a claim the requirements state it, so the finding is the silent claim, not the value. A value tagged `inferred:` whose stated basis is a general convention rather than something in the requirements is a mislabel, and should have been `unknown:` |
-| 9 | Incorrect level assignments | a scenario at a level where its `Expected:` outcome is not decidable, or one pushed to E2E though its assertion is a self-contained rule. `Assigned Level:` names the lowest layer with an assertable oracle and `Automation Suitability:` names whether that test can be automated now, so a level moved up to accommodate `Manual only` is this finding, and `Manual only` paired with Unit, Component or Integration is not. Two further shapes: `Requirement Gap` on a scenario whose `Expected:` is assertable — a real level was available and the work was deferred instead — and a real level on a scenario whose `Expected:` records an unknown, a missing oracle or an outcome stated as not assertable, which claims coverage that cannot exist |
+| 9 | Incorrect level assignments | judged against `docs/automation/references/level-assignment.md`, which is the same file the levels were written from — a scenario at a level where its `Expected:` outcome is not decidable, a level moved up to accommodate `Manual only`, `Requirement Gap` on a scenario whose `Expected:` is assertable, or a real level on one whose `Expected:` records an unknown or a missing oracle. Also a `Level Rationale:` that names no deciding factor, or that argues for a level the block no longer carries |
 | 10 | Excessive E2E coverage | two or more E2E scenarios covering one journey — same actor, same entry point, same routes — where a single run of one already traverses what the other asserts; an E2E assertion that would pass, and fail correctly, against a stubbed backend response; validation and formatting rules assigned to E2E as a group rather than individually justified. Individually justified assignments are the usual form of this finding: each scenario needs a browser, and none of them needs its own. **Read `Preconditions:` for the actor and the entry state, never for the data** — two scenarios differing only in how much or what data they need are one journey, and a design listing them as two is this finding whatever their rationales say. Count only scenarios assigned `E2E API` or `E2E UI` — a `Requirement Gap` scenario is on no journey and belongs in neither the numerator nor the denominator of any E2E figure |
 | 10b | Wrong fold decision | a scenario carrying `Folds Into:` whose covering scenario is on a different journey — a different actor's authorization, a different entry point, different routes — or whose two `Expected:` outcomes cannot both be observed in one run, typically because they need the same resource in opposite states. The inverse is the same finding: two E2E scenarios on one journey where neither carries `Folds Into:` and one of them plainly should, and a scenario folded where a lower level would have held its assertion truthfully, which is a demotion written as a fold. A fold's `Level Rationale:` has to answer both halves — why no lower level holds it, and why the covering traversal is the same one — and one carrying only half is this finding. Structure and arithmetic are the lint's (`TD-E21`); whether the fold was the right call is yours |
 | 11 | Missing lower-level coverage | a requirement whose logic clearly lives in one module with no Unit, Component, or Integration scenario anywhere. A `Requirement Gap` scenario is not lower-level coverage of anything; where one stands in for the missing scenario, the finding is that the requirement was never specified |
@@ -144,11 +180,30 @@ Additional structural checks, folded into the criteria above:
 
 # Step 3 — Severity and verdict
 
+**The severity floor.** A finding is **Major only when it changes what a test asserts, or whether an
+in-scope requirement or a feasible coverage item is covered at all.** Everything else is Minor —
+wording, a heading, a label, a matrix cell that is untidy rather than wrong, an ordering, a rationale
+that could be fuller. The floor exists because the design loop is capped at one round by default: a
+Major is a request to regenerate a document and spend the run's only revision, so a finding that
+would not change a single test is a finding that costs a round and buys nothing. Grading up to look
+thorough is the failure mode this floor is written against.
+
+Two boundaries the floor is easiest to get wrong on, and both go the same way:
+
+- **A coverage item nothing exercises is Major; one a scenario exercises and does not cite is Minor.**
+  The first is missing coverage, and no test will be written for it. The second is a citation the
+  matrices need and the tests do not — the behaviour is already exercised, and correcting the
+  `Coverage Item:` line changes no assertion anywhere.
+- **A missing `# Coverage Gaps` entry for something the design already handles correctly is Minor.**
+  It is a record of an unknown, not a claim about the system: adding it changes what a later reader
+  knows and nothing about what any test does. A gap entry written *instead of* coverage an in-place
+  edit could have produced is the Major, and it is a different finding.
+
 Classify each finding:
 
 - **Critical** — an FR or AC with zero scenarios and no out-of-scope marker; a scenario asserting a value absent from the requirements; two contradictory scenarios; a `Requirement:` id that does not exist; a `Coverage Item:` id that does not exist; a technique coverage matrix claiming 100% while a declared item is exercised by nothing; an out-of-scope marker that does not survive verification. A false coverage claim is as damaging as an invented status code — both make the design look finished when it is not, and a marker used to hide thin coverage is the same lie wearing a different label.
 - **Major** — a verified partial design, reported once with its outstanding ids; missing negative coverage for an operation with required inputs; missing boundary coverage for a stated limit; a wrong level assignment; a duplicate; missing `Assigned Level:` when expected; a matrix disagreeing with the blocks; a missing `# Test Basis Analysis` when expected; and everything else in criteria 14–17 — a missing invalid partition, a stated limit with no `BV-` row, unjustified 2-value BVA, an uncovered feasible rule column, an uncovered valid transition, no invalid transition attempted, two invalid transitions in one scenario.
-- **Minor** — wording, ordering, priority disagreements, a thin `Notes:`, a missing rationale on an otherwise correct assignment, a wrong `Technique:` label where the `Coverage Item:` is right, a 2-value row missing its justification where 3-value genuinely was infeasible.
+- **Minor** — wording, ordering, priority disagreements, a thin `Notes:`, a missing rationale on an otherwise correct assignment, a wrong `Technique:` label where the `Coverage Item:` is right, a 2-value row missing its justification where 3-value genuinely was infeasible, a heading or a matrix cell that reads badly without changing what the arithmetic says.
 
 Verdict rules — apply exactly:
 
@@ -213,8 +268,6 @@ Required Changes:
 2. [DESIGN-M5] Add password-length boundary scenarios at 5 and 7. (Major)
 3. [DESIGN-M7] Re-assign SCN-004 to Unit. (Major)
 4. [DESIGN-m1] Merge SCN-008 and SCN-011, or differentiate their Expected outcomes. (Minor)
-
-Final Recommendation: <one or two lines>
 ```
 
 Rules for the report:

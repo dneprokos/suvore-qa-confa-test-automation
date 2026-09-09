@@ -17,6 +17,7 @@
  *   node scripts/workflow-state.mjs validate        <TICKET-ID|path> [--json] [--strict] [--metrics <p>]
  *   node scripts/workflow-state.mjs get             <TICKET-ID|path> <dotted.path> [--json]
  *   node scripts/workflow-state.mjs check-artifacts  <TICKET-ID|path> [--json] [--root <dir>]
+ *   node scripts/workflow-state.mjs check-streams   <TICKET-ID|path> [--json] [--design <path>]
  *   node scripts/workflow-state.mjs print-schema    [--json | --markdown]
  *   node scripts/workflow-state.mjs init            <TICKET-ID|path> [--set <path>=<value>]...
  *   node scripts/workflow-state.mjs set             <TICKET-ID|path> <path>=<value>... [--allow-unknown]
@@ -72,6 +73,7 @@ import {
   renameSync,
 } from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -94,7 +96,22 @@ export const ENUMS = {
    * alternative-flow only — never for a main flow, which stops the run under either value.
    */
   blocked_alternative_flow: ["escalate", "continue"],
-  design_status: ["pending", "generated", "classified", "approved"],
+  /**
+   * What auto mode does at the gate between design and automation when the design wants API
+   * coverage and no API surface was ever mapped. `escalate` is the default and the stopping
+   * behaviour: the run halts and names the feature-to-endpoint mapping a human must confirm.
+   * `ignore` settles the API stream as `not_applicable` and prints the consequence. Like the
+   * setting above it approves nothing — it only decides whether a human is fetched now.
+   */
+  missing_api_surface: ["escalate", "ignore"],
+  /**
+   * `approved_with_open_findings` is what reaching `max_design_iterations` produces: the design is
+   * good enough to implement and the review still has open Majors, whose ids go to
+   * `test_design.open_questions` and into the pull-request body. It is a distinct state rather than
+   * `approved`, because a reader who cannot tell the two apart cannot tell a design nobody
+   * criticised from one whose criticism nobody answered.
+   */
+  design_status: ["pending", "generated", "classified", "approved", "approved_with_open_findings"],
   review_status: ["pending", "passed", "needs_revision", "blocked"],
   stream_status: [
     "pending",
@@ -159,6 +176,10 @@ const SCHEMA = {
       review_requirements: { type: "scalar" },
       non_e2e_coverage_strategy: { type: "scalar" },
       max_review_iterations: { type: "int" },
+      max_design_iterations: {
+        type: "int",
+        doc: "the design review's own cap, separate from the code reviews' because the two loops converge differently; on reaching it the design is approved_with_open_findings and the open ids travel to the pull request",
+      },
       batch_threshold: { type: "int" },
       batch_size: { type: "int" },
       jira_target_status: { type: "scalar" },
@@ -166,6 +187,11 @@ const SCHEMA = {
         type: "enum",
         values: ENUMS.blocked_alternative_flow,
         doc: "auto mode only — continue relaxes the no-coverage escalation for alternative-flow requirements, never for a main flow",
+      },
+      on_missing_api_surface: {
+        type: "enum",
+        values: ENUMS.missing_api_surface,
+        doc: "auto mode only — what the automation gate does when the design wants API coverage and no surface was mapped; ignore settles the API stream as not_applicable instead of stopping the run",
       },
       notes: { type: "free" },
     },
@@ -657,18 +683,32 @@ function crossChecks(root, report, metricsRecords) {
     );
   }
 
-  const cap = Number(get("configuration.max_review_iterations"));
-  if (Number.isFinite(cap)) {
-    for (const counter of ["design", "api", "ui"]) {
-      const spent = Number(get(`iterations.${counter}`));
-      if (Number.isFinite(spent) && spent > cap) {
-        report.err(
-          "WS-E33",
-          `iterations.${counter}`,
-          `${spent} review rounds spent against a cap of ${cap}. Reaching the cap is legal; passing it is not`,
-          lineOf(`iterations.${counter}`),
-        );
-      }
+  // Two caps, because the two loops converge differently: a code review's findings are answered by
+  // editing the file it names, while a design review's are answered by regenerating a document
+  // whose next version invites new findings. `max_design_iterations` falls back to the shared cap
+  // for a document written before it existed.
+  // `Number(null)` is 0 and `Number(undefined)` is NaN, so an absent key has to be tested before it
+  // is coerced — otherwise a document predating this setting reports a cap of zero and fails on its
+  // first review round.
+  const asCap = (path) => {
+    const raw = get(path);
+    if (raw === null || raw === undefined || raw === "") return NaN;
+    return Number(raw);
+  };
+  const codeCap = asCap("configuration.max_review_iterations");
+  const declaredDesignCap = asCap("configuration.max_design_iterations");
+  const designCap = Number.isFinite(declaredDesignCap) ? declaredDesignCap : codeCap;
+  const caps = { design: designCap, api: codeCap, ui: codeCap };
+  for (const [counter, cap] of Object.entries(caps)) {
+    if (!Number.isFinite(cap)) continue;
+    const spent = Number(get(`iterations.${counter}`));
+    if (Number.isFinite(spent) && spent > cap) {
+      report.err(
+        "WS-E33",
+        `iterations.${counter}`,
+        `${spent} review rounds spent against a cap of ${cap}. Reaching the cap is legal; passing it is not`,
+        lineOf(`iterations.${counter}`),
+      );
     }
   }
 
@@ -680,6 +720,34 @@ function crossChecks(root, report, metricsRecords) {
       "pull_request",
       `a pull request is recorded while phase is "${phase}"`,
       lineOf("pull_request"),
+    );
+  }
+
+  // WS-E35 — a stream that never settled, in a document that says the run reached the ship phase.
+  //
+  // The ship step's own precondition is that both stream reviews passed, and it reads an unknown
+  // verdict as "not passed" — so this is not the last line of defence, it is the early one. The
+  // difference is where the drift becomes visible: caught here, the document is wrong before the
+  // ship delegation is made; caught there, a run has already been routed on a false premise. Only
+  // two statuses are shippable. `passed` is a stream that finished its review; `not_applicable` is
+  // a stream that was settled at the automation gate and carries the reason WS-E30 demands. Every
+  // other value says the stream was still in flight, or that its review asked for changes nobody
+  // made — neither of which is a state a pull request may be opened from.
+  const shippablePhase = ["ship", "done"].includes(get("phase"));
+  for (const name of ["api", "ui"]) {
+    const streamStatus = get(`automation.${name}.status`);
+    if (!shippablePhase || !streamStatus || ["passed", "not_applicable"].includes(streamStatus)) continue;
+    const never = ["pending", "implemented", "review_in_progress"].includes(streamStatus);
+    report.err(
+      "WS-E35",
+      `automation.${name}.status`,
+      `phase is "${get("phase")}" with the ${name.toUpperCase()} stream at "${streamStatus}". ` +
+        (never
+          ? `The stream never finished its review, so nothing settled it — a run reaches the ship ` +
+            `phase with both streams passed or not_applicable, never with one still in flight`
+          : `The stream's review did not pass, so it is not shippable. A stream settled against ` +
+            `shipping is fixed and re-reviewed, or the run stops; the phase does not move past it`),
+      lineOf(`automation.${name}.status`),
     );
   }
 
@@ -1030,6 +1098,7 @@ const USAGE = `usage:
   node scripts/workflow-state.mjs validate        <TICKET-ID|path> [--json] [--strict] [--metrics <p>]
   node scripts/workflow-state.mjs get             <TICKET-ID|path> <dotted.path> [--json]
   node scripts/workflow-state.mjs check-artifacts <TICKET-ID|path> [--json] [--root <dir>]
+  node scripts/workflow-state.mjs check-streams   <TICKET-ID|path> [--json] [--design <path>]
   node scripts/workflow-state.mjs print-schema    [--json | --markdown]
   node scripts/workflow-state.mjs init            <TICKET-ID|path> [--set <path>=<value>]...
   node scripts/workflow-state.mjs set             <TICKET-ID|path> <path>=<value>... [--allow-unknown]
@@ -1229,6 +1298,149 @@ export function artifactRows(root, repoRoot) {
   return rows;
 }
 
+/**
+ * check-streams — the state file's two stream decisions, read against the classified design.
+ *
+ * `validate` rules on the document alone and `check-artifacts` on what is still on disk. Neither can
+ * see the defect this command exists for: a stream settled one way while the design says the other.
+ * A stream marked `not_applicable` with scenarios waiting for it is work that will never be launched
+ * and never be missed — nothing downstream re-derives that decision, and the ship gate cannot tell a
+ * stream nobody needed from one nobody ran.
+ *
+ * It reads its counts from `test-design-lint.mjs --emit-manifest` rather than counting
+ * `Assigned Level:` lines, because that is the one place the arithmetic lives. `classified: false` is
+ * refused rather than read as zero: an unclassified design reports nothing at every level, which is a
+ * true statement about the document and the exact opposite of what a gate would conclude from it.
+ *
+ * Like the other read commands it rules on nothing else — not whether a step ran, not whether a
+ * verdict was right. Exit `5` is "the state file and the design disagree", kept distinct from `1`, a
+ * document that does not validate, and `4`, an artifact gone from disk.
+ */
+function cmdCheckStreams(target, flags, designOverride) {
+  const statePath = resolveStatePath(target);
+  if (!existsSync(statePath)) {
+    console.error(`no state file at ${statePath}`);
+    return 3;
+  }
+  const { root, fatal } = parseStateYaml(readFileSync(statePath, "utf8"));
+  if (fatal) {
+    console.error(`line ${fatal.line}: ${fatal.what} [WS-E90]`);
+    return 3;
+  }
+  const get = (dotted) => scalarValue(lookup(root, dotted.split(".")));
+  const designPath = designOverride ?? get("artifacts.test_design");
+  if (!designPath) {
+    console.error(
+      `no test design to check against: the state file records no artifacts.test_design and no ` +
+        `--design was given`,
+    );
+    return 2;
+  }
+  const resolved = path.isAbsolute(designPath) ? designPath : path.resolve(REPO_ROOT, designPath);
+  if (!existsSync(resolved)) {
+    console.error(`no test design at ${resolved}`);
+    return 3;
+  }
+
+  const lint = spawnSync(
+    process.execPath,
+    [path.join(REPO_ROOT, "scripts", "test-design-lint.mjs"), resolved, "--emit-manifest"],
+    { encoding: "utf8" },
+  );
+  let manifest;
+  try {
+    manifest = JSON.parse(lint.stdout);
+  } catch {
+    console.error(
+      `could not read a manifest from the design: test-design-lint.mjs exited ${lint.status}. ` +
+        `${(lint.stderr || lint.stdout || "").trim().split("\n")[0] ?? ""}`,
+    );
+    return 3;
+  }
+
+  const violations = [];
+  const err = (code, subject, what) => violations.push({ code, subject, what });
+
+  if (manifest.classified !== true) {
+    err(
+      "CS-E01",
+      "test_design",
+      `the design is not classified, so no stream conclusion can be drawn from it. An unclassified ` +
+        `design reports zero scenarios at every level, which is not the same statement as a stream ` +
+        `with no work`,
+    );
+  }
+
+  const byLevel = manifest.scenarios_by_level ?? {};
+  const streams = [
+    { name: "api", level: "E2E API" },
+    { name: "ui", level: "E2E UI" },
+  ].map(({ name, level }) => ({
+    name,
+    level,
+    scenarios: Array.isArray(byLevel[level]) ? byLevel[level] : [],
+    status: get(`automation.${name}.status`),
+    reason: get(`automation.${name}.not_applicable_reason`),
+  }));
+
+  if (manifest.classified === true) {
+    for (const stream of streams) {
+      const count = stream.scenarios.length;
+      if (count > 0 && stream.status === "not_applicable") {
+        err(
+          "CS-E02",
+          `automation.${stream.name}.status`,
+          `settled as not_applicable while the design assigns ${count} scenario(s) to ${stream.level} ` +
+            `(${stream.scenarios.join(", ")}). That work will never be launched and never be missed`,
+        );
+      }
+      if (count === 0 && stream.status !== "not_applicable" && stream.status !== "pending") {
+        err(
+          "CS-E03",
+          `automation.${stream.name}.status`,
+          `"${stream.status}" while the design assigns no scenario to ${stream.level}. A stream with ` +
+            `nothing to test is settled as not_applicable with a reason, never worked`,
+        );
+      }
+    }
+  }
+
+  const ticket = get("ticket_id") ?? path.basename(statePath);
+  if (flags.has("--json")) {
+    console.log(
+      JSON.stringify(
+        {
+          file: statePath,
+          design: resolved,
+          ticket,
+          classified: manifest.classified === true,
+          scope: "stream_scope_only",
+          streams: streams.map((s) => ({
+            stream: s.name,
+            level: s.level,
+            scenarios: s.scenarios,
+            status: s.status,
+            not_applicable_reason: s.reason,
+          })),
+          violations,
+        },
+        null,
+        2,
+      ),
+    );
+    return violations.length > 0 ? 5 : 0;
+  }
+
+  for (const v of violations) console.log(`${v.subject}  [${v.code}]  ${v.what}`);
+  if (violations.length > 0) {
+    console.log(`\nSTREAMS: ${violations.length} disagreement(s) between ${statePath} and ${resolved}`);
+    return 5;
+  }
+  const shape = streams.map((s) => `${s.level} ${s.scenarios.length} -> ${s.status}`).join("; ");
+  console.log(`${path.basename(statePath)}: streams agree with the design (${shape})`);
+  return 0;
+}
+
 function cmdCheckArtifacts(target, flags, rootOverride) {
   const statePath = resolveStatePath(target);
   if (!existsSync(statePath)) {
@@ -1300,10 +1512,12 @@ configuration:
   review_requirements: true
   non_e2e_coverage_strategy: create_follow_up_ticket
   max_review_iterations: 2
+  max_design_iterations: 1
   batch_threshold: 15
   batch_size: 10
   jira_target_status: In Review
   on_blocked_alternative_flow: escalate
+  on_missing_api_surface: escalate
 
 iterations:
   design: 0
@@ -1536,6 +1750,53 @@ function cmdClearInFlight(target, flags, values) {
   return persist(statePath, loaded.root, loaded.text, "clear-in-flight", flags);
 }
 
+/**
+ * The `configuration:` block of a freshly initialised document, parsed. It is the only source of
+ * defaults here — a second list in this file could only ever disagree with the template, which is
+ * the same reason the banner is printed from the state file rather than kept beside it.
+ */
+function templateConfiguration() {
+  const { root } = parseStateYaml(initialDocument("TEMPLATE-1"));
+  const entry = mapEntry(root, "configuration");
+  return entry && entry.value.kind === "map" ? entry.value : null;
+}
+
+/**
+ * Write in the settings a document predates. A configuration key the schema defines and the file
+ * lacks is not a neutral absence: the banner resolves it as `default` and prints it as a value
+ * nobody chose, and a resume of a run somebody capped or relaxed goes on reporting the template's
+ * answer instead of theirs. `init` writes every key for exactly this reason; this is the same rule
+ * applied to the documents written before the key existed.
+ *
+ * Only `configuration.*`, and only keys the template carries a value for. Nothing else in the
+ * document is touched — a back-fill is not a migration of the run, and a counter, a phase or a
+ * history entry means what it said before this command ran.
+ *
+ * One key is deliberately never back-filled, for that same reason. `max_design_iterations` is a
+ * *cap*, and writing a tighter one into a run that already spent more rounds than it allows would
+ * retroactively make that run illegal — the document stops validating, `normalize` then refuses to
+ * write it, and a command whose whole promise is that it changes nothing about the run has bricked
+ * one. A document that predates the key falls back to `max_review_iterations` in the validator,
+ * which is a defined answer rather than an absence, so there is nothing here for a back-fill to fix.
+ */
+const NEVER_BACKFILLED = new Set(["max_design_iterations"]);
+
+function backfillConfiguration(root) {
+  const template = templateConfiguration();
+  const target = mapEntry(root, "configuration");
+  if (!template || !target || target.value.kind !== "map") return [];
+  const added = [];
+  for (const entry of template.entries) {
+    const field = SCHEMA.configuration.children?.[entry.key];
+    if (!field || field.type === "free") continue;
+    if (NEVER_BACKFILLED.has(entry.key)) continue;
+    if (mapEntry(target.value, entry.key)) continue;
+    target.value.entries.push({ key: entry.key, value: entry.value });
+    added.push(`${entry.key}: ${scalarValue(entry.value)}`);
+  }
+  return added;
+}
+
 function cmdNormalize(target, flags) {
   const statePath = resolveStatePath(target);
   const loaded = loadForWrite(statePath, { allowDuplicates: true });
@@ -1546,6 +1807,9 @@ function cmdNormalize(target, flags) {
   const collapsed = dedupeMap(loaded.root);
   if (collapsed > 0) {
     console.log(`collapsed ${collapsed} duplicate key${collapsed === 1 ? "" : "s"}, keeping the last value of each`);
+  }
+  for (const added of backfillConfiguration(loaded.root)) {
+    console.log(`added      configuration.${added}  (the value init would have written)`);
   }
   return persist(statePath, loaded.root, loaded.text, "normalized", flags);
 }
@@ -1874,6 +2138,7 @@ function cmdReset(target, flags, values) {
 const VALUE_FLAGS = {
   validate: ["--metrics"],
   "check-artifacts": ["--root"],
+  "check-streams": ["--design"],
   init: ["--set"],
   "set-block": ["--from-file"],
   append: ["--json"],
@@ -1927,6 +2192,10 @@ function main(argv) {
         : wrongArity();
     case "get":
       return positional.length === 2 ? cmdGet(positional[0], positional[1], flags) : wrongArity();
+    case "check-streams":
+      return positional.length === 1
+        ? cmdCheckStreams(positional[0], flags, values.get("--design")?.[0] ?? null)
+        : wrongArity();
     case "check-artifacts":
       return positional.length === 1
         ? cmdCheckArtifacts(positional[0], flags, values.get("--root")?.[0] ?? null)

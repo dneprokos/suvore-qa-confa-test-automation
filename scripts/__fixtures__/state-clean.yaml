@@ -10,10 +10,12 @@ configuration:
   review_requirements: true
   non_e2e_coverage_strategy: create_follow_up_ticket
   max_review_iterations: 2
+  max_design_iterations: 1
   batch_threshold: 15
   batch_size: 10
   jira_target_status: In Review
   on_blocked_alternative_flow: escalate
+  on_missing_api_surface: escalate
 
 iterations:
   design: 1

@@ -5,13 +5,35 @@ How an agent opens the application under test (AUT), reads its real DOM, and rep
 Read this file **before** your first `playwright-cli` command. Every rule below is enforced by the
 agent body, not by the tool grant — `Bash` alone does not tell you what you are allowed to look at.
 
-Full command reference: `.claude/skills/playwright-cli/SKILL.md`.
+**The commands, in full.** Every `playwright-cli` invocation an exploration needs is below; there is no
+other reference to open, and a command absent from this list is one you do not run. `-s=<name>` names the
+session and is required on every call (§2).
+
+```bash
+playwright-cli -s=<name> open <url>          # start the session on a page
+playwright-cli -s=<name> goto <url>          # navigate an open session
+playwright-cli -s=<name> snapshot            # the accessibility tree, with e-refs
+playwright-cli -s=<name> eval "<expr>"       # evaluate against the page
+playwright-cli -s=<name> eval "el => el.getAttribute('data-testid')" e5
+playwright-cli -s=<name> click e5
+playwright-cli -s=<name> fill e3 "<value>"
+playwright-cli -s=<name> press <Key>         # Enter, ArrowDown, Escape
+playwright-cli -s=<name> hover e4
+playwright-cli -s=<name> select e9 "<value>"
+playwright-cli -s=<name> check e12           # and uncheck
+playwright-cli -s=<name> dialog-accept       # and dialog-dismiss
+playwright-cli -s=<name> network             # requests the last action fired
+playwright-cli -s=<name> console             # console output, for a silent failure
+playwright-cli -s=<name> screenshot          # only when a snapshot cannot show it
+playwright-cli -s=<name> close               # always, on every exit path
+playwright-cli list                          # sessions still open — should be empty afterwards
+```
 
 ---
 
 ## 1. Preflight
 
-The AUT must be running at `Config.BASE_URL` — see `framework/configuration/config.ts:28`, sourced from
+The AUT must be running at `Config.BASE_URL` — see `framework/configuration/config.ts`, sourced from
 `BASE_URL` in `.env`. `http://localhost:9000/` is the documented local default, not a constant: read the
 value, then preflight the value you read.
 
@@ -74,13 +96,13 @@ playwright-cli -s=env-explorer snapshot
 ```
 
 Credentials come from `.env` (`OWNER_EMAIL` / `OWNER_PASSWORD` / `ADMIN_EMAIL` / `ADMIN_PASSWORD`,
-typed in `framework/configuration/config.ts:31-34`). Never paste a literal password into a command you
+typed in `framework/configuration/config.ts`). Never paste a literal password into a command you
 report, and never copy one into a document.
 
 ## 4. Translating findings into locators
 
-A locator comes from the **highest tier the application makes possible**. See `pages/login-page.ts:11-14`
-and `pages/home-page.ts:8-9` for the house style — both are tier 1 throughout.
+A locator comes from the **highest tier the application makes possible**. See `pages/login-page.ts`
+and `pages/home-page.ts` for the house style — both are tier 1 throughout.
 
 | Tier | Locator | Status |
 |---|---|---|

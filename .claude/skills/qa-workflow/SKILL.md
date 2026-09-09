@@ -10,7 +10,7 @@ description: >-
   every routing decision. Use when asked to "run the QA workflow", "start the lead
   orchestrator", "automate <TICKET-ID> end to end", "run the QA lead", or
   "/qa-workflow <TICKET-ID>".
-argument-hint: "<TICKET-ID> [--auto] [--max-review-iterations N] [--allow-alternative-flow-gaps] [--resume] [--dry-run] | <TICKET-ID> --reset"
+argument-hint: "<TICKET-ID> [--auto] [--max-review-iterations N] [--max-design-iterations N] [--allow-alternative-flow-gaps] [--resume] [--dry-run] | <TICKET-ID> --reset"
 ---
 
 # QA Workflow — the lead orchestrator
@@ -44,7 +44,8 @@ the registry is right and the map is out of date. Do not read it before an ordin
 |---|---|---|---|
 | `ticket_id` | yes | `SCRUM-139`, or a `/browse/<KEY>` URL | stop and ask — never guess from the branch or the newest file |
 | `mode` | no | `manual` \| `auto` (`--auto` sets `auto`) | `manual` |
-| `max_review_iterations` | no | integer >= 1; alias `maxReviewIterations` | `2` |
+| `max_review_iterations` | no | integer >= 1; alias `maxReviewIterations` | `2` — the two **code** review loops, 2.2a and 2.2b |
+| `max_design_iterations` | no | integer >= 1 | `1` — the **design** review loop, 1.5. Separate because the two converge differently: a code finding is answered by editing the file it names, while a design finding is answered by regenerating a document whose next version invites new findings |
 | `batch_threshold` | no | integer >= 1 | `15` — above this many in-scope requirements, step 1.3 runs in batches |
 | `batch_size` | no | integer >= 1 | `10` — requirements per batch once the threshold is crossed |
 | `review_requirements` | no | `true` \| `false` | `true` |
@@ -87,6 +88,13 @@ an alias for the one parameter that is commonly written the other way.
      choosing a phase.** `validate` rules on what the document says; this rules on whether the files it
      names are still there. Exit `0` means every recorded path is on disk; exit `4` means at least one is
      gone, and the row says which field named it and which stream it belongs to. See *Artifact drift* below.
+   * Then run `node scripts/workflow-state.mjs normalize <TICKET-ID>` — **on every resume, before the
+     banner.** A missing `configuration.*` key is not a validation error, so `validate` passes a document
+     written before the key existed and the banner then reports the template default as though somebody
+     chose it. `normalize` writes each absent key at the value `init` would have written, prints one line
+     per key, and says `unchanged` when there is nothing to add. It touches no phase, no counter and no
+     history entry. Announce anything it added, because a setting that appears on a resume is a setting
+     this run is about to be governed by.
    * A non-empty `in_flight:` means the previous session was interrupted mid-delegation. Follow *Resuming
      an interrupted delegation* below before doing anything else.
 2a. **`--reset`, and only when this invocation asked for it.** See *Dropping to the first stage* below.
@@ -122,6 +130,7 @@ QA Workflow — SCRUM-140
   ticket_id                     SCRUM-140                 request
   mode                          auto                      request (--auto)
   max_review_iterations         2                         default
+  max_design_iterations         1                         default
   batch_threshold               15                        default
   batch_size                    10                        default
   review_requirements           true                      default
@@ -192,6 +201,8 @@ node scripts/workflow-state.mjs clear-in-flight <TICKET-ID> --agent <name>
 node scripts/workflow-state.mjs get   <TICKET-ID> <dotted.path>               # a value, raw
 node scripts/workflow-state.mjs validate <TICKET-ID>                          # belt and braces
 node scripts/workflow-state.mjs check-artifacts <TICKET-ID>                   # step 0, every resume
+node scripts/workflow-state.mjs normalize <TICKET-ID>                         # step 0, every resume
+node scripts/workflow-state.mjs check-streams <TICKET-ID>                     # Checkpoint B, and the ship gate
 node scripts/workflow-state.mjs normalize <TICKET-ID>                         # after a hand edit
 node scripts/workflow-state.mjs reset <TICKET-ID> --reason "<why>" [--dry-run] # human-asked only
 ```
@@ -357,17 +368,21 @@ disk, which is what keeps its context small and its result reproducible.
 
 | Step | Agent / skill | Parameters passed | Receipt line to parse | Produces |
 |---|---|---|---|---|
-| 1.1 | `qa-requirements-collector` | `ticket_id`, `endpoint_hints`, `endpoint_hints_approver`, `api_surface_mode` | `QA_REQUIREMENTS_COLLECTOR_RESULT`, `API_SURFACE`, `SURFACE_PROVENANCE`, `MATCH_BASIS`, `MATCHED_OPERATIONS`, `SPEC_GAPS` | `requirements/<TICKET-ID>-requirements.md` incl. `# API Surface`, Jira -> In Progress |
-| 1.2 | `qa-requirements-reviewer` — skipped when `review_requirements: false` | `ticket_id`, `requirements_path` | `QA_REQUIREMENTS_REVIEWER_RESULT`, `API_SURFACE_EVIDENCE` | five QA sections appended to the same file |
-| 1.3 | `qa-scenario-generator` | `ticket_id`, `requirements_path`, `requirement_ids`, `review_findings`, `approved_values`, `confirm_ui` | `QA_SCENARIO_GENERATOR_RESULT`, `LINT`, `UNAPPROVED_UNKNOWNS`, `BLOCKED_SCENARIOS`, `APPROVED_ASSUMPTIONS` | `test-design/<TICKET-ID>-test-design.md` |
-| 1.4 | `qa-scenario-classifier` | `ticket_id`, `test_design_path`, `review_findings`, `scenario_ids` | `QA_SCENARIO_CLASSIFIER_RESULT`, `E2E_JOURNEYS`, `E2E_KEPT`, `E2E_DEMOTED`, `E2E_FOLDED`, `E2E_TESTS_IMPLIED`, `REQUIREMENT_GAPS` | `Assigned Level:` + `Level Rationale:` + `Folds Into:` per scenario |
+| 1.1 | `qa-requirements-collector` | `ticket_id`, `endpoint_hints`, `endpoint_hints_approver`, `api_surface_mode` | `QA_REQUIREMENTS_COLLECTOR_RESULT`, `FR_IDS`, `AC_IDS`, `API_SURFACE`, `SURFACE_PROVENANCE`, `MATCH_BASIS`, `MATCHED_OPERATIONS`, `SPEC_GAPS` | `requirements/<TICKET-ID>-requirements.md` incl. `# API Surface`, Jira -> In Progress |
+| 1.2 | `qa-requirements-reviewer` — skipped when `review_requirements: false` | `ticket_id`, `requirements_path` | `QA_REQUIREMENTS_REVIEWER_RESULT`, `API_SURFACE_EVIDENCE`, `MISSING_INFORMATION` | five QA sections appended to the same file; the `# Missing Information` bullets are Checkpoint A1's input |
+| 1.3 | `qa-scenario-generator` | `ticket_id`, `requirements_path`, `requirement_ids`, `review_findings`, `approved_values`, `confirm_ui` | `QA_SCENARIO_GENERATOR_RESULT`, `LINT`, `UNAPPROVED_UNKNOWNS`, `BLOCKED_SCENARIOS`, `APPROVED_ASSUMPTIONS`, `LEVELS`, `E2E_JOURNEYS`, `E2E_KEPT`, `E2E_DEMOTED`, `REQUIREMENT_GAPS` | `test-design/<TICKET-ID>-test-design.md`, classified — `Assigned Level:` + `Level Rationale:` (+ `Folds Into:`) per scenario |
 | 1.5 | `qa-scenario-reviewer` | `ticket_id`, `test_design_path`, `requirements_path`, `previous_findings` | `Review Status:` | verdict + `[DESIGN-*]` findings |
 | 2.1a | `aqa-api-test-creator` — skipped when `automation.api.status: not_applicable` | `ticket_id`, `test_design_path`, `requirements_path`, `iteration`, `review_findings`, `finding_ids`, `run_tests` | `API_SDET_RESULT` | `tests/api/**`, `.workflow/reports/<TICKET-ID>-api-implementation.md` |
 | 2.1b | `aqa-ui-test-creator` — skipped when `automation.ui.status: not_applicable` | same, plus `explore_app` | `UI_SDET_RESULT` | `tests/ui/**`, `pages/**`, `.workflow/reports/<TICKET-ID>-ui-implementation.md` |
 | 2.2a | `aqa-api-test-reviewer` — skipped when `automation.api.status: not_applicable` | `ticket_id`, `implementation_report_path`, `test_design_path`, `requirements_path`, `previous_findings` | `Review Status:` | verdict + `[API-*]` findings |
 | 2.2b | `aqa-ui-test-reviewer` — skipped when `automation.ui.status: not_applicable` | same | `Review Status:` | verdict + `[UI-*]` findings |
-| 3 | `qa-ship-tests` **skill** | `ticket_id`, `api_review`, `ui_review`, `branch_name`, `base_branch`, `dry_run` | `QA_SHIP_TESTS_RESULT` | branch, commit, push, pull request |
+| 3 | `qa-ship-tests` **skill** | `ticket_id`, `api_review`, `ui_review`, `branch_name`, `base_branch`, `dry_run`, `open_design_findings` | `QA_SHIP_TESTS_RESULT` | branch, commit, push, pull request |
 | 4 | `qa-jira-transition` | `ticket_id`, `target_status` (**required**), `pr_url`, `branch_name`, `scenarios` | `QA_JIRA_TRANSITION_RESULT` | PR comment on the ticket, Jira -> `jira_target_status` |
+
+`open_design_findings` is passed at step 3 only when `test_design.status` is
+`approved_with_open_findings`: it is `test_design.open_questions` filtered to the `[DESIGN-*]` ids the
+capped review left standing, one per line, copied rather than re-derived. On an `approved` design the
+parameter is omitted and the pull-request body carries no such section.
 
 Steps 2.1a/2.1b run **in parallel** — two Agent calls in one message. Same for 2.2a/2.2b. The two streams
 write to disjoint paths by design, so concurrency here is a scheduling choice with no correctness cost.
@@ -389,7 +404,7 @@ Every prompt carries `ticket_id` — it is the first parameter of every row abov
 the run's cost under the right ticket. See `references/run-cost.md`.
 
 **Every prompt also carries `run_mode:`, naming the mode you expect that step to resolve to** — one of
-`first_run`, `EXISTS`, `revision`, `regenerate`, `full_review`, `re_review`, `reclassify`,
+`first_run`, `EXISTS`, `revision`, `regenerate`, `full_review`, `re_review`,
 `surface_revision`. It changes nothing about how the step behaves: each agent still resolves its own mode
 from the parameters and the files on disk, and a disagreement between the two is a finding about the
 delegation, not an instruction to the agent. It exists so the run's cost can be read per mode, because a
@@ -452,14 +467,19 @@ severity:
 | Finding source | Routed to | Additional parameters |
 |---|---|---|
 | `[DESIGN-*]` under `Missing Scenarios:`, `Duplications:`, `Technique Findings:`, `Risks:` | `qa-scenario-generator` | `review_findings` = the finding lines |
-| `[DESIGN-*]` under `Incorrect Classifications:` | `qa-scenario-classifier` | `review_findings` + `scenario_ids` = the named scenarios |
+| `[DESIGN-*]` under `Incorrect Classifications:` | `qa-scenario-generator` | `review_findings` + `scenario_ids` = the named scenarios |
 | `[REQ-*]`, or a design finding whose root cause is a missing requirement | **escalate** | — |
 | `[API-*]` | `aqa-api-test-creator` | `review_findings`, `finding_ids`, `iteration` |
 | `[UI-*]` | `aqa-ui-test-creator` | same |
 
-A design review with findings in **both** design buckets routes the classifier first, then the generator,
-then re-runs the reviewer once. That is **one** iteration, not two — the counter tracks review rounds, not
-delegations.
+**All four `[DESIGN-*]` buckets route to the same step**, because writing and classifying are one step.
+A review with findings in several buckets is **one** delegation carrying all of them, and then one
+re-run of the reviewer. That is one iteration — the counter tracks review rounds, not delegations.
+
+Pass `scenario_ids` alongside `review_findings` when the findings name specific scenarios, so a
+level finding re-runs the minimum-set pass for those scenarios rather than the whole document. The
+ordering problem that used to live here — which of two steps to run first — is gone with the second
+step.
 
 Requirements gaps escalate rather than route. Only `qa-requirements-collector` holds Atlassian access, and a
 gap in the ticket is answered by a person, not by a re-read of the same ticket. Re-running the collector is
@@ -470,11 +490,23 @@ reviewer that passes has already ruled that they do not block.
 
 ## Phase 1 — Test design
 
-Sequence: 1.1 -> 1.2 (optional) -> **Checkpoint A** -> 1.3 -> 1.4 -> **Checkpoint B** -> 1.5 -> design
+Sequence: 1.1 -> 1.2 (optional) -> **Checkpoint A (A1 approvals, A2 surface)** -> 1.3 -> **Checkpoint B** -> 1.5 -> design
 decision.
 
 Every delegation in this phase is preceded by its `in_flight` append and followed by its
 `clear-in-flight`, exactly as the step registry says — 1.3 included, once per batch.
+
+### After 1.1 — persist the test basis
+
+The 1.1 receipt states the whole test basis on its `FR_IDS` and `AC_IDS` lines. Join them in document
+order — every `FR_IDS` id, then every `AC_IDS` id — and write them once:
+
+```bash
+node scripts/workflow-state.mjs set-block <TICKET-ID> test_design.notes.requirement_ids --from-stdin
+```
+
+Nothing later in the run re-derives that list: the sizing decision below and every `requirement_ids`
+batch read it from here, so a resume that never runs 1.1 again still knows how big the basis is.
 
 ### Before 1.3 — read `references/phase-1-design.md`
 
@@ -485,21 +517,42 @@ the generating step is barred from choosing its own scope and from approving its
 the rules live with the routing rather than with the work.
 
 Two consequences that shape this phase's sequence, and are spelled out there: **batching is never a
-review iteration**, and **1.4 and 1.5 run once, over the whole document**, never over a partial design.
+review iteration**, and **1.5 runs once, over the whole document**, never over a partial design.
 
-### The API surface — two checkpoints
+**Every 1.3 delegation classifies what the document holds when it finishes** — the first batch, every
+later batch, and every revision. It is not "the last batch classifies": the step is barred from knowing
+which batch is last, and it does not need to. Each run levels whatever is unlevelled and reruns the
+minimum-set pass over the whole document, so the journey grouping is correct for the scenarios that
+exist at that moment and correct again after the next batch arrives. A scenario kept as its own journey
+after batch 1 may be folded after batch 2, which is the pass working rather than churn.
+
+### Checkpoint A1 — the missing values, in both modes
+
+Read the `# Missing Information` section of `requirements/<TICKET-ID>-requirements.md`. Every bullet
+reads `- **[<id>] missing value: <short name>** — <what is missing>. Applies to <FR/AC ids>.`, and
+that pair — the requirement and the short name — is what an approval is keyed on.
+
+**Ask here rather than after 1.3.** A value approved now is written into the design on its first pass:
+no `unknown:` marker, no coverage-gap entry, and no second 1.3 delegation spent absorbing an answer a
+human had already given. `references/phase-1-design.md` holds the question, its four options, and the
+one case auto mode stops on — read it before asking, and follow it from the file.
+
+Pass whatever was approved to 1.3 as `approved_values`, one entry per line, and record them in
+`test_design.approved_assumptions`. Nothing approved is a normal outcome and needs no note.
+
+### The API surface — Checkpoint A2 and Checkpoint B
 
 An E2E API scenario needs an operation to call. Step 1.1 maps one from the application's OpenAPI document
 and records the outcome in `artifacts.api_surface`; a person can supply one instead, or decide the ticket
 does not need one. The two checkpoints below are where that decision is taken, and they sit apart on
-purpose: **A is cheap and early, B is binding.**
+purpose: **A2 is cheap and early, B is binding.**
 
-Escalating at A would stop every UI-only ticket, because nothing before 1.4 knows whether the design wants
+Escalating at A2 would stop every UI-only ticket, because nothing before 1.3 knows whether the design wants
 API coverage at all. A design that assigns zero scenarios to `E2E API` on its own merits is a normal,
 complete design, and SCRUM-132 shipped exactly that way.
 
-**Checkpoint A — after 1.2, manual mode only.** Runs when `API_SURFACE_EVIDENCE` is `none` or `absent`.
-Print the reason the section gives, then `AskUserQuestion`:
+**Checkpoint A2 — after 1.2, manual mode only.** Runs when `API_SURFACE_EVIDENCE` is `none` or `absent`. Print the reason the section gives, then
+`AskUserQuestion`:
 
 | Option | Effect |
 |---|---|
@@ -508,10 +561,14 @@ Print the reason the section gives, then `AskUserQuestion`:
 | **Ignore — no API information** | Re-run 1.1 with `api_surface_mode: ignore`. Record `decided_by` and `decided_at`. Print the consequence. The API stream will settle at `not_applicable` at Checkpoint B |
 | **Escalate** | Stop, `status: escalated`, naming what a human must confirm |
 
-Auto mode does not stop at A. It already received `api_endpoints` and `api_surface` at the start of the run
-if the user wanted them, and it cannot yet know whether API coverage is wanted.
+Auto mode does not stop at **A2**. It already received `api_endpoints` and `api_surface` at the start of
+the run if the user wanted them, and it cannot yet know whether API coverage is wanted. It does stop at
+**A1**, for one case: a `[REQ-C*]` against an in-scope `AC-` id, which is the ticket's primary behaviour
+having no stated outcome. An `AC-` id is main flow by definition, so that one needs no design to judge;
+a `[REQ-C*]` against an `FR-` id waits for the design gate, where the manifest can say whether a
+`Happy path` scenario cites it.
 
-**Checkpoint B — after 1.4, both modes. This is the binding gate.** Take the counts from the design
+**Checkpoint B — after 1.3, both modes. This is the binding gate.** Take the counts from the design
 manifest rather than by reading the document:
 
 ```bash
@@ -521,7 +578,7 @@ node scripts/test-design-lint.mjs test-design/<TICKET-ID>-test-design.md --emit-
 `scenarios_by_level["E2E API"]` and `scenarios_by_level["E2E UI"]` are the two lists this gate turns on,
 and `classified` is the field that makes them safe to read. **A design nobody has classified reports zero
 at every level**, which is a true statement about the document and the exact opposite of what this gate
-would conclude from it — so `classified: false` is never a `not_applicable`, it is 1.4 not having run.
+would conclude from it — so `classified: false` is never a `not_applicable`, it is 1.3 not having finished.
 Check it first; `counts.unassigned` says how many scenarios are waiting.
 
 **A level count is not a test count.** `scenarios_by_level` is what this gate turns on, because the
@@ -544,7 +601,7 @@ gate that settles a whole stream is the last place to re-derive a number from pr
 | 0 | any | `automation.api.status: not_applicable`, reason `the classified design assigns no scenarios to E2E API`. Skip 2.1a and 2.2a. **Not an escalation** |
 | >= 1 | `mapped` or `partial` | Proceed. Spec gaps are already `unknown:` in the design and need nothing here |
 | >= 1 | `ignored` | `not_applicable` in **both** modes, reason `the API surface was ignored by <decided_by> on <decided_at>`. Print the consequence. Do not re-ask and do not escalate — a person already decided this, and asking again spends their time to reach the answer they gave |
-| >= 1 | `none` or `absent` | **manual**: the Checkpoint A options without *Retry*. **auto**: obey `on_missing_api_surface` — `escalate` stops with `status: escalated`, `final_decision: escalate`, `NEXT_ACTION` naming the feature-to-endpoint mapping a human must confirm; `ignore` sets `not_applicable` and prints the consequence |
+| >= 1 | `none` or `absent` | **manual**: the Checkpoint A2 options without *Retry*. **auto**: obey `on_missing_api_surface` — `escalate` stops with `status: escalated`, `final_decision: escalate`, `NEXT_ACTION` naming the feature-to-endpoint mapping a human must confirm; `ignore` sets `not_applicable` and prints the consequence |
 
 ### The UI stream
 
@@ -571,7 +628,7 @@ design assigns no scenarios to E2E API; N scenarios are blocked on requirement g
 in `requirement_gaps`. Still `not_applicable`, still not an escalation, but a reason a reader can act on
 rather than one that suggests the feature has no API surface.
 
-Choosing *Describe the endpoints* at B re-runs 1.1, then **1.3 and 1.4 in sequence** — a new surface changes
+Choosing *Describe the endpoints* at B re-runs 1.1, then **1.3** — a new surface changes
 which values are assertable, so the design is regenerated rather than patched. Bump `iterations.design`; the
 cap applies as it does to any other design loop.
 
@@ -596,8 +653,69 @@ The design decision is the gate between design and automation, and it is recorde
 Do not enter Phase 2 on anything but Accept. Both SDETs abort `LEVELS_NOT_ASSIGNED` on an unclassified
 design anyway, but arriving there is a wasted delegation.
 
-Step 1.4 returns `E2E_JOURNEYS`, `E2E_KEPT` and `E2E_DEMOTED` alongside its result line. Record them in
-`test_design` and print them at the 1.4 pause: they are how many distinct journeys reached E2E, which
+**Then check the decision you just wrote, before the first Phase 2 delegation:**
+
+```bash
+node scripts/workflow-state.mjs check-streams <TICKET-ID>
+```
+
+Exit `0` means both stream statuses agree with the design the manifest was read from; exit `5` means they
+do not, and the row says which. `CS-E02` is a stream settled `not_applicable` while the design assigns it
+scenarios — **the one drift nothing downstream re-derives**: that work is never launched, and the ship
+gate cannot tell a stream nobody needed from one nobody ran. `CS-E03` is the inverse, a stream carrying
+work the design never assigned it. `CS-E01` is an unclassified design, which is 1.3 not having finished.
+
+Fix the state file and re-run it; never route on an exit `5`. It rules on nothing else — not whether a
+step ran, not whether a verdict was right — and it says nothing about a stream still `pending`, which is
+every stream between this gate and its implementing step.
+
+Run it again at the ship gate, before delegating step 3. `WS-E35` already refuses to let the phase reach
+`ship` with a stream unsettled; this is the other half of the same question, and the two together are why
+a forgotten stream cannot reach a pull request: one checks the statuses against the design, the other
+checks them against the phase.
+
+### Then preflight the environment, before the first Phase 2 delegation
+
+Both implementing steps run the suite, and neither can produce a result without a running application;
+the UI one also needs a browser binary on disk. Both discover that **after** reading the design, the
+etalon, the surface and the whole existing suite, and both then return `BLOCKED` — the two most
+expensive steps in the run, spent to learn something two commands answer here. Skip this only when both
+streams settled `not_applicable`, where there is nothing to launch.
+
+```bash
+curl -s -o /dev/null -w "%{http_code}" <BASE_URL>/
+npx playwright install --dry-run
+```
+
+`BASE_URL` comes from `.env`; `http://localhost:9000` is the documented local default, not a constant.
+
+| What it says | What it means |
+|---|---|
+| a 2xx or 3xx | the application is up. Proceed |
+| anything else, or no response | `AUT_UNREACHABLE` |
+| `install --dry-run` prints an install location per browser | the versions Playwright expects are declared. Proceed |
+| it exits non-zero, or prints nothing | `BROWSER_MISSING` |
+
+**`--dry-run` reports what Playwright *would* install, not what is on disk.** It catches a broken
+Playwright install and a version this project cannot resolve; it does not prove the binary is present.
+Check the `Install location:` path it printed for the Chromium build if you want that, and say which of
+the two you did — a preflight that claims more than it checked is worse than none.
+
+Neither failure is skipped past:
+
+* **Manual mode** — `AskUserQuestion` for both: start the application, or install the browsers, or
+  stop. Re-run the failing command after the user says they have fixed it; do not take the answer as
+  the evidence.
+* **Auto mode** — stop with `status: escalated`, `final_decision: escalate`, and `AUT_UNREACHABLE` or
+  `BROWSER_MISSING` in `NEXT_ACTION` naming the command that failed and its output. This is not a gate
+  a setting relaxes: a suite that cannot run produces no verdict, and every downstream decision in this
+  workflow reads one.
+
+Record the outcome in `automation.notes.preflight`. A run that reached Phase 2 without it is a run
+whose `BLOCKED` nobody can distinguish from a real one.
+
+Step 1.3 returns `E2E_JOURNEYS`, `E2E_KEPT` and `E2E_DEMOTED` alongside its result line. Record them in
+`test_design` and print them at the 1.3 pause: they are how many distinct journeys reached E2E, which
 scenarios hold an E2E level, and which the classification step moved down to a level this repository does
 not run. `E2E_DEMOTED` is the size of Phase 2 shrinking on purpose — a design whose E2E set collapsed to two
 scenarios is the expected shape, not a gap to route back. The demoted scenarios reappear as follow-up work
@@ -661,11 +779,11 @@ Two receipt fields need action rather than filing:
   **finished work**, not a failure. It ships, and `qa-ship-tests` puts it in the PR body under
   *Suspected Application Defects*. Never route it back as a bug to fix.
 
-Non-E2E scenarios from the classifier's `Handed Off As Follow-Up Work` table are recorded in
+Non-E2E scenarios from the design's `Handed Off As Follow-Up Work` table are recorded in
 `follow_up_tickets` as a list of what needs creating, and carried into the PR body. This skill creates no
 Jira ticket.
 
-Scenarios under the classifier's `## Blocked / Requirement Gaps` subsection — receipt line
+Scenarios under the design's `## Blocked / Requirement Gaps` subsection — receipt line
 `REQUIREMENT_GAPS` — are recorded **separately**, in `requirement_gaps`, and carried into the PR body under
 that heading. They are not automation work at any level: each one says the requirements never stated an
 outcome the scenario could assert, so what it needs is a specification, not a test at a lower level. Never
@@ -720,9 +838,21 @@ No `AskUserQuestion` between agents. Route on the normalized outcome:
 * `already_done` -> record and advance without re-running.
 * `rework` -> increment that stream's counter, route per the finding table, then re-run the reviewer with
   `previous_findings` set to its own previous block.
-* Counter **reaches** `max_review_iterations` (default `2`) with the verdict still `Needs Revision` ->
-  **stop**. `status: escalated`, `final_decision: escalate`. Print the stream, the outstanding finding ids
-  and what a human must decide. Never loop past the cap, and never lower the bar to clear it.
+* A **code** counter (`iterations.api`, `iterations.ui`) **reaches** `max_review_iterations` (default
+  `2`) with the verdict still `Needs Revision` -> **stop**. `status: escalated`,
+  `final_decision: escalate`. Print the stream, the outstanding finding ids and what a human must
+  decide. Never loop past the cap, and never lower the bar to clear it.
+* **`iterations.design` reaches `max_design_iterations` (default `1`) and the design ships anyway.**
+  This one does not stop the run. Set `test_design.status: approved_with_open_findings`, append every
+  outstanding `[DESIGN-*]` id with its one-line text to `test_design.open_questions`, and continue into
+  Phase 2. The reasoning is that a design review's Majors are, by the severity floor its reviewer now
+  applies, things that change what a test asserts — and a second regeneration answers them by producing
+  a document that invites new ones. Shipping the design with its open findings named, in the state file
+  and in the pull-request body, puts them in front of a human who can rule on them, which is what
+  escalating was for. The step that ships prints them under *Design findings not resolved*.
+
+  It is a distinct status rather than `approved` on purpose: a reader who cannot tell the two apart
+  cannot tell a design nobody criticised from one whose criticism nobody answered.
 * `escalate` -> stop immediately with the code.
 
 Two gates in this mode are settings rather than rules, and both default to stopping:
@@ -745,8 +875,14 @@ climbing per iteration is worth seeing before the cap is reached.
 both steps end to end: the gate, what step 3 composes, which git confirmations survive auto mode,
 `skip_ship` and `dry_run`, the `target_status` rule, the four hand-back outcomes and their state writes.
 
-Three things belong here, next to the routing they constrain:
+Four things belong here, next to the routing they constrain:
 
+* **Two checks run before the delegation, and both are cheap.** `node scripts/workflow-state.mjs
+  check-streams <TICKET-ID>` reads the stream statuses against the design once more — the same command
+  Checkpoint B ran, asking whether the decision still matches the document that produced it — and the
+  write that moved `phase` to `ship` has already been refused by `WS-E35` if either stream was left
+  unsettled. A stream that was never launched fails one or the other; neither can be satisfied by a run
+  that simply forgot it.
 * **The run does not end at the pull request.** Record `pull_request` from the ship receipt's `PR_URL`,
   then run step 4 — the ticket still says `In Progress` until it does.
 * **A failed hand-back does not fail the run.** The pull request is the deliverable; the Jira status is
@@ -812,7 +948,7 @@ matters most.
   `references/terminal-return.md` this session. A reference the orchestrator forgets to read does not
   make the run verbose; it makes the rule silently stop applying.
 - Loop past `max_review_iterations` in auto mode, or raise the cap mid-run to clear a stuck loop.
-- Count a 1.3 batch as a review iteration, run two batches in parallel, or start 1.4 while any batch is
+- Count a 1.3 batch as a review iteration, run two batches in parallel, or start 1.5 while any batch is
   still outstanding. Batching splits one design across several delegations; it does not split the design.
 - Run a git phase, or reach around `qa-ship-tests` to `git-workflow-orchestrator` or raw `git`, before both
   stream reviews are `Pass`.
