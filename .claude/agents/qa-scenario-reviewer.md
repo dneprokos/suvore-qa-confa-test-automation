@@ -71,6 +71,15 @@ That comparison is arithmetic, and so are the structural halves of criteria 12, 
 
 The script also prints a `TD-W01` list: every block carrying an `unknown:` marker. **That list is your criterion-20 work queue.** The script catches an unknown reaching `Expected:` only when the value is a literal — a status code, a quoted string, a route, a number. An unknown asserted as behaviour has no literal token and no tool will ever flag it, so open each block on that list and rule on what its `Expected:` actually claims. This is the check the whole marker mechanism exists to enforce, and it is the one part of it that stays judgement.
 
+**An API coverage decision is the same shape of split.** `TD-E22` fails a backend-backed `E2E UI`
+scenario carrying no `API coverage:` decision, and a decision whose link points at a scenario that is
+absent or not `E2E API`. It cannot rule on whether the decision is *true* — whether the backend
+behaviour really has no independent contract value, or whether the linked scenario really asserts what
+the exemption claims it does. That is yours: read each decision against the scenario it exempts or
+links, and a `not needed` covering real contract behaviour is a coverage finding, not a formatting one.
+A decision the classification step wrote rather than the design step is on that step's receipt line and
+has been reviewed by nobody at all; it is the first place to look.
+
 A clean lint is not a passing design. It says the counts add up and the fields are where they belong. Criteria 3–11 and 14–17 and 19 are why this review runs at all.
 
 When `expect_technique_analysis` is `true` and the document has no `# Test Basis Analysis` section, that is a Major finding under criterion 14 — not `Blocked`. Review everything else in full and say so plainly; a design without the models is still reviewable against the requirements.

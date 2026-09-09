@@ -77,32 +77,14 @@ states the outcome authorises that test, exactly as with any other value.
 
 # Step 3 — Select your scenarios
 
-`Grep` the test design for `Assigned Level: E2E API` and read every matching block in full. Of those, the ones you implement are the blocks carrying **no `Folds Into:` line** — the rest are covered inside them, per the subsection below.
+**`Read` `docs/automation/contracts/e2e-stream-scope.md` before you select anything.** It is the scope contract both halves of this stream are held to: what the level line selects, what a `Folds Into:` line changes, the two aborts and the one valid nothing, and the difference between selected, implemented, folded and skipped. Follow it from the file — never from memory, because the failure it exists to prevent is a folded scenario quietly losing its coverage, and that looks like a clean run from every side that has not read the design's `Folds Into:` lines.
 
-- `scenario_ids` supplied -> implement exactly those, and abort `SCENARIO_NOT_FOUND` on an id that does not exist. An id in the list that is **not** `Assigned Level: E2E API` is not yours: skip it with that reason.
-- No `Assigned Level:` lines anywhere in the document -> ABORT `LEVELS_NOT_ASSIGNED`. A test design whose levels were never finalized is not approved work, and `Suggested Level:` is not a substitute — it is the proposal, not the decision.
-- Zero E2E API scenarios -> return `OK` with `IMPLEMENTED_SCENARIOS: none` and a `NOTES` line. This is a valid outcome, not a failure.
+Your stream's level line is **`Assigned Level: E2E API`**. `Grep` the test design for it and read every matching block in full; the ones you implement are the blocks carrying no `Folds Into:` line.
 
-## Folded scenarios — one test, more than one id
+Two things the contract leaves to this stream:
 
-A scenario block may carry a third line after `Level Rationale:`:
-
-```
-Folds Into: SCN-012
-```
-
-It means the earlier phase decided this scenario needs the deployed public surface but **not a request sequence of its own**: another E2E API scenario already authenticates as the same actor and calls the same operation, and the two differ only in the values sent or asserted. That decision is made; you do not re-open it, and you do not fold or unfold anything yourself.
-
-What it changes for you:
-
-- **A scenario carrying `Folds Into:` gets no test of its own.** It is never selected, never counted as a test, and never listed as skipped merely for being folded.
-- **A scenario named as a fold target gets one test that covers both.** `Grep` the design for `Folds Into: <id>` for each scenario you selected, and read every block that names it. Its `Expected:` becomes additional assertions inside that one test, and its `Preconditions:` widen the arrange block — you seed whatever satisfies both.
-- **A fold never merges two `// Act` blocks.** One test has one Act, and the phase comments appear once each. A folded scenario that would need a second request as its Act was folded wrongly: implement the covering scenario, record the fold under `Known Limitations` naming both ids, and leave the folded scenario in `Skipped Scenarios` with that reason. Do not write a second Act to make the fold fit.
-- **Every folded scenario's `Expected:` is asserted, or the scenario is a `Skipped Scenarios` entry naming which one and why.** A folded id has no other test to fall back on, so an unimplemented fold is a silently lost scenario — the one failure mode this mechanism has.
-- **`scenario_ids` supplied**: an id in the list carrying `Folds Into:` is not a test of its own. Implement its covering scenario instead, cover it there, and say so in `NOTES`.
-- Every marker rule below applies to a folded scenario exactly as to any other. An `unknown:` in a folded scenario's `Notes:` is still never asserted.
-
-The id comment names both: `// SCN-012 (folds SCN-018)`. The `FR-`/`AC-` id on each assertion is the one **that assertion's own scenario** records, so a folded scenario's assertion carries the folded scenario's requirement ids, not the covering scenario's.
+- A fold here means another E2E API scenario **already authenticates as the same actor and calls the same operation**, and the two differ only in the values sent or asserted.
+- The id comment form is `// SCN-012 (folds SCN-018)`.
 
 For each selected scenario keep its id, `Requirement:` ids, `Preconditions:`, `Action:`, `Expected:` and `Notes:`. `Expected:` is your assertion, verbatim — the exact status code and the exact error string. The `Requirement:` ids are traceability labels you copy into a comment; they are not an instruction to go read the requirements document.
 
@@ -380,6 +362,7 @@ value, no credential or test data declared in a spec, no change to `utils/**`, n
 unrequested rewrite in a revision, no dropped finding id, nothing written at all on `EXISTS`, no Jira.
 On top of those, specific to this stream:
 
+- Select, fold, unfold or skip a scenario from memory of the scope rules. `docs/automation/contracts/e2e-stream-scope.md` is read at Step 3, every run, and it is what decides which ids are yours and which are covered inside another test.
 - Write, move or modify a single line under `tests/ui/`, `pages/`, or `fixtures/pages-fixture.ts`, or implement a scenario assigned to any level other than `E2E API`.
 - Perform an `// Act` through a controller method, a payload object, `withBody` or `withMatchingPassword`. Those hide what the request sent, and the Act block is the one place a reviewer must be able to read every field without opening another file. They stay correct in `// Arrange` and `// Assert`, where the call is a precondition or a cross-check.
 - Assert a value the test design marks `unknown:` in that scenario's `Notes:`. It is unassertable by design, and the marker does not make it available to you.

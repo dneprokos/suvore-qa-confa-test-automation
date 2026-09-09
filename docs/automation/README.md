@@ -34,6 +34,7 @@ docs/automation/
     api-spec-etalon.md               the house form for an API spec
     ui-spec-etalon.md                the house form for a UI spec and its page object
   contracts/
+    e2e-stream-scope.md              what a stream implements, folds, skips and counts as a test
     revision-contract.md             mode resolution and revision scoping for a second run
     review-verdict-contract.md       narrowing, finding ids, severity, verdict
     implementation-report.md         the report shape the two streams hand over
@@ -54,6 +55,7 @@ Stated by role, never by agent — see the rule at the bottom.
 |---|---|
 | `etalons/api-spec-etalon.md` | the API stream's implementing step **and** its review step |
 | `etalons/ui-spec-etalon.md` | the UI stream's implementing step **and** its review step |
+| `contracts/e2e-stream-scope.md` | both streams — the implementing step at selection, the review step at its coverage pass |
 | `contracts/revision-contract.md` | both streams' implementing steps, on a revision |
 | `contracts/review-verdict-contract.md` | both streams' review steps |
 | `contracts/implementation-report.md` | both streams — written by the implementing step, parsed by the review step |

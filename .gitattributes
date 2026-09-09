@@ -2,3 +2,11 @@
 # the workflow on different machines both append to the end of it. Union-merge is what
 # that shape wants: keep both sides' lines rather than raising a conflict on every run.
 .slack-triage/journal.jsonl merge=union
+
+# Every fixture and every test file is compared byte for byte by something: a `\n`-anchored regex
+# that introduces a defect into a scratch copy, an assertion on emitted output, a diff of a document
+# the scripts re-emit. `core.autocrlf` is on for most checkouts here, so without this the same file
+# is CRLF on one machine and LF on another — and a transform that silently matches nothing turns a
+# test green while testing nothing. The scripts emit LF, so the fixtures are LF.
+scripts/__fixtures__/** text eol=lf
+scripts/__tests__/** text eol=lf

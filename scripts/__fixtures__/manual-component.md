@@ -42,7 +42,7 @@ Suggested Level: E2E UI
 Assigned Level: E2E UI
 Level Rationale: A journey across routes with a real session — factor 3, no stub reproduces it.
 Automation Suitability: High
-Notes: —
+Notes: API coverage: not needed — UI navigation and rendering only; no independent backend contract selected.
 
 # Traceability Matrix
 

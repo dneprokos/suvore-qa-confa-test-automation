@@ -79,14 +79,19 @@ Two things in it decide your mode here, so they are worth naming twice:
 
 Before judging quality, establish what is actually true.
 
+**`Read` `docs/automation/contracts/e2e-stream-scope.md` first, and rule from the file rather than from
+memory.** It is the same scope contract the writing half of this stream was held to — what the level line
+selects, what a `Folds Into:` line changes, and the difference between selected, implemented, folded and
+skipped — so a scenario counted as dropped here is one the design really asked for, and a scenario the run
+really dropped is one you can see.
+
 | Claim                              | How you verify it                                                                                                              |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | Scenario `SCN-NNN` is implemented  | a test exists whose assertions cover that scenario's `Action:` and `Expected:` — not merely a comment naming the id            |
-| Scenario `SCN-NNN` carrying `Folds Into: <id>` is covered | the covering scenario's test asserts **that scenario's** `Expected:` too. A folded scenario has no test of its own by design, so its absence from `tests/` is not a defect — its absence from the covering test's assertions is |
-| The report's `Folded Scenarios` table is right | every row's `Scenario` carries `Folds Into:` naming that row's `Covered in` in the design. The design is the authority; a fold the report claims and the design does not carry is two scenarios merged into one test, which is a Critical finding |
+| Scenario `SCN-NNN` carrying `Folds Into: <id>` is covered | the scope contract, §5. A fold the report claims and the design does not carry is two scenarios merged into one test, which is a Critical finding |
 | The named test exists              | `Grep` for the exact title string in `tests/api/`                                                                              |
 | The listed files changed           | each path exists and contains the claimed tests                                                                                |
-| Every E2E API scenario was handled | `Grep` the test design for `Assigned Level: E2E API`; each id is implemented as its own test, folded into one that is, or listed under `Skipped Scenarios` with a reason. **Read the design's `Folds Into:` lines yourself** — a folded id missing a test is correct, and taking the report's word for which ids those are is how a dropped scenario passes review |
+| Every E2E API scenario was handled | `Grep` the test design for `Assigned Level: E2E API` and rule per the scope contract, §5 — each id implemented as its own test, folded into one that is, or under `Skipped Scenarios` with a reason. Read the design's `Folds Into:` lines yourself; taking the report's word for which ids those are is how a dropped scenario passes review |
 | The execution counts are real      | your own run in Step 4, compared against the report                                                                            |
 
 A scenario claimed as implemented whose test does not actually assert the scenario's expected outcome is **Critical**. This is the single most valuable check you perform, because it is the one a passing suite cannot catch.
@@ -129,7 +134,7 @@ Rows 1–4 answer the coverage question, rows 5–23 the code-style question. Ev
 | #   | Check                                   | A finding looks like                                                                                                                                                                    |
 | --- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1   | E2E API scenario coverage               | a scenario the test design marks `Assigned Level: E2E API` with no test and no `Skipped Scenarios` entry                                                                                |
-| 1b  | Folded scenario coverage                | a scenario the design marks `Folds Into: <id>` whose `Expected:` no test asserts — the covering test does not carry it and the report does not skip it. It has no test of its own to be missing, so row 1 cannot see it and only reading the design's `Folds Into:` lines can. The inverse is also this row: two scenarios sharing one test with no `Folds Into:` line authorising it, which is a merge the writing stream had no licence to make. A covering test carrying two `// Act` blocks to fit a fold is this row too |
+| 1b  | Folded scenario coverage                | a scenario the design marks `Folds Into: <id>` whose `Expected:` no test asserts — the covering test does not carry it and the report does not skip it. It has no test of its own to be missing, so row 1 cannot see it and only reading the design's `Folds Into:` lines can. Both inverses are this row too: two scenarios sharing one test with no `Folds Into:` line authorising it, and a covering test carrying two `// Act` blocks to fit a fold. The scope contract, §3 |
 | 2   | Assertion covers the scenario           | a claimed scenario with no real assertion; an `Expected:` clause of that scenario silently dropped                                                                                      |
 | 3   | Correctness against the scenario        | the test asserts something the scenario does not describe, or passes for the wrong reason                                                                                               |
 | 4   | Invented values                         | a status code, error string or limit asserted in the test that appears nowhere in the test design; **or a value the design marks `unknown:` in that scenario's `Notes:`** — an unknown is not assertable, so asserting one is an invented value whatever the design's `Expected:` happens to contain. **A value documented in `# API Surface` but absent from the scenario's `Expected:` is equally invented** — the surface says what the operation can do, and only the design decides what this test claims. This is the check that makes the surface's read-only boundary enforceable from the code alone, so run it on every assertion, not only on suspicious ones |
@@ -243,6 +248,7 @@ fix-writing, no `Pass` over a Major, no verdict but `Blocked` on an unrun suite,
 narrowing of the suite or the coverage pass, no trusting the report's own numbers, no `requirements/`, no
 judging the design, no browser, no Jira, no mid-run questions. On top of those, specific to this stream:
 
+- Rule on scope, a fold or a skip from memory of the rules. `docs/automation/contracts/e2e-stream-scope.md` is read at Step 2, every run and every iteration, and it is the same file the code you are judging was written against.
 - Review anything under `tests/ui/` or `pages/`, or comment on selectors, page objects, waits or visual state. That work is reviewed elsewhere, and duplicating it produces contradictory findings.
 - Run any `Bash` command beyond the `curl` preflight, `npx playwright test tests/api`, and `npx tsc --noEmit`. No git, no npm install, no `show-report`, no `playwright-cli`.
 - Invent a convention the repository does not state. `CLAUDE.md`, `docs/automation/etalons/api-spec-etalon.md` and `tests/api/login-api.spec.ts` are the standard; a preference of yours that contradicts them, or that none of them expresses, is not a finding.

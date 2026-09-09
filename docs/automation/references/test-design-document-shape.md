@@ -180,6 +180,23 @@ is what you fix. Use `--emit-summary` to look at the recount without writing it.
     there are none — do not write "none".
   - A summary that disagrees with the matrices below it is worse than no summary, because it is the one
     section a reader trusts without checking. Build it last, from the finished document.
+- **A UI scenario that leans on the backend states an API coverage decision in `Notes:`.** A scenario
+  whose level is `E2E UI` and whose text turns on server behaviour — a sign-in, a request, a persisted
+  record, a status code — is covering two things at once: what the screen does, and what the contract
+  underneath it does. The design says which of those it means, in one of three forms:
+
+  | Form | When |
+  |---|---|
+  | `API coverage: linked SCN-NNN — <what is asserted there>` | the backend behaviour has contract value of its own, and an `E2E API` scenario in this document asserts it |
+  | `API coverage: not needed — <why>` | the backend is only support for the journey: sign-in, setup, cleanup, navigation mechanics. The reason is required — an exemption nobody can review is not an exemption |
+  | `API coverage: not applicable — <why>` | no API surface is in play for this scenario at all |
+
+  The linked id must be a scenario in this document carrying `E2E API`; a link to any other level is
+  the same silence wearing an id, because a scenario at another level does not assert the contract.
+  The decision is not required of a scenario that *is* an `E2E API` scenario — it carries its own
+  contract, so asking it to name another would be circular. `scripts/test-design-lint.mjs` fails a
+  missing or malformed decision as `TD-E22`; it rules on presence and shape, never on whether the
+  decision was the right one.
 - The document leads with `# Summary` and `# Scenarios` because that is what a reader came for; the
   matrices audit them, and `# Test Basis Research` and `# Test Basis Analysis` close the file as the
   appendix the models live in.

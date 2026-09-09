@@ -439,6 +439,28 @@ WHY APART  why this is not merged into its neighbour
 - **Must not:** perform requirements analysis, scenario generation, classification, review or test
   implementation itself. It does **none** of the work.
 
+### Slide 25b — The inputs: one ticket id, everything else a default *(added; important)*
+
+Source: `.claude/skills/qa-workflow/SKILL.md` §`## Inputs`. **Only `ticket_id` is required** — every other
+row has an `If absent` value, which is why the banner prints a `source` column.
+
+| Group | Parameters | What it decides |
+|---|---|---|
+| **Identity & entry** | `ticket_id`, `resume`, `start_phase`, `reset` | Which ticket, and where the run picks up. `resume` is auto-detected from a state file; `start_phase` (`design` \| `automation` \| `ship`) overrides it; `--reset` archives everything and **ends the invocation** |
+| **Autonomy** | `mode` (`--auto`), `max_review_iterations` (2) | Ask after every step, or route on the verdict. The cap bounds the review loop — hit it and the run escalates, never lowers the bar |
+| **Test-basis size** | `batch_threshold` (15), `batch_size` (10), `review_requirements` (true) | Above the threshold, scenario generation runs in batches of `batch_size` requirement ids — **passed down, because the generating agent may not choose its own scope**. A batch is not a review round |
+| **API surface** | `api_endpoints`, `api_endpoints_approver`, `api_surface` (`map`) | Hand-supplied endpoint mechanics, and who approved them — **hints without an approver abort the step**, because a synthesised endpoint is an unapproved assumption. `api_surface: ignore` skips the mapping and prints the consequence into the document, the state file and the PR body |
+| **Auto-mode gates** | `on_missing_api_surface` (`escalate`), `on_blocked_alternative_flow` (`escalate`) | The only two settings that decide whether an unattended run stops. **Both default to stopping.** `--allow-alternative-flow-gaps` relaxes the second for alternative flows only — a main flow stops the run under either value, and the relaxation **approves nothing** |
+| **Ship & hand-back** | `skip_ship`, `dry_run`, `branch_name`, `base_branch`, `skip_jira_handback`, `jira_target_status` (`In Review`) | Whether a PR is opened, from what branch onto what base, and whether the ticket gets the PR link and the status move. Never hand back on a `dry_run` or a skipped ship |
+| **Pass-throughs** | `confirm_ui`, `explore_app`, `run_tests` | Handed to a downstream agent unchanged. The banner prints these as `— (agent default)` — **the orchestrator has not read that agent's default and will not print a number it did not resolve** |
+
+- `snake_case` throughout; `maxReviewIterations` is the one accepted alias.
+- **The point of the slide:** the flags an operator never knew existed are exactly the ones that change
+  whether the run stops. That is why **every** row is printed before the first delegation — `—` is a value,
+  a missing row is not.
+- Notes: this is the setup for the banner on slide 26 — resolved value **plus source**
+  (`request` > `state` > `default`), followed by *what each non-default value changes in behavioural terms*.
+
 ### Slide 26 — What the orchestrator actually owns
 
 - The **step registry** — one row per step: agent, parameters passed, receipt line to parse, artifacts
@@ -552,7 +574,7 @@ Repo QR code + `docs/conference/agent_build_plan.md`.
 
 ## Cut list, if you are over time
 
-Drop in this order — each is self-contained: **21 → 22 → 8 → 24 → 19**.
+Drop in this order — each is self-contained: **21 → 22 → 8 → 25b → 24 → 19**.
 Never cut 6 (the diagram), 13 (three different questions), 16/18 (the trust boundary), 25 (skill not agent).
 
 ## Backup slides — do not present; hold for Q&A

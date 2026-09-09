@@ -55,31 +55,15 @@ Do **not** read `requirements/` for anything the test claims. That document was 
 
 # Step 3 — Select your scenarios
 
-`Grep` the test design for `Assigned Level: E2E UI` and read every matching block in full. Of those, the ones you implement are the blocks carrying **no `Folds Into:` line** — the rest are covered inside them, per the subsection below.
+**`Read` `docs/automation/contracts/e2e-stream-scope.md` before you select anything.** It is the scope contract both halves of this stream are held to: what the level line selects, what a `Folds Into:` line changes, the two aborts and the one valid nothing, and the difference between selected, implemented, folded and skipped. Follow it from the file — never from memory, because the failure it exists to prevent is a folded scenario quietly losing its coverage, and that looks like a clean run from every side that has not read the design's `Folds Into:` lines.
 
-- `scenario_ids` supplied -> implement exactly those, and abort `SCENARIO_NOT_FOUND` on an id that does not exist. An id in the list that is **not** `Assigned Level: E2E UI` is not yours: skip it with that reason.
-- No `Assigned Level:` lines anywhere in the document -> ABORT `LEVELS_NOT_ASSIGNED`. A test design whose levels were never finalized is not approved work, and `Suggested Level:` is not a substitute — it is the proposal, not the decision.
-- Zero E2E UI scenarios -> return `OK` with `IMPLEMENTED_SCENARIOS: none` and a `NOTES` line. This is a valid outcome, not a failure.
+Your stream's level line is **`Assigned Level: E2E UI`**. `Grep` the test design for it and read every matching block in full; the ones you implement are the blocks carrying no `Folds Into:` line.
 
-## Folded scenarios — one test, more than one id
+Three things the contract leaves to this stream:
 
-A scenario block may carry a third line after `Level Rationale:`:
-
-```
-Folds Into: SCN-021
-```
-
-It means the earlier phase decided this scenario needs the real stack but **not a traversal of its own**: another E2E UI scenario already signs in as the same actor, opens the same screen and reaches the same routes, and the two differ only in the data. That decision is made; you do not re-open it, and you do not fold or unfold anything yourself.
-
-What it changes for you:
-
-- **A scenario carrying `Folds Into:` gets no test of its own.** It is never selected, never counted as a test, and never listed as skipped merely for being folded.
-- **A scenario named as a fold target gets one test that covers both.** `Grep` the design for `Folds Into: <id>` for each scenario you selected, and read every block that names it. Its `Expected:` becomes additional assertions inside that one test, and its `Preconditions:` widen the arrange block — you seed whatever satisfies both. Seeding for the wider precondition is the point of the fold: a catalogue seeded past the page-size threshold still satisfies "two or more games", so the covering scenario's own assertions stay truthful against it.
-- **Every folded scenario's `Expected:` is asserted, or the scenario is a `Skipped Scenarios` entry naming which one and why.** A folded id has no other test to fall back on, so an unimplemented fold is a silently lost scenario — the one failure mode this mechanism has.
-- **`scenario_ids` supplied**: an id in the list carrying `Folds Into:` is not a test of its own. Implement its covering scenario instead, cover it there, and say so in `NOTES`.
-- Every marker rule below applies to a folded scenario exactly as to any other. An `unknown:` in a folded scenario's `Notes:` is still never asserted, and a folded scenario that is `Manual only` because an unknown took its whole `Expected:` contributes no assertion — record it under `Skipped Scenarios` with that reason, not silently.
-
-The id comment names both: `// SCN-021 (folds SCN-018)`. The `FR-`/`AC-` id on each assertion is the one **that assertion's own scenario** records, so a folded scenario's assertion carries the folded scenario's requirement ids, not the covering scenario's.
+- A fold here means another E2E UI scenario **already signs in as the same actor, opens the same screen and reaches the same routes**, and the two differ only in the data.
+- Seeding for the folded scenario's wider precondition is the point of the fold: a catalogue seeded past the page-size threshold still satisfies "two or more games", so the covering scenario's own assertions stay truthful against it.
+- The id comment form is `// SCN-021 (folds SCN-018)`.
 
 For each selected scenario keep its id, `Requirement:` ids, `Preconditions:`, `Action:`, `Expected:` and `Notes:`. `Expected:` is your assertion, verbatim — the exact rendered text, the exact toast string. The `Requirement:` ids are traceability labels you copy into a comment; they are not an instruction to go read the requirements document.
 
@@ -423,6 +407,7 @@ Confirm all of the following. Any failure -> STOP, do not return `OK`, report `S
 - Every selected scenario appears in either `Implemented Scenarios` or `Skipped Scenarios`, never in neither and never in both.
 - **Every folded scenario is accounted for.** For each scenario you implemented, `grep` the design once more for `Folds Into: <its id>`; every id that comes back either has its `Expected:` asserted inside that test, or is a `Skipped Scenarios` entry naming what stopped it. A folded id in neither is a scenario this run dropped, and nothing downstream will notice — it has no test of its own to be missing.
 - Every folded scenario asserted inside a covering test carries **its own** `FR-`/`AC-` ids on its assertions, and the covering test's id comment names it: `// SCN-021 (folds SCN-018)`.
+- No test you wrote has two `// Act` blocks, folded scenario or not. A fold that needed a second action was folded wrongly — the scope contract, §3, says what to do with it.
 - Every file path you report exists on disk, and every path is inside your ownership boundary.
 - Every test title you report is the exact string in the `test(...)` call.
 - No spec imports `test` or `expect` from `@playwright/test`.
@@ -537,6 +522,7 @@ value, no credential or test data declared in a spec, no change to `utils/**`, n
 unrequested rewrite in a revision, no dropped finding id, nothing written at all on `EXISTS`, no Jira.
 On top of those, specific to this stream:
 
+- Select, fold, unfold or skip a scenario from memory of the scope rules. `docs/automation/contracts/e2e-stream-scope.md` is read at Step 3, every run, and it is what decides which ids are yours and which are covered inside another test.
 - Write, move or modify a single line under `tests/api/` or `fixtures/api-fixture.ts`, or implement a scenario assigned to any level other than `E2E UI`.
 - Modify, rename, retype or delete anything that already exists under `services/api/`. The carve-out in Step 7 is additive only: a new file, a new endpoint key, one new facade member. A method you need on an existing controller is a `Shared Change Requested` entry.
 - Use an XPath, a generated or hashed class name, a `nth()` on a data row, or a text match on copy nobody guaranteed. Those sit outside the tier ladder, not at the bottom of it, and a missing hook is reported rather than worked around.

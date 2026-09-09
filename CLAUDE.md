@@ -182,7 +182,7 @@ Three documents, one canonical each — do not treat any of them as a second opi
   rule** — a reference speaks of "step 2.1b", never of the agent that runs it, so the registry in
   `SKILL.md` stays the only place two agent names appear together.
 - `docs/automation/` — **canonical for everything two agents must agree on**: the two spec etalons, the
-  three process contracts, the four on-demand references. `docs/automation/README.md` says which is
+  process contracts, the four on-demand references. `docs/automation/README.md` says which is
   which and who reads what; the folder's own rule is that **no file in it may name an agent**.
 - `docs/conference/agent_build_plan.md` — **the concept document, canonical for nothing.** It is the
   presentation-facing account of why the workflow is shaped this way, and it carries a *Where each
@@ -256,11 +256,12 @@ Rules that matter when touching `.claude/agents/`:
   the section is absent or `ignored` — the second and last caller of that script.
 - **The test design's structural contract is enforced by a script, not by prose in two agent bodies.**
   `scripts/test-design-lint.mjs` is the second script in the repository and the source of two of the three
-  one-command `Bash` grants. It carries twenty `TD-E<nn>` checks — section order, the block field list, id
+  one-command `Bash` grants. It carries twenty-one `TD-E<nn>` checks — section order, the block field list, id
   sequence, the enumerated field values, coverage-item citation and declaration, the unknown- and
   approved-marker rules, all three matrices against the blocks, every number in `# Summary`, the ten
   research rows, the four technique subsections, and the level assignment recount (`TD-E19` the
-  `# Level Assignment Summary` section, `TD-E20` the `Levels:` line) — plus **five** mutually exclusive
+  `# Level Assignment Summary` section, `TD-E20` the `Levels:` line), and the API coverage decision a
+  backend-backed `E2E UI` scenario owes (`TD-E22`) — plus **five** mutually exclusive
   modes over the same arithmetic: `--emit-summary` / `--emit-levels` print and write nothing,
   `--apply-summary` / `--apply-levels` write it into the document in place, idempotently, touching only
   the sections that are pure recount — `# Summary` and the three matrices for the first pair, the
@@ -295,7 +296,7 @@ Rules that matter when touching `.claude/agents/`:
   `scripts/__tests__/`; no prose copy of it is kept anywhere.
 - **The workflow state file is validated by a script for the same reason.** `scripts/workflow-state.mjs`
   is the third script here and the only one the orchestrator runs rather than an agent. `validate` carries
-  ten `WS-E<nn>` errors and two `WS-W<nn>` warnings; `get` prints one value raw, so a multi-line
+  eleven `WS-E<nn>` errors and two `WS-W<nn>` warnings; `get` prints one value raw, so a multi-line
   `last_findings` reaches the next delegation without being retyped through a conversation; `print-schema`
   is the source of `.claude/skills/qa-workflow/references/state-schema.md`, which is generated, not
   hand-written. **Errors are structure, warnings are drift**: a duplicate key, a bad enum or a missing
@@ -308,7 +309,24 @@ Rules that matter when touching `.claude/agents/`:
   1800-character routing block, then `null` — and since YAML keeps the last value, an entire review round
   ran on findings nobody could read, with a document that parsed cleanly the whole time. `WS-W20` is the
   honesty check, flagging a `history` cost figure with no matching record in the metrics log, because a
-  reader cannot tell a correctly transcribed number from an invented one.
+  reader cannot tell a correctly transcribed number from an invented one. `WS-E35` is the early half of
+  a check the ship step already makes: `passed` and `not_applicable` are the only two stream statuses a
+  `phase: ship` or `done` document may carry, so a stream still in flight — or one whose review asked
+  for changes nobody made — is caught while the document is being written rather than after the run has
+  been routed on it. Because every write validates before it reaches disk, the phase cannot move ahead
+  of a stream's verdict at all.
+- **`check-streams` asks a third question: do the two stream decisions still match the design?**
+  `validate` rules on the document alone and `check-artifacts` on what is on disk; neither can see a
+  stream settled one way while the classified design says the other. It takes its counts from
+  `test-design-lint.mjs --emit-manifest` rather than counting `Assigned Level:` lines, refuses an
+  unclassified design instead of reading its zeros as answers (`CS-E01`), and exits `5` — never `1`,
+  never `4` — on `CS-E02`, a stream settled `not_applicable` while the design assigns it scenarios, or
+  `CS-E03`, a stream carrying work the design never assigned. **`CS-E02` is the drift nothing downstream
+  re-derives**: the work is never launched and never missed, and the ship gate cannot tell a stream
+  nobody needed from one nobody ran. It is run twice, at the automation gate and again before the ship
+  delegation, and it rules on nothing else — a stream still `pending` is every stream for most of a run.
+  With `WS-E35` it is why a forgotten stream cannot reach a pull request: one checks the statuses against
+  the design, the other against the phase.
 - **`check-artifacts` asks the other question: not what the file says, but what is still on disk.** It
   stats every path the document names — the requirements and test-design artifacts, each stream's report
   and every entry of its `created_tests` — and exits `4`, never `1`, when one is gone. The distinction is
@@ -339,6 +357,11 @@ Rules that matter when touching `.claude/agents/`:
   produce; `--force` writes a document that does not validate and is the one command that needs a reason in
   `history`. A document that already carries a duplicate key is refused by every write and repaired by
   `normalize` alone, which keeps the last value of each — the value every YAML reader was already seeing.
+  **`normalize` also writes in the settings a document predates**, and for the same reason `init` writes
+  every `configuration.*` key: a key the schema defines and a file lacks is not a neutral absence, it is
+  a value the banner resolves as `default` and prints as a decision nobody made. The defaults come from
+  the `init` template itself rather than a second list here, only `configuration.*` is touched, and a
+  value already on disk is never replaced — a back-fill is not a migration of the run.
 - **`reset` is the seventh write command and the only one that moves a run backwards.** Everything else
   in the workflow goes forwards; there was no way to say *throw this away and run it again from 1.1*,
   because every writing agent returns `EXISTS` when it finds its own output on disk and the orchestrator
@@ -367,6 +390,17 @@ Rules that matter when touching `.claude/agents/`:
   to resume, and routing it onward would need no special-casing anywhere, which is precisely why the
   rule is written down instead of skipped: one typed flag must not become nine unattended delegations.
   Starting the fresh run is a second command without the flag.
+- **A UI scenario that leans on the backend states an API coverage decision.** `TD-E22` fails an
+  `E2E UI` scenario whose text turns on server behaviour and whose `Notes:` carries no `API coverage:`
+  line — `linked SCN-NNN`, `not needed — <why>` or `not applicable — <why>`, with a link resolving to an
+  `E2E API` scenario in the same document. The rule is written once, in the API-coverage bullet of
+  `docs/automation/references/test-design-document-shape.md`, and the design step writes it from there.
+  The classification step gets the **one** exception to its byte-identical rule: when its own promotion
+  to `E2E UI` creates the obligation, it writes the decision and reports it on `API_COVERAGE_ADDED:`,
+  because the design step will not run again on a classified document and nobody else holds both the
+  promotion and the list of `E2E API` scenarios. The script rules on presence and shape only — whether a
+  `not needed` is *true* is the design review's judgement, and a decision the classification step wrote
+  has been reviewed by nobody at all, which is why it is on a receipt line rather than only in the file.
 - **A test level, automation readiness and test packaging are three different questions.** `Assigned Level:` names the lowest
   technical layer at which a scenario has an assertable, truthful oracle; `Automation Suitability:` names
   whether that test can be automated now; `Folds Into:` names which test executes it. None is evidence about
@@ -571,13 +605,13 @@ matcher is legitimate and is not news.
 
 Shared knowledge the agents `Read` at runtime lives in `docs/automation/` — a doc, never a skill, because
 no agent's `tools:` list includes `Skill`. **Anything reusable across agents takes this form: a doc here,
-or a script under `scripts/`. A skill is not available to them.** Nine files in three folders, and the
+or a script under `scripts/`. A skill is not available to them.** Twelve files in three folders, and the
 folder a file sits in says *when its text loads*:
 
 | Folder | What it is | The files |
 |---|---|---|
 | `etalons/` | a form to copy, read unconditionally by both halves of a stream | `api-spec-etalon.md`, `ui-spec-etalon.md` — one per stream, read by that stream's creator *and* its reviewer so the two cannot calibrate against different code |
-| `contracts/` | a process rule for a run | `revision-contract.md` (the creators), `review-verdict-contract.md` (the reviewers), `implementation-report.md` (written by one half, parsed by the other) |
+| `contracts/` | a process rule for a run | `e2e-stream-scope.md` (both halves of a stream — the one that selects and the one that checks the selection), `revision-contract.md` (the creators), `review-verdict-contract.md` (the reviewers), `implementation-report.md` (written by one half, parsed by the other), plus the two the triage workflow owns |
 | `references/` | knowledge read on demand at one anchored step | `api-surface-reading.md` (all four Phase 2 agents), `browser-exploration.md`, `test-basis-modelling.md`, `test-design-document-shape.md` |
 
 `docs/automation/README.md` is the index and states the rationale. **None of these files may name

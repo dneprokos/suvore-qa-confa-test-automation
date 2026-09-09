@@ -27,7 +27,7 @@ Suggested Level: Component
 Assigned Level: Component
 Level Rationale: Rendering behaviour over a stubbed list response — factor 1, the bug lives in one template.
 Automation Suitability: High
-Notes: —
+Notes: API coverage: not needed — UI navigation and rendering only; no independent backend contract selected.
 
 ## SCN-002: A visitor is refused the admin list
 Requirement: FR-1.2
@@ -57,7 +57,7 @@ Suggested Level: E2E UI
 Assigned Level: E2E UI
 Level Rationale: A journey across routes with a real session — factor 3, no stub reproduces it.
 Automation Suitability: High
-Notes: —
+Notes: API coverage: not needed — sign-in and the panel fetch are session mechanics for this journey; the admin-list authorization contract is covered by SCN-002.
 
 # Traceability Matrix
 

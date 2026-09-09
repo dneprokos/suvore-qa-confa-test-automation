@@ -209,6 +209,30 @@ Level Rationale: Only a real seeded catalogue decides the count, so no stub leve
 Folds Into: SCN-001
 ```
 
+## The one field beyond your two lines: an API coverage decision your own assignment created
+
+A scenario whose behaviour runs through the server and which you assign `E2E UI` owes an API coverage
+decision in its `Notes:` — the rule is the API-coverage bullet in
+`docs/automation/references/test-design-document-shape.md`, and `TD-E22` fails a block that lacks one.
+When the scenario was already suggested at `E2E UI`, that decision is in the document before you touch
+it. When **your** assignment is what promoted it there — a block suggested `Component` or `Integration`
+that you assign `E2E UI` — the obligation did not exist when the document was written, and nobody
+downstream can add it: the design step will not run again on a classified document, and you are the only
+step holding both the promotion and the whole list of `E2E API` scenarios.
+
+So this is the single exception to the byte-identical rule, and it is as narrow as it sounds:
+
+- It applies **only** to a block your own assignment promoted to `E2E UI` and whose `Notes:` carries no
+  `API coverage:` decision. Never to one that already had a decision, never to one already suggested
+  `E2E UI`, never to any other field of any block.
+- Append the decision to the existing `Notes:` line, in one of the three documented forms. Link only to
+  a scenario **this document** carries at `E2E API`, and say what is asserted there; exempt it only with
+  a stated reason.
+- Every one of them goes on the receipt's `API_COVERAGE_ADDED:` line, so the reviewing step reads them
+  as decisions you made rather than as design work it can assume was reviewed. The script rules on
+  presence and shape; whether the decision is *right* is the review's judgement, and it cannot make it
+  on a line it does not know you wrote.
+
 Two more rationale shapes, for the two cases this step gets wrong most often:
 
 ```
@@ -276,7 +300,7 @@ That run settles the structural half of this step — the two lines per block an
 
 Then confirm each of these yourself. Any failure -> STOP, do not return a result, report `SELF_CHECK_FAILED` naming the violation.
 
-- Every original field of every block is byte-identical to what you read in Step 1 — including `Suggested Level:`, the matrices, and the front matter. The two exceptions are the sections you own: `# Level Assignment Summary`, and the single `Levels:` line of `# Summary`.
+- Every original field of every block is byte-identical to what you read in Step 1 — including `Suggested Level:`, the matrices, and the front matter. The exceptions are the sections you own — `# Level Assignment Summary` and the single `Levels:` line of `# Summary` — and an API coverage decision appended to the `Notes:` of a block **your** assignment promoted to `E2E UI`, every one of which is on `API_COVERAGE_ADDED:`.
 - Every `Level Rationale:` names the deciding factor, and a multi-level rationale states the distinct assertion at each level.
 - The `E2E journeys:`, `Demoted by the minimum-set pass:` and `Folded by the minimum-set pass:` lines say what Step 3b actually decided. The script carried all three through without reading them; nobody but you has checked them.
 
@@ -314,12 +338,15 @@ E2E_KEPT: SCN-001, SCN-003, SCN-006, SCN-014
 E2E_DEMOTED: SCN-002 -> Component, SCN-005 -> Integration
 E2E_FOLDED: SCN-018 -> SCN-001
 E2E_TESTS_IMPLIED: E2E API 2, E2E UI 2
+API_COVERAGE_ADDED: SCN-009 -> not needed
 NOT_IMPLEMENTED_HERE: SCN-004, SCN-005, SCN-006, SCN-009, SCN-011
 SCOPE: all scenarios | SCN-004, SCN-011
 FINDINGS_ADDRESSED: DESIGN-M7
 FINDINGS_DISPUTED: none
 NOTES: <one line, or "none">
 ```
+
+`API_COVERAGE_ADDED` lists every block where your own promotion to `E2E UI` created the API coverage obligation and you wrote the decision, each as `SCN-009 -> not needed` or `SCN-009 -> linked SCN-004`, and `none` when you added none — which is the usual case. It is on the receipt because the reviewing step must know which decisions were written by classification rather than by design, and it cannot tell from the document.
 
 `E2E_KEPT` is every scenario holding an E2E level after Step 3b **and standing as its own test**; `E2E_DEMOTED` lists what that pass moved down, each as `SCN-002 -> Component`; `E2E_FOLDED` lists what it folded, each as `SCN-018 -> SCN-001`, and a folded id appears there and never in `E2E_KEPT`. All three read `none` when no scenario reached E2E. `E2E_TESTS_IMPLIED` is copied from the `E2E tests implied:` line the script wrote — never counted by hand, and it must equal `E2E_KEPT` split by level. `REQUIREMENT_GAPS` lists every scenario assigned `Requirement Gap`, or `none` — it is the work-discovery half of the run, and it is reported separately from `NOT_IMPLEMENTED_HERE` because the two are different requests: one asks for a test at a level this repository does not run, the other asks for a requirement to be specified. `SCOPE` is the set of scenarios you actually re-assigned. The two `FINDINGS_` lines read `none` outside a `revision`, and together they account for every id your caller handed you, with no id in both.
 
@@ -340,7 +367,8 @@ On `ABORT` or `EXISTS`, emit `QA_SCENARIO_CLASSIFIER_RESULT`, `TICKET`, `REASON`
 - Fold two scenarios that need the same resource in different states, or that differ in the actor's authorization, the entry point or the routes reached. Each of those is a second traversal, and a second traversal is a second journey.
 - Write `Folds Into:` on a scenario below E2E, on a `Requirement Gap`, on a scenario the pass kept, or pointing at a scenario that is itself folded. Every one is a `TD-E21` violation, and each of them deletes a scenario from the implementing step's selection without deleting it from the document.
 - Edit the covering scenario's `Preconditions:`, `Action:` or `Expected:` to accommodate a fold. You own three lines per block and none of them is those.
-- Reword, reorder, renumber, split, merge or delete a scenario, or edit any field other than by inserting the two lines you own — three on a folded scenario.
+- Reword, reorder, renumber, split, merge or delete a scenario, or edit any field other than by inserting the two lines you own — three on a folded scenario, plus an API coverage decision on a block your own assignment promoted to `E2E UI`, which is the one exception and is reported on `API_COVERAGE_ADDED:`.
+- Add, remove or reword an API coverage decision on any other block. A block already carrying one, or already suggested `E2E UI`, was the design step's to decide and is not yours to revisit — disagreeing with one is a `NOTES` line.
 - Re-assign a scenario outside the scope of a `revision`, however wrong its current level looks. An unrequested change lands in a diff someone is reading line by line; the receipt's `NOTES` is where a level you disagree with goes.
 - Drop a finding id. Every id you were handed appears in `FINDINGS_ADDRESSED` or `FINDINGS_DISPUTED`.
 - Overwrite or remove a `Suggested Level:` line.

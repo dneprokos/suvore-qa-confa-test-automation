@@ -46,6 +46,17 @@ function codes(stdout) {
   return [...new Set([...stdout.matchAll(/\[(WS-[EW]\d+)\]/g)].map((m) => m[1]))].sort();
 }
 
+test("every fixture is LF — a CRLF checkout makes these cases pass while testing nothing", () => {
+  // Not a check about the scripts. Almost every case here introduces its defect with a `\n`-anchored
+  // regex over a scratch copy, so a fixture that arrives with CRLF endings makes the transform match
+  // nothing and the case assert against the clean document it meant to break. Six of them did exactly
+  // that on a Windows checkout, silently, until the whole class was pinned in `.gitattributes` —
+  // which only governs a fresh checkout, so this is the part that fails loudly if one drifts back.
+  const dir = join(repoRoot, "scripts", "__fixtures__");
+  const crlf = readdirSync(dir).filter((name) => readFileSync(join(dir, name), "utf8").includes("\r\n"));
+  assert.deepEqual(crlf, [], "fixtures with CRLF endings — convert them to LF");
+});
+
 test("a state file that satisfies the schema is clean, even under --strict", () => {
   const { status, stdout } = validate(fixture("state-clean.yaml"), "--strict");
   assert.equal(status, 0, stdout);
@@ -286,13 +297,15 @@ test("init --set applies overrides, and the ticket id follows the file name", ()
 });
 
 test("a set that writes what is already there prints unchanged and leaves mtime alone", () => {
+  // Not `phase=ship`: WS-E35 makes that a value with a precondition — the fixture's API stream is
+  // still `implemented`, so the write would be refused, and this case is about idempotency.
   const path = scratch();
-  const first = run("set", path, "phase=ship", "current_step=3");
+  const first = run("set", path, "status=paused", "current_step=3");
   assert.equal(first.status, 0, first.stderr);
   assert.match(first.stdout, /^set /);
 
   const before = statSync(path);
-  const second = run("set", path, "phase=ship", "current_step=3");
+  const second = run("set", path, "status=paused", "current_step=3");
   assert.equal(second.status, 0, second.stderr);
   assert.match(second.stdout, /^unchanged /);
   assert.equal(statSync(path).mtimeMs, before.mtimeMs);
@@ -424,11 +437,75 @@ test("normalize is a no-op on a document already in canonical form, and idempote
 
   // The legacy file uses folded scalars and a wrapped flow entry: the first pass rewrites, the
   // second must not. Anything else means the emitter and the parser disagree about the same bytes.
+  // `/m`: the legacy document also predates five configuration keys, so the receipt reports those
+  // back-fills above the line that says what the command did.
   const legacy = scratch((text) => text, "state-legacy-115.yaml");
-  assert.match(run("normalize", legacy).stdout, /^normalized /);
+  assert.match(run("normalize", legacy).stdout, /^normalized /m);
   const once = readFileSync(legacy, "utf8");
   assert.match(run("normalize", legacy).stdout, /^unchanged /);
   assert.equal(readFileSync(legacy, "utf8"), once);
+});
+
+// ---------------------------------------------------------------------------------------------
+// normalize — writing in the settings a document predates
+//
+// A configuration key the schema defines and a file lacks is not a neutral absence. The banner
+// resolves it as `default` and prints it as a value nobody chose, so a resumed run reports the
+// template's answer instead of the one somebody typed. `init` writes every key for that reason;
+// this is the same rule applied to the documents written before the key existed.
+// ---------------------------------------------------------------------------------------------
+
+test("normalize back-fills a configuration key the document predates, at the init default", () => {
+  const path = scratch((text) =>
+    text
+      .replace(/^  on_blocked_alternative_flow: escalate\n/m, "")
+      .replace(/^  on_missing_api_surface: escalate\n/m, ""),
+  );
+  const before = readFileSync(path, "utf8");
+  assert.ok(!before.includes("on_missing_api_surface"), "the fixture transform did not drop the keys");
+
+  const { status, stdout } = run("normalize", path);
+  assert.equal(status, 0, stdout);
+  // One line per key, naming the value and where it came from.
+  assert.match(stdout, /^added +configuration\.on_blocked_alternative_flow: escalate {2}\(the value init would have written\)$/m);
+  assert.match(stdout, /^added +configuration\.on_missing_api_surface: escalate {2}\(the value init would have written\)$/m);
+
+  // Nothing else moved: the two lines are the whole diff, and the document still validates.
+  const after = readFileSync(path, "utf8");
+  const addedLines = after.split("\n").filter((line) => !before.split("\n").includes(line));
+  assert.deepEqual(addedLines, [
+    "  on_blocked_alternative_flow: escalate",
+    "  on_missing_api_surface: escalate",
+  ]);
+  assert.equal(validate(path, "--strict").status, 0);
+
+  assert.match(run("normalize", path).stdout, /^unchanged /);
+});
+
+test("normalize never overwrites a setting somebody chose", () => {
+  // The whole point is a value nobody chose being reported as a decision. Replacing one that was
+  // chosen would be the same defect with the sign flipped.
+  const path = scratch((text) => text.replace(/^  max_review_iterations: 2$/m, "  max_review_iterations: 1"));
+  assert.equal(run("normalize", path).status, 0);
+  assert.equal(run("get", path, "configuration.max_review_iterations").stdout.trim(), "1");
+});
+
+test("normalize back-fills configuration and nothing else — it is not a migration of the run", () => {
+  // A back-fill that also moved a phase, a counter or a history entry would be a command nobody
+  // could safely run on a live document.
+  const path = scratch((text) => text.replace(/^  batch_size: 10\n/m, ""));
+  const before = readFileSync(path, "utf8");
+  assert.equal(run("normalize", path).status, 0);
+  const after = readFileSync(path, "utf8");
+
+  for (const dotted of ["phase", "status", "current_step", "iterations.design", "final_decision"]) {
+    assert.equal(
+      run("get", path, dotted).stdout,
+      run("get", fixture("state-clean.yaml"), dotted).stdout,
+      `${dotted} changed`,
+    );
+  }
+  assert.equal(after.replace("  batch_size: 10\n", ""), before);
 });
 
 test("a write over a duplicated document is refused; normalize is what resolves it", () => {
@@ -457,7 +534,7 @@ test("the generated reference is the schema — the table has not drifted from p
   const generated = run("print-schema");
   assert.equal(generated.status, 0, generated.stderr);
   assert.equal(
-    section.trim(),
+    section.replace(/\r\n/g, "\n").trim(),
     generated.stdout.replace(/\r\n/g, "\n").trim(),
     "regenerate with: node scripts/workflow-state.mjs print-schema",
   );
@@ -626,6 +703,152 @@ test("init writes the setting at its default, so a resume inherits it", () => {
   assert.equal(created.status, 0, created.stderr);
   assert.match(readFileSync(path, "utf8"), /^  on_blocked_alternative_flow: escalate$/m);
   assert.equal(validate(path, "--strict").status, 0);
+});
+
+// ---------------------------------------------------------------------------------------------
+// on_missing_api_surface — the other auto-mode gate, and the one the schema was missing
+//
+// It has been a documented run parameter, printed in the banner and routed on at the automation
+// gate, while `configuration.children` had no such key — so the only ways to record it were
+// `--allow-unknown` or a `notes.` field the banner does not read, and a resume reported the
+// default for a run somebody had set to `ignore`. The cases below are the same four the setting
+// beside it carries, because the failure mode is identical: a value that parses and widens a gate
+// nobody chose to widen.
+// ---------------------------------------------------------------------------------------------
+
+test("on_missing_api_surface accepts both permitted values", () => {
+  for (const value of ["escalate", "ignore"]) {
+    const path = scratch((text) =>
+      text.replace("on_missing_api_surface: escalate", `on_missing_api_surface: ${value}`),
+    );
+    const { status, stdout } = validate(path, "--strict");
+    assert.equal(status, 0, stdout);
+    assert.deepEqual(codes(stdout), []);
+  }
+});
+
+test("a misspelled on_missing_api_surface fails WS-E21 rather than reading as ignore", () => {
+  const path = scratch((text) =>
+    text.replace("on_missing_api_surface: escalate", "on_missing_api_surface: skip"),
+  );
+  const { status, stdout } = validate(path);
+  assert.equal(status, 1, stdout);
+  assert.ok(stdout.includes("[WS-E21]"), stdout);
+  assert.match(stdout, /on_missing_api_surface: "skip" is not a permitted value\. One of: escalate, ignore/);
+});
+
+test("on_missing_api_surface is optional — an older state file is not in violation", () => {
+  const path = scratch((text) => text.replace(/^  on_missing_api_surface: escalate\n/m, ""));
+  assert.ok(!readFileSync(path, "utf8").includes("on_missing_api_surface"), "the key was not dropped");
+  const { status, stdout } = validate(path, "--strict");
+  assert.equal(status, 0, stdout);
+  assert.deepEqual(codes(stdout), []);
+});
+
+test("set writes on_missing_api_surface and refuses a value outside the enum", () => {
+  const path = scratch();
+  const ok = run("set", path, "configuration.on_missing_api_surface=ignore");
+  assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+  assert.match(readFileSync(path, "utf8"), /^  on_missing_api_surface: ignore$/m);
+
+  const bad = run("set", path, "configuration.on_missing_api_surface=maybe");
+  assert.notEqual(bad.status, 0, "a write whose result would not validate must be refused");
+  assert.match(readFileSync(path, "utf8"), /^  on_missing_api_surface: ignore$/m);
+});
+
+test("init writes on_missing_api_surface at its default, so a resume inherits it", () => {
+  const path = scratchDir();
+  const created = run("init", path);
+  assert.equal(created.status, 0, created.stderr);
+  assert.match(readFileSync(path, "utf8"), /^  on_missing_api_surface: escalate$/m);
+  assert.equal(validate(path, "--strict").status, 0);
+});
+
+// ---------------------------------------------------------------------------------------------
+// WS-E35 — a stream that never settled, in a document that says the run reached the ship phase
+//
+// The ship step reads an unknown stream verdict as "not passed" and stops, so this is the early
+// half of a check that already exists, not the only one. The value is where it fires: on the
+// document, before the ship delegation is made, rather than nine delegations into a run that was
+// routed on a false premise.
+//
+// `passed` and `not_applicable` are the two shippable statuses. The cases below cover both sides of
+// the message — a stream still in flight, and one whose review asked for changes nobody made — and
+// the phases where the rule must stay silent, since a stream is `pending` for most of a normal run.
+// ---------------------------------------------------------------------------------------------
+
+/** The clean fixture moved to a phase, with one stream's status replaced. */
+function atPhase(phase, streamStatus, stream = "api") {
+  // The `assert.match` is not decoration: a transform that matches nothing leaves the case
+  // asserting against the fixture's own values instead of the ones it names, and passes.
+  return scratch((text) => {
+    let out = text.replace(/^phase: test_automation$/m, `phase: ${phase}`);
+    if (phase === "done") out = out.replace(/^  handback_status: pending$/m, "  handback_status: done");
+    const block = new RegExp(`^  ${stream}:\\n    status: [a-z_]+$`, "m");
+    assert.match(out, block, `the ${stream} stream block was not found in the fixture`);
+    return out.replace(block, `  ${stream}:\n    status: ${streamStatus}`);
+  });
+}
+
+test("a stream still in flight at the ship phase fails WS-E35", () => {
+  for (const streamStatus of ["pending", "implemented", "review_in_progress"]) {
+    const path = atPhase("ship", streamStatus);
+    const { status, stdout } = validate(path);
+    assert.equal(status, 1, stdout);
+    assert.ok(stdout.includes("[WS-E35]"), stdout);
+    assert.match(stdout, /the API stream at "(pending|implemented|review_in_progress)"/);
+    assert.match(stdout, /never finished its review/);
+  }
+});
+
+test("a stream whose review did not pass fails WS-E35 with the other reason", () => {
+  for (const streamStatus of ["needs_revision", "blocked"]) {
+    const path = atPhase("ship", streamStatus);
+    const { status, stdout } = validate(path);
+    assert.equal(status, 1, stdout);
+    assert.ok(stdout.includes("[WS-E35]"), stdout);
+    assert.match(stdout, /did not pass, so it is not shippable/);
+  }
+});
+
+test("passed and not_applicable are the two statuses that ship", () => {
+  // The clean fixture already carries `ui: not_applicable` with its reason, so moving the API
+  // stream to passed makes the whole document shippable — which is the state this rule permits.
+  const path = atPhase("ship", "passed");
+  const { status, stdout } = validate(path, "--strict");
+  assert.equal(status, 0, stdout);
+  assert.deepEqual(codes(stdout), []);
+});
+
+test("WS-E35 fires at the done phase too — a finished run cannot hold an unsettled stream", () => {
+  const path = atPhase("done", "pending");
+  const { status, stdout } = validate(path);
+  assert.equal(status, 1, stdout);
+  assert.deepEqual(codes(stdout), ["WS-E35"]);
+});
+
+test("the rule is containment, not a report — set refuses to move the phase to ship", () => {
+  // Validation runs on the emitted document before it reaches disk, so an orchestrator that moves
+  // the phase ahead of a stream's verdict is stopped at the write rather than at the ship gate.
+  const path = scratch();
+  const refused = run("set", path, "phase=ship");
+  assert.notEqual(refused.status, 0, "a write whose result would not validate must be refused");
+  assert.match(refused.stderr + refused.stdout, /\[WS-E35\]/);
+  assert.match(readFileSync(path, "utf8"), /^phase: test_automation$/m);
+
+  // Settled first, in one command or two, and the same write goes through.
+  const ok = run("set", path, "automation.api.status=passed", "phase=ship");
+  assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+  assert.match(readFileSync(path, "utf8"), /^phase: ship$/m);
+});
+
+test("WS-E35 says nothing before the ship phase — a stream is pending for most of a run", () => {
+  for (const phase of ["test_design", "test_automation"]) {
+    const path = atPhase(phase, "pending");
+    const { status, stdout } = validate(path, "--strict");
+    assert.equal(status, 0, stdout);
+    assert.deepEqual(codes(stdout), []);
+  }
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -915,4 +1138,106 @@ test("reset introduced no schema change — the generated table needed no regene
   const printed = run("print-schema").stdout;
   assert.ok(printed.includes("| `history` |"), printed.slice(0, 200));
   assert.ok(!printed.includes("reset"), "no schema field is named for this command");
+});
+
+// ---------------------------------------------------------------------------------------------
+// check-streams — the state file's two stream decisions, read against the classified design
+//
+// `validate` rules on the document alone; `check-artifacts` on what is still on disk. Neither can
+// see a stream settled one way while the design says the other — and a stream marked
+// `not_applicable` with scenarios waiting for it is the one defect nothing downstream re-derives:
+// the work is never launched, and the ship gate cannot tell a stream nobody needed from one nobody
+// ran. Exit 5 is that disagreement, kept distinct from 1 (invalid document) and 4 (artifact gone).
+// ---------------------------------------------------------------------------------------------
+
+const design = (name) => join(repoRoot, "scripts", "__fixtures__", name);
+
+/** A scratch state file with each stream's status set. `classified-clean.md` has one at each level. */
+function streamState({ api = "implemented", ui = "implemented" } = {}) {
+  return scratch((text) =>
+    text
+      .replace(/^ {2}api:\n {4}status: [a-z_]+$/m, `  api:\n    status: ${api}`)
+      .replace(/^ {2}ui:\n {4}status: [a-z_]+$/m, `  ui:\n    status: ${ui}`)
+      // The clean fixture's UI stream is not_applicable and carries the reason WS-E30 demands;
+      // a stream that is no longer not_applicable must not keep it.
+      .replace(/^ {4}not_applicable_reason: "no scenario was assigned E2E UI at Checkpoint B"$/m, "    not_applicable_reason: null"),
+  );
+}
+
+test("check-streams passes when both streams match the design", () => {
+  const path = streamState();
+  const { status, stdout } = run("check-streams", path, "--design", design("classified-clean.md"));
+  assert.equal(status, 0, stdout);
+  assert.match(stdout, /streams agree with the design \(E2E API 1 -> implemented; E2E UI 1 -> implemented\)/);
+});
+
+test("check-streams catches a stream settled not_applicable while the design assigns it work", () => {
+  // The reviewer's case: a stream nobody launched, which nothing downstream re-derives.
+  const path = streamState({ ui: "not_applicable" });
+  const { status, stdout } = run("check-streams", path, "--design", design("classified-clean.md"));
+  assert.equal(status, 5, stdout);
+  assert.match(stdout, /automation\.ui\.status {2}\[CS-E02\]/);
+  assert.match(stdout, /assigns 1 scenario\(s\) to E2E UI \(SCN-003\)/);
+});
+
+test("check-streams catches a stream worked though the design assigns it nothing", () => {
+  // The inverse, and the cheaper failure: work the design never asked for. `gap-suggested-level.md`
+  // assigns no scenario to E2E UI.
+  const path = streamState({ ui: "passed" });
+  const { status, stdout } = run("check-streams", path, "--design", design("gap-suggested-level.md"));
+  assert.equal(status, 5, stdout);
+  assert.match(stdout, /automation\.ui\.status {2}\[CS-E03\]/);
+  assert.match(stdout, /settled as not_applicable with a reason, never worked/);
+});
+
+test("check-streams says nothing about a stream still pending", () => {
+  // `pending` is every stream for most of a run, including one the gate has not reached yet.
+  const path = streamState({ api: "pending", ui: "pending" });
+  const { status, stdout } = run("check-streams", path, "--design", design("gap-suggested-level.md"));
+  assert.equal(status, 0, stdout);
+});
+
+test("check-streams refuses an unclassified design rather than reading it as zero", () => {
+  // An unclassified design reports zero at every level, which is a true statement about the
+  // document and the exact opposite of what this check would conclude from it.
+  const path = streamState({ ui: "not_applicable" });
+  const dir = mkdtempSync(join(tmpdir(), "workflow-streams-"));
+  const unclassified = join(dir, "unclassified.md");
+  writeFileSync(
+    unclassified,
+    readFileSync(design("classified-clean.md"), "utf8").replace(/^Assigned Level: .*\n/gm, "").replace(/^Level Rationale: .*\n/gm, ""),
+    "utf8",
+  );
+  const { status, stdout } = run("check-streams", path, "--design", unclassified);
+  assert.equal(status, 5, stdout);
+  assert.match(stdout, /\[CS-E01\]/);
+  assert.match(stdout, /not classified/);
+  // And it does not also report the streams as disagreeing, which would be a conclusion drawn from
+  // the zero it just refused to read.
+  assert.ok(!stdout.includes("CS-E02"), stdout);
+});
+
+test("check-streams --json carries the per-stream rows and its scope", () => {
+  const path = streamState({ ui: "not_applicable" });
+  const { status, stdout } = run("check-streams", path, "--design", design("classified-clean.md"), "--json");
+  assert.equal(status, 5, stdout);
+  const payload = JSON.parse(stdout);
+  assert.equal(payload.scope, "stream_scope_only");
+  assert.equal(payload.classified, true);
+  assert.deepEqual(
+    payload.streams.map((s) => [s.stream, s.scenarios.length, s.status]),
+    [
+      ["api", 1, "implemented"],
+      ["ui", 1, "not_applicable"],
+    ],
+  );
+  assert.deepEqual(payload.violations.map((v) => v.code), ["CS-E02"]);
+});
+
+test("check-streams falls back to the design the state file records, and reports a missing one", () => {
+  const path = streamState();
+  const { status, stderr } = run("check-streams", path);
+  // `state-clean.yaml` records a design path for a ticket that does not exist on disk here.
+  assert.equal(status, 3, stderr);
+  assert.match(stderr, /no test design at /);
 });

@@ -89,14 +89,19 @@ different thing entirely from a wait invented to fill the gap, which the report 
 
 Before judging quality, establish what is actually true.
 
+**`Read` `docs/automation/contracts/e2e-stream-scope.md` first, and rule from the file rather than from
+memory.** It is the same scope contract the writing half of this stream was held to — what the level line
+selects, what a `Folds Into:` line changes, and the difference between selected, implemented, folded and
+skipped — so a scenario counted as dropped here is one the design really asked for, and a scenario the run
+really dropped is one you can see.
+
 | Claim | How you verify it |
 |---|---|
 | Scenario `SCN-NNN` is implemented | a test exists whose assertions cover that scenario's `Action:` and `Expected:` — not merely a comment naming the id |
-| Scenario `SCN-NNN` carrying `Folds Into: <id>` is covered | the covering scenario's test asserts **that scenario's** `Expected:` too. A folded scenario has no test of its own by design, so its absence from `tests/` is not a defect — its absence from the covering test's assertions is |
-| The report's `Folded Scenarios` table is right | every row's `Scenario` carries `Folds Into:` naming that row's `Covered in` in the design. The design is the authority; a fold the report claims and the design does not carry is two scenarios merged into one test, which is a Critical finding |
+| Scenario `SCN-NNN` carrying `Folds Into: <id>` is covered | the scope contract, §5. A fold the report claims and the design does not carry is two scenarios merged into one test, which is a Critical finding |
 | The named test exists | `Grep` for the exact title string in `tests/ui/` |
 | The listed files changed | each path exists and contains the claimed tests or locators |
-| Every E2E UI scenario was handled | `Grep` the test design for `Assigned Level: E2E UI`; each id is implemented as its own test, folded into one that is, or listed under `Skipped Scenarios` with a reason. **Read the design's `Folds Into:` lines yourself** — a folded id missing a test is correct, and taking the report's word for which ids those are is how a dropped scenario passes review |
+| Every E2E UI scenario was handled | `Grep` the test design for `Assigned Level: E2E UI` and rule per the scope contract, §5 — each id implemented as its own test, folded into one that is, or under `Skipped Scenarios` with a reason. Read the design's `Folds Into:` lines yourself; taking the report's word for which ids those are is how a dropped scenario passes review |
 | A reported locator gap is real | the page object documents it; the spec does not quietly use a brittle selector instead |
 | A locator new to `pages/` was actually observed | it appears in the report's `Explored Locators` map, or under `LOCATOR_GAPS`. You hold no browser, so that map is your only evidence a committed selector was ever seen — a new locator in neither place is unverified |
 | A committed wait matches something real | every `page.waitForResponse(...)` pattern and every dialog handler in the diff traces to a row of `Observed Mechanics`, or to a `Known Limitations` entry saying the mechanic was not observed. You hold no browser, so that map is your only evidence a committed wait matches a request somebody watched fire — a wait accounted for in neither place is a guess with a green test on top of it, and `MECHANICS_OBSERVED:` on the receipt says which |
@@ -150,7 +155,7 @@ Rows 1–4 answer the coverage question, rows 5–25 the code-style question. Ev
 | # | Check | A finding looks like |
 |---|---|---|
 | 1 | E2E UI scenario coverage | a scenario the test design marks `Assigned Level: E2E UI` with no test and no `Skipped Scenarios` entry |
-| 1b | Folded scenario coverage | a scenario the design marks `Folds Into: <id>` whose `Expected:` no test asserts — the covering test does not carry it and the report does not skip it. It has no test of its own to be missing, so row 1 cannot see it and only reading the design's `Folds Into:` lines can. The inverse is also this row: two scenarios sharing one test with no `Folds Into:` line authorising it, which is a merge the writing stream had no licence to make |
+| 1b | Folded scenario coverage | a scenario the design marks `Folds Into: <id>` whose `Expected:` no test asserts — the covering test does not carry it and the report does not skip it. It has no test of its own to be missing, so row 1 cannot see it and only reading the design's `Folds Into:` lines can. Both inverses are this row too: two scenarios sharing one test with no `Folds Into:` line authorising it, and a covering test carrying two `// Act` blocks to fit a fold. The scope contract, §3 |
 | 2 | Assertion covers the scenario | a claimed scenario with no real assertion; an `Expected:` clause of that scenario silently dropped |
 | 3 | Correctness against the scenario | the test asserts something the scenario does not describe, or passes for the wrong reason |
 | 4 | Invented values | a rendered string, count or state asserted in the test that appears nowhere in the test design; **or a value the design marks `unknown:` in that scenario's `Notes:`** — an unknown is not assertable, so asserting one is an invented value whatever the design's `Expected:` happens to contain. A value traceable to the report's `Observed Mechanics` map is still invented, and worse: that map is a record of what the app currently does, so an assertion sourced from it can only ever agree with the application |
@@ -301,6 +306,7 @@ fix-writing, no `Pass` over a Major, no verdict but `Blocked` on an unrun suite,
 narrowing of the suite or the coverage pass, no trusting the report's own numbers, no `requirements/`, no
 judging the design, no browser, no Jira, no mid-run questions. On top of those, specific to this stream:
 
+- Rule on scope, a fold or a skip from memory of the rules. `docs/automation/contracts/e2e-stream-scope.md` is read at Step 2, every run and every iteration, and it is the same file the code you are judging was written against.
 - Review anything under `tests/api/`, or comment on status codes, contracts or payload schemas. That work is reviewed elsewhere, and duplicating it produces contradictory findings. An **addition** under `services/api/` made for setup or cleanup is in scope for exactly two questions — is it additive, and is it on `SHARED_ADDITIONS:` (row 25) — and for nothing about its design.
 - Open any heading of `requirements/` but `# API Surface`, or raise a finding phrased against a requirement. The surface is read to tell a documented route from a guessed one, and for nothing else.
 - Narrow the style pass without also re-reading every page object a changed spec calls into. A shared locator edited for one finding reaches every test that uses it.

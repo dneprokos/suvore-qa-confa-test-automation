@@ -87,6 +87,13 @@ an alias for the one parameter that is commonly written the other way.
      choosing a phase.** `validate` rules on what the document says; this rules on whether the files it
      names are still there. Exit `0` means every recorded path is on disk; exit `4` means at least one is
      gone, and the row says which field named it and which stream it belongs to. See *Artifact drift* below.
+   * Then run `node scripts/workflow-state.mjs normalize <TICKET-ID>` — **on every resume, before the
+     banner.** A missing `configuration.*` key is not a validation error, so `validate` passes a document
+     written before the key existed and the banner then reports the template default as though somebody
+     chose it. `normalize` writes each absent key at the value `init` would have written, prints one line
+     per key, and says `unchanged` when there is nothing to add. It touches no phase, no counter and no
+     history entry. Announce anything it added, because a setting that appears on a resume is a setting
+     this run is about to be governed by.
    * A non-empty `in_flight:` means the previous session was interrupted mid-delegation. Follow *Resuming
      an interrupted delegation* below before doing anything else.
 2a. **`--reset`, and only when this invocation asked for it.** See *Dropping to the first stage* below.
@@ -192,6 +199,8 @@ node scripts/workflow-state.mjs clear-in-flight <TICKET-ID> --agent <name>
 node scripts/workflow-state.mjs get   <TICKET-ID> <dotted.path>               # a value, raw
 node scripts/workflow-state.mjs validate <TICKET-ID>                          # belt and braces
 node scripts/workflow-state.mjs check-artifacts <TICKET-ID>                   # step 0, every resume
+node scripts/workflow-state.mjs normalize <TICKET-ID>                         # step 0, every resume
+node scripts/workflow-state.mjs check-streams <TICKET-ID>                     # Checkpoint B, and the ship gate
 node scripts/workflow-state.mjs normalize <TICKET-ID>                         # after a hand edit
 node scripts/workflow-state.mjs reset <TICKET-ID> --reason "<why>" [--dry-run] # human-asked only
 ```
@@ -596,6 +605,27 @@ The design decision is the gate between design and automation, and it is recorde
 Do not enter Phase 2 on anything but Accept. Both SDETs abort `LEVELS_NOT_ASSIGNED` on an unclassified
 design anyway, but arriving there is a wasted delegation.
 
+**Then check the decision you just wrote, before the first Phase 2 delegation:**
+
+```bash
+node scripts/workflow-state.mjs check-streams <TICKET-ID>
+```
+
+Exit `0` means both stream statuses agree with the design the manifest was read from; exit `5` means they
+do not, and the row says which. `CS-E02` is a stream settled `not_applicable` while the design assigns it
+scenarios — **the one drift nothing downstream re-derives**: that work is never launched, and the ship
+gate cannot tell a stream nobody needed from one nobody ran. `CS-E03` is the inverse, a stream carrying
+work the design never assigned it. `CS-E01` is an unclassified design, which is 1.4 not having run.
+
+Fix the state file and re-run it; never route on an exit `5`. It rules on nothing else — not whether a
+step ran, not whether a verdict was right — and it says nothing about a stream still `pending`, which is
+every stream between this gate and its implementing step.
+
+Run it again at the ship gate, before delegating step 3. `WS-E35` already refuses to let the phase reach
+`ship` with a stream unsettled; this is the other half of the same question, and the two together are why
+a forgotten stream cannot reach a pull request: one checks the statuses against the design, the other
+checks them against the phase.
+
 Step 1.4 returns `E2E_JOURNEYS`, `E2E_KEPT` and `E2E_DEMOTED` alongside its result line. Record them in
 `test_design` and print them at the 1.4 pause: they are how many distinct journeys reached E2E, which
 scenarios hold an E2E level, and which the classification step moved down to a level this repository does
@@ -745,8 +775,14 @@ climbing per iteration is worth seeing before the cap is reached.
 both steps end to end: the gate, what step 3 composes, which git confirmations survive auto mode,
 `skip_ship` and `dry_run`, the `target_status` rule, the four hand-back outcomes and their state writes.
 
-Three things belong here, next to the routing they constrain:
+Four things belong here, next to the routing they constrain:
 
+* **Two checks run before the delegation, and both are cheap.** `node scripts/workflow-state.mjs
+  check-streams <TICKET-ID>` reads the stream statuses against the design once more — the same command
+  Checkpoint B ran, asking whether the decision still matches the document that produced it — and the
+  write that moved `phase` to `ship` has already been refused by `WS-E35` if either stream was left
+  unsettled. A stream that was never launched fails one or the other; neither can be satisfied by a run
+  that simply forgot it.
 * **The run does not end at the pull request.** Record `pull_request` from the ship receipt's `PR_URL`,
   then run step 4 — the ticket still says `In Progress` until it does.
 * **A failed hand-back does not fail the run.** The pull request is the deliverable; the Jira status is

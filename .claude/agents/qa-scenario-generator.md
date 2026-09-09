@@ -314,7 +314,8 @@ Field rules:
 - **Expected** — the observable outcome, with exact values quoted from the requirements.
 - **Suggested Level** — one of `Unit | Component | Integration | E2E API | E2E UI`. A **suggestion only**. Levels are finalized later by a separate step that appends an `Assigned Level:` line to each block; your `Suggested Level:` stays as the audit trail of what you proposed.
 - **Automation Suitability** — `High | Medium | Low | Manual only`. Anything below `High` needs its reason in `Notes:`.
-- **Notes** — dependencies, unknowns, reviewer findings this scenario answers, confidence markers (below), or `—`.
+- **Notes** — dependencies, unknowns, reviewer findings this scenario answers, confidence markers (below), the API coverage decision (next bullet), or `—`.
+- **The API coverage decision** — a scenario you suggest at `E2E UI` whose behaviour runs through the server (a sign-in, a request, a persisted record, a status code) carries one of `API coverage: linked SCN-NNN — <what is asserted there>`, `API coverage: not needed — <why>`, or `API coverage: not applicable — <why>` in its `Notes:`. Link when the backend behaviour has contract value of its own and an `E2E API` scenario here asserts it; exempt it, with the reason, when the backend is only support for the journey — sign-in, setup, cleanup, navigation mechanics. A linked id must be an `E2E API` scenario in this document. The full rule, including what the linter fails, is the API-coverage bullet in `docs/automation/references/test-design-document-shape.md` — read it there rather than from memory. A scenario you suggest at `E2E API` needs no such decision: it is the contract test.
 
 **Confidence markers.** Every status code, error message, role name, numeric limit and route is one of four things, and `Notes:` says which whenever it is not the first:
 

@@ -433,8 +433,11 @@ test("a fold on a Requirement Gap scenario is caught — no oracle, so no test r
 });
 
 test("a fold line out of position is caught — the three classification lines are contiguous", () => {
+  // Moved one line down, inside its own block: the three classification lines are no longer
+  // contiguous. Anchored on the line that follows it rather than on "the first bare `Notes:`",
+  // which moved the fold into a different scenario as soon as another block's Notes changed.
   const path = scratchCopy("folded-e2e.md", (text) =>
-    text.replace(/^Folds Into: SCN-003\n/m, "").replace(/^Notes: —$/m, "Folds Into: SCN-003\nNotes: —"),
+    text.replace("Folds Into: SCN-003\nAutomation Suitability: High", "Automation Suitability: High\nFolds Into: SCN-003"),
   );
   const { status, stdout } = lintPath(path);
   assert.equal(status, 1, stdout);
@@ -489,4 +492,108 @@ test("an unfolded design reports no folds and one test per E2E scenario", () => 
     assert.equal(s.folds_into, null);
     assert.deepEqual(s.folds, []);
   }
+});
+
+test("TD-E19 reads the blocked table's Scenario column, not its Expected prose", () => {
+  // A gap scenario's `Expected:` is copied verbatim into the blocked table, and a scenario may
+  // legitimately cross-reference another one there ("see SCN-002"). Scanning the whole subsection
+  // read that mention as a claimed row and reported a scenario nobody had listed — TD-E19 fired on
+  // SCRUM-115's design for exactly this, against a document that was correct.
+  const path = scratchCopy("requirement-gap-e2e.md", (text) =>
+    text.replaceAll(
+      "Not assertable — the requirements do not state what the panel shows once a delete is refused.",
+      "Not assertable — the requirements do not state what the panel shows once a delete is refused (the refusal itself is covered by SCN-002).",
+    ),
+  );
+
+  const { status, stdout } = lintPath(path);
+  assert.equal(status, 0, stdout);
+  assert.ok(!codes(stdout).includes("TD-E19"), `a prose cross-reference is not a listed row: ${stdout}`);
+});
+
+test("TD-E19 still catches a blocked table that lists a scenario which is not a requirement gap", () => {
+  // The companion to the case above: narrowing what counts as a row must not stop the check
+  // ruling on the rows themselves, in either direction.
+  const path = scratchCopy("requirement-gap-e2e.md", (text) =>
+    text.replace("| SCN-004 | FR-1.4 | Not assertable", "| SCN-001 | FR-1.4 | Not assertable"),
+  );
+
+  const { status, stdout } = lintPath(path);
+  assert.equal(status, 1, stdout);
+  assert.ok(codes(stdout).includes("TD-E19"), stdout);
+  assert.match(stdout, /omits SCN-004/);
+  assert.match(stdout, /lists SCN-001, which do not belong there/);
+});
+
+// ---------------------------------------------------------------------------------------------
+// TD-E22 — the API coverage decision on a backend-backed UI scenario
+//
+// A UI scenario whose behaviour runs through the server either has an API scenario carrying the
+// contract, or a stated reason why the backend half needs none. What it may not be is silent: a
+// reader downstream cannot tell "the contract is covered elsewhere" from "nobody considered it",
+// and the two lead to opposite decisions about what to automate.
+//
+// The scenario the cases below edit is `classified-clean.md`'s SCN-003 — an E2E UI journey that
+// signs in, which is what makes it backend-backed.
+// ---------------------------------------------------------------------------------------------
+
+const API_COVERAGE_NOTE =
+  "Notes: API coverage: not needed — sign-in and the panel fetch are session mechanics for this journey; the admin-list authorization contract is covered by SCN-002.";
+
+test("TD-E22 catches a backend-backed UI scenario with no API coverage decision", () => {
+  const path = scratchCopy("classified-clean.md", (text) => text.replace(API_COVERAGE_NOTE, "Notes: —"));
+  const { status, stdout } = lintPath(path);
+  assert.equal(status, 1, stdout);
+  assert.deepEqual(codes(stdout), ["TD-E22"]);
+  assert.match(stdout, /SCN-003 {2}\[TD-E22\] {2}backend-backed UI scenario has no `API coverage:` decision/);
+});
+
+test("TD-E22 accepts a link to an E2E API scenario", () => {
+  const path = scratchCopy("classified-clean.md", (text) =>
+    text.replace(API_COVERAGE_NOTE, "Notes: API coverage: linked SCN-002 — the authorization contract is asserted there."),
+  );
+  const { status, stdout } = lintPath(path);
+  assert.equal(status, 0, stdout);
+  assert.deepEqual(codes(stdout), []);
+});
+
+test("TD-E22 catches a link to a scenario the document does not carry", () => {
+  const path = scratchCopy("classified-clean.md", (text) =>
+    text.replace(API_COVERAGE_NOTE, "Notes: API coverage: linked SCN-099 — asserted there."),
+  );
+  const { status, stdout } = lintPath(path);
+  assert.equal(status, 1, stdout);
+  assert.ok(codes(stdout).includes("TD-E22"), stdout);
+  assert.match(stdout, /links SCN-099, which is not a scenario in this document/);
+});
+
+test("TD-E22 catches a link to a scenario that is not E2E API", () => {
+  // The link is the claim "the contract is asserted over there". A scenario at another level does
+  // not assert it, so a link to one is the same silence the rule exists to stop, wearing an id.
+  const path = scratchCopy("classified-clean.md", (text) =>
+    text.replace(API_COVERAGE_NOTE, "Notes: API coverage: linked SCN-001 — asserted there."),
+  );
+  const { status, stdout } = lintPath(path);
+  assert.equal(status, 1, stdout);
+  assert.ok(codes(stdout).includes("TD-E22"), stdout);
+  assert.match(stdout, /links SCN-001, which is not an E2E API scenario/);
+});
+
+test("TD-E22 requires a reason on a not-needed exemption", () => {
+  // `not needed` with nothing after it is a decision nobody can review.
+  const path = scratchCopy("classified-clean.md", (text) =>
+    text.replace(API_COVERAGE_NOTE, "Notes: API coverage: not needed"),
+  );
+  const { status, stdout } = lintPath(path);
+  assert.equal(status, 1, stdout);
+  assert.ok(codes(stdout).includes("TD-E22"), stdout);
+  assert.match(stdout, /must include the exemption reason after a dash/);
+});
+
+test("TD-E22 says nothing about an E2E API scenario, whatever its Notes say", () => {
+  // The rule is about a UI scenario leaning on the backend. A scenario that *is* the API test
+  // carries its own contract, so asking it to name another one would be circular.
+  const { status, stdout } = lint("classified-clean.md");
+  assert.equal(status, 0, stdout);
+  assert.deepEqual(codes(stdout), []);
 });
