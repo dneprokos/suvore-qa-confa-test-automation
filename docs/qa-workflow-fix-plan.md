@@ -440,12 +440,19 @@ pointer table now, and neither creator nor reviewer reads `CLAUDE.md` at all. Th
 behind in prose because they are the ones most often broken from outside those files: no `expect` in a
 page object, web-first waits only, and a known defect asserted against the spec.
 
-**The 4.2 check does not pass, and here is the number.** What a one-line API revision reads, in
-documentation lines, went from **2022 to 1142** — 43% less, but not the plan's target of under 800.
-The whole of the saving is `CLAUDE.md` (775 lines, no longer read) and the API appendix (127). What
-remains is `api-spec-etalon.md` `# Core` at 491 and `implementation-report.md` at 301, and neither can
-be cut without either losing a gate or splitting the report contract, which is not in this plan.
-Getting under 800 needs that split; it belongs in a batch of its own.
+**The 4.2 check does not pass, and 800 is not reachable.** What a one-line API revision reads went from
+**2022 to 1142** documentation lines — 43% less, but not the plan's target of under 800. The whole of
+the saving is `CLAUDE.md` (775 lines, no longer read by any Phase 2 node) and the API appendix (127).
+
+A later review proposed splitting `implementation-report.md` to close the rest. That was checked and
+**withdrawn**: Step 10 of both creators rewrites the report in full on every iteration, so its 135-line
+section catalogue is needed in every mode and there is no write-time/revise-time boundary to split on.
+
+The five documents a revision reads are the surface rules (81), the scope contract (105), the revision
+contract (164), the report contract (300) and the etalon `# Core` (491). Each is read because a rule in
+it applies to a revision. **1142 is the measured floor at the current gate coverage** — going below it
+means dropping a gate, not reorganising a file. The 800 figure was set before anyone measured what a
+revision must read.
 
 **4.4 is not done.** It is a full `/qa-workflow SCRUM-115 --auto` to a pull request with the metrics
 table recorded, and it needs a live run.
