@@ -74,17 +74,33 @@ Note whether `# QA Review Notes` is present in the file — that tells you the r
 |---|---|---|---|---|
 | absent | — | — | — | `first_run` — Step 7 writes it |
 | present | no | no | no | stop. Return `EXISTS`. Make no edits. |
-| present | no | no | yes | `revision` — go to Step 8 after Step 5b. This is the next batch of a scoped run. |
-| present | no | yes | — | `revision` — go to Step 8 after Step 5b |
+| present | no | no | yes | `revision` — Step 8 after Step 5b, **then Step 7b**. This is the next batch of a scoped run. |
+| present | no | yes | — | `revision` — Step 8 after Step 5b, **then Step 7b** |
 | present | yes | — | — | `regenerate` — full `Write` rewrite in Step 7 |
+
+**Step 7b runs whenever this run added or changed a scenario**, in every mode. A block written without
+an `Assigned Level:` line is a scenario no implementing step will ever select and no gate will ever
+count, and Step 9 refuses to return one. This matters most on the two paths that reach Step 8: a
+revision answering a `Missing Scenarios:` finding, and every batch after the first. Both append blocks,
+and both would otherwise leave them unclassified.
+
+It is also not enough to level *only* the new blocks. The minimum-set pass groups E2E candidates by the
+journey their `Action:` traverses, and a scenario appended now may share a journey with one written
+three batches ago — so the pass reruns over the whole document, and a previously kept scenario may
+become folded or demoted by it. That is the pass working, not a byte-identical violation: Step 8's
+carve-outs govern the *other* fields, and the level lines are Step 7b's in every mode.
+
+A run that added nothing — an `approved_values`-only revision that changed an `Expected:` and a
+`Notes:` marker, say — still runs Step 7b's last command, because the counts moved. It does not redo
+the judgement, and it leaves the four judgement lines alone.
 
 **Findings or approvals** means `review_findings`, `approved_values`, or both — and it is a column of this table only when the document is already **present**. `approved_values` on a `first_run` changes no mode: there is nothing to revise, and the entries are simply values you may treat as stated while you model. The whole point of collecting an approval before the design exists is that the unknown is never written and no revision is ever needed to remove it.
 
-On a `revision`, an approval is a revision instruction like any other: it names something specific to change and nothing else moves. A run carrying only `approved_values` rewrites exactly the blocks those entries resolve to — the `Expected:` field, the `Notes:` marker, the `# Approved Assumptions` row and the matching `# Coverage Gaps` entry — and leaves every other line byte-identical.
+On a `revision`, an approval is a revision instruction like any other: it names something specific to change and nothing else moves. A run carrying only `approved_values` rewrites exactly the blocks those entries resolve to — the `Expected:` field, the `Notes:` marker, the `# Approved Assumptions` row and the matching `# Coverage Gaps` entry — and leaves every other line byte-identical. It adds no scenario, so Step 7b has nothing to level; it runs only the closing `--apply-all`. An approval that makes a previously unassertable outcome assertable can still change where that scenario's oracle lives, so if you now judge its level wrong, say so in `NOTES` rather than re-levelling it — a level nobody asked you to revisit is a change the review did not request.
 
 On `regenerate`, `Read` the existing document first and state in `NOTES` that every level assignment in it is discarded by the rewrite — the fresh document is classified again in Step 7b, from scratch. Never choose `regenerate` on your own initiative; it must come from the prompt.
 
-A scoped `revision` run is how a large test basis is worked in batches. It uses the same machinery as a findings-driven revision — `SCN-` ids continue from the highest existing one, new `# Test Basis Analysis` rows continue the existing numbering, and `revision:` bumps. A batch run carries no findings and no approvals, so neither Step 8 carve-out is open to it: it appends only, and every pre-existing line stays byte-identical.
+A scoped `revision` run is how a large test basis is worked in batches. It uses the same machinery as a findings-driven revision — `SCN-` ids continue from the highest existing one, new `# Test Basis Analysis` rows continue the existing numbering, and `revision:` bumps. A batch run carries no findings and no approvals, so neither Step 8 carve-out is open to it: it appends only. Every pre-existing line stays byte-identical **except the three level lines**, which Step 7b owns in every mode and rewrites when a newly appended scenario changes the journey grouping.
 
 # Step 4 — Extract your source material
 
@@ -431,7 +447,8 @@ Two things stay here because a `revision` needs them without reading the shape f
 
 # Step 7b — Assign a level to every scenario
 
-The document is written. Now classify it — the same run, over the whole document at once.
+The document is written or appended to. Now classify it — the same run, over the whole document at
+once, in **every** mode that produced or changed a scenario block.
 
 **This is a separate step from Step 7 on purpose.** A level is not decided by a scenario alone: the
 minimum-set pass looks across every E2E candidate, groups them by the journey their `Action:`
@@ -462,6 +479,10 @@ has not been written.
 obligation is created by the assignment — so it is discharged here, where both the assignment and the
 list of `E2E API` scenarios are in front of you. The block-format bullet above says what the line
 looks like.
+
+**Reached from Step 7 on a first run, and from the end of Step 8 on a revision or a next batch.** The
+work is the same either way: read the reference, level every block that has no level, rerun the
+minimum-set pass over every E2E candidate in the document, and write the lines.
 
 Then write the counted sections with the script rather than by hand:
 
@@ -502,9 +523,9 @@ What no finding ever authorises: renumbering an id, reusing an id, deleting a sc
 
 - Use `Edit`. Never `Write` — `Write` replaces the whole file, and a revision is a scoped change to a document a review has already cited by id and by line.
 - New scenarios continue from the highest existing `SCN-NNN`. Never renumber and never reuse an id; review findings and workflow state cite ids.
-- Every pre-existing scenario block must be byte-identical after your edit, except the fields the two carve-outs above reach, in the scenarios their entry or finding names — the level lines included, when a finding names one and you have redone the pass for that scenario. The heading and its id are never yours to edit in any mode.
+- Every pre-existing scenario block must be byte-identical after your edit, except the fields the two carve-outs above reach, in the scenarios their entry or finding names. The three level lines are outside this rule entirely: Step 7b owns them in every mode, and it may rewrite one on a scenario no finding named when the journey grouping moved. The heading and its id are never yours to edit in any mode.
 - `# Test Basis Analysis` appends on the same terms. New partitions, boundary values, rule columns and transitions continue the existing numbering; an id is never renumbered, reused or deleted, because scenarios cite them. A finding that a *model* was wrong — an overlapping partition, a rule column that should not have been dropped — is corrected by adding the missing item with a new id **and** marking the superseded row in place: append ` — superseded by EP-08 [DESIGN-M1]` to that row's `Source` cell, so a reader of the model sees the correction where the defect is rather than only in a gap entry further down. The row keeps its id and its other cells; a scenario citing it still resolves.
-- Rebuild all three matrices, every counted number in `# Summary` and the level arithmetic with `--apply-all` (Step 7b), then bump `scenario_count:` and `revision:` in the front matter. Run it **after** your last edit, on every revision, even when no finding named a matrix — they are counts, and the counts moved. The script carries the four judgement lines through unchanged — `Levels:` and `Blocked by (top unknowns):` in `# Summary`, `E2E journeys:` and `Demoted by the minimum-set pass:` in the level section. Leave all four exactly as you found them unless this revision redid the pass, in which case you rewrite them from it. Re-deriving these four sections by hand on a revision is where a small fix turns into a full re-read of the document, and it is the reason this run used to be expensive; one command replaces all of it.
+- **Then go to Step 7b, after your last edit.** It levels whatever this run appended, reruns the minimum-set pass over the whole document, and ends by rebuilding all three matrices, every counted number in `# Summary` and the level arithmetic with `--apply-all`. That last command runs on every revision even when no finding named a matrix — they are counts, and the counts moved. `--apply-all` recounts; it never assigns, so a run that reached it without passing through Step 7b ships blocks with no level and fails its own Step 9. Bump `scenario_count:` and `revision:` in the front matter afterwards. The script carries the four judgement lines through unchanged — `Levels:` and `Blocked by (top unknowns):` in `# Summary`, `E2E journeys:` and `Demoted by the minimum-set pass:` in the level section. Leave all four exactly as you found them unless this revision redid the pass, in which case you rewrite them from it. Re-deriving these four sections by hand on a revision is where a small fix turns into a full re-read of the document, and it is the reason this run used to be expensive; one command replaces all of it.
 - On a scoped batch, a traceability row that read `_Out of scope for this run (requirement_ids)._` is replaced by its scenario ids once this run covers that requirement, and the `# Coverage Gaps` entry naming it is narrowed to the ids still outstanding — or removed when none remain. This is the one place a pre-existing line legitimately changes, and it changes only in the traceability matrix and that one gap entry; every scenario block and every `# Test Basis Analysis` row stays byte-identical.
 - A finding that an existing scenario already covers does NOT get a duplicate scenario. Add a `# Coverage Gaps` line naming the existing `SCN-NNN` and why it satisfies the finding.
 - **A finding an in-place edit can satisfy is fixed that way, not deferred.** Recording a `# Coverage Gaps` entry that restates the defect, agrees with it and leaves it standing is not a fix — the document then argues against itself while shipping the thing it argues against, and the next review raises the same id again. A gap entry is for what genuinely cannot be fixed in this run, and it says why, not merely what.
@@ -538,7 +559,7 @@ The script has no opinion on any of these, and a clean run says nothing about th
 4. **The sweep was full.** All twelve categories were walked and all four techniques modelled for the in-scope requirements, whatever `TEST_BASIS_SIZE` said. A category or model shortened because the input was large fails this check.
 4b. **Every scenario carries a level.** Exactly one `Assigned Level:` line and one `Level Rationale:` per block, no `Unassigned` and no `TBD`; `Requirement Gap` never combined with a real level; every `Folds Into:` naming a kept scenario of the same stream and the same journey, never itself, never a below-E2E or `Requirement Gap` scenario, and never one that is itself folded. Every collected E2E candidate appears in exactly one of `E2E_KEPT`, `E2E_DEMOTED`, `E2E_FOLDED`. Every `E2E UI` scenario whose behaviour turns on the server carries an `API coverage:` line.
 
-5. **Revision mode only.** Every pre-existing block and every pre-existing `# Test Basis Analysis` row is unchanged apart from what the two Step 8 carve-outs reach — the `Expected:`, `Notes:` and `Automation Suitability:` lines of the scenarios named in `approved_values`; the fields a finding names, in the scenarios it names; and the `Source` cell of a model row a finding named, marked superseded. No scenario heading, `Assigned Level:`, `Level Rationale:` or `Folds Into:` line was touched, and no id was renumbered, reused or deleted. And no finding an in-place edit could have satisfied was answered by a `# Coverage Gaps` entry alone — including a finding about a `Coverage Item:` citation, which is now an editable field and therefore no longer a reason to defer.
+5. **Revision mode only.** Every pre-existing block and every pre-existing `# Test Basis Analysis` row is unchanged apart from what the two Step 8 carve-outs reach — the `Expected:`, `Notes:` and `Automation Suitability:` lines of the scenarios named in `approved_values`; the fields a finding names, in the scenarios it names; and the `Source` cell of a model row a finding named, marked superseded. No scenario heading was touched and no id was renumbered, reused or deleted. **The three level lines are the exception, and they belong to Step 7b rather than to a carve-out**: that step reruns over the whole document, so a pre-existing scenario may legitimately gain a level, change one, or gain or lose a `Folds Into:` line when a newly appended scenario joins its journey. What it may never do is change a level without rewriting that block's `Level Rationale:` to match — a rationale arguing for the level the scenario used to have is worse than no rationale at all. And no finding an in-place edit could have satisfied was answered by a `# Coverage Gaps` entry alone — including a finding about a `Coverage Item:` citation, which is now an editable field and therefore no longer a reason to defer.
 
 # Step 10 — Return summary
 

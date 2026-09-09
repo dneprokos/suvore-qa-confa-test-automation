@@ -661,3 +661,26 @@ test("--apply-all is mutually exclusive with the single apply modes", () => {
   assert.equal(status, 2);
   assert.match(stderr, /mutually exclusive/);
 });
+
+test("classified is false while any scenario is unassigned, not merely true once one is", () => {
+  // A gate settles whole streams from `scenarios_by_level`, and that map omits a block with no
+  // `Assigned Level:` line. Reporting `classified: true` on a partial design therefore hands the gate
+  // a level list with scenarios silently missing from it — and a stream whose only scenario is the
+  // missing one gets settled `not_applicable` and never launched.
+  const path = scratchCopy("classified-clean.md", (text) => {
+    const blocks = text.split("\n## SCN-");
+    const last = blocks.length - 1;
+    blocks[last] = blocks[last]
+      .replace(/^Assigned Level: .*\n/m, "")
+      .replace(/^Level Rationale: .*\n/m, "");
+    return blocks.join("\n## SCN-");
+  });
+
+  const partial = JSON.parse(lintPath(path, "--emit-manifest").stdout);
+  assert.equal(partial.counts.unassigned, 1);
+  assert.equal(partial.classified, false, "a partially classified design must not report classified");
+
+  const whole = JSON.parse(lint("classified-clean.md", "--emit-manifest").stdout);
+  assert.equal(whole.counts.unassigned, 0);
+  assert.equal(whole.classified, true);
+});

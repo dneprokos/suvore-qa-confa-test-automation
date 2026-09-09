@@ -118,6 +118,26 @@ Ids are yours and they are stable — a finding outstanding on iteration 3 keeps
 
 A finding whose subject the design now answers under `# Coverage Gaps` by naming an existing `SCN-NNN` is **resolved**, not outstanding: the gap was a duplicate you asked for, and pointing at the scenario that already covers it is the correct response.
 
+# Step 1c — Read the rubric the levels were written against
+
+**`Read` `docs/automation/references/level-assignment.md` before you judge criteria 9 or 10**, on every
+run that reviews a classified design. Skip it only when `expect_levels_assigned` is `false`, where there
+are no levels to rule on.
+
+It holds the level definitions, the eight decision factors, the assignment rules, the four shapes that
+get wrongly routed to E2E UI, and the E2E minimum-set pass — demotion, folding, and the journey grouping
+that decides both.
+
+**It is the same file the writing step reads.** That is the point of reading it rather than judging from
+this body: a rule the design is written against and the rule it is reviewed against have to be the same
+words, or the two drift the first time somebody narrows a definition and edits one of them. Criteria 9
+and 10 below say what a *finding* looks like; the rubric says what *correct* looks like, and you need
+both.
+
+**Never work from memory of it.** It has been rewritten twice against real designs that routed
+everything to E2E, and a reviewer applying the old version passes exactly the designs it was rewritten
+to catch.
+
 # Step 2 — The twenty review criteria
 
 Run all twenty. Each produces zero or more findings, and every finding names a concrete id.
@@ -134,7 +154,7 @@ Criteria 1–13 audit the scenarios against the requirements. Criteria 14–18 a
 | 6 | Duplicate scenarios | two scenarios whose `Action:` and `Expected:` differ only in wording |
 | 7 | Contradictory scenarios | two scenarios asserting different outcomes for the same input and preconditions |
 | 8 | Invalid assumptions | an `Expected:` value — status code, error string, limit, field name, role, route — that appears nowhere in the requirements document **and** carries no `inferred:` or `approved:` marker in that scenario's `Notes:`. An untagged value is a claim the requirements state it, so the finding is the silent claim, not the value. A value tagged `inferred:` whose stated basis is a general convention rather than something in the requirements is a mislabel, and should have been `unknown:` |
-| 9 | Incorrect level assignments | a scenario at a level where its `Expected:` outcome is not decidable, or one pushed to E2E though its assertion is a self-contained rule. `Assigned Level:` names the lowest layer with an assertable oracle and `Automation Suitability:` names whether that test can be automated now, so a level moved up to accommodate `Manual only` is this finding, and `Manual only` paired with Unit, Component or Integration is not. Two further shapes: `Requirement Gap` on a scenario whose `Expected:` is assertable — a real level was available and the work was deferred instead — and a real level on a scenario whose `Expected:` records an unknown, a missing oracle or an outcome stated as not assertable, which claims coverage that cannot exist |
+| 9 | Incorrect level assignments | judged against `docs/automation/references/level-assignment.md`, which is the same file the levels were written from — a scenario at a level where its `Expected:` outcome is not decidable, a level moved up to accommodate `Manual only`, `Requirement Gap` on a scenario whose `Expected:` is assertable, or a real level on one whose `Expected:` records an unknown or a missing oracle. Also a `Level Rationale:` that names no deciding factor, or that argues for a level the block no longer carries |
 | 10 | Excessive E2E coverage | two or more E2E scenarios covering one journey — same actor, same entry point, same routes — where a single run of one already traverses what the other asserts; an E2E assertion that would pass, and fail correctly, against a stubbed backend response; validation and formatting rules assigned to E2E as a group rather than individually justified. Individually justified assignments are the usual form of this finding: each scenario needs a browser, and none of them needs its own. **Read `Preconditions:` for the actor and the entry state, never for the data** — two scenarios differing only in how much or what data they need are one journey, and a design listing them as two is this finding whatever their rationales say. Count only scenarios assigned `E2E API` or `E2E UI` — a `Requirement Gap` scenario is on no journey and belongs in neither the numerator nor the denominator of any E2E figure |
 | 10b | Wrong fold decision | a scenario carrying `Folds Into:` whose covering scenario is on a different journey — a different actor's authorization, a different entry point, different routes — or whose two `Expected:` outcomes cannot both be observed in one run, typically because they need the same resource in opposite states. The inverse is the same finding: two E2E scenarios on one journey where neither carries `Folds Into:` and one of them plainly should, and a scenario folded where a lower level would have held its assertion truthfully, which is a demotion written as a fold. A fold's `Level Rationale:` has to answer both halves — why no lower level holds it, and why the covering traversal is the same one — and one carrying only half is this finding. Structure and arithmetic are the lint's (`TD-E21`); whether the fold was the right call is yours |
 | 11 | Missing lower-level coverage | a requirement whose logic clearly lives in one module with no Unit, Component, or Integration scenario anywhere. A `Requirement Gap` scenario is not lower-level coverage of anything; where one stands in for the missing scenario, the finding is that the requirement was never specified |

@@ -370,7 +370,7 @@ disk, which is what keeps its context small and its result reproducible.
 |---|---|---|---|---|
 | 1.1 | `qa-requirements-collector` | `ticket_id`, `endpoint_hints`, `endpoint_hints_approver`, `api_surface_mode` | `QA_REQUIREMENTS_COLLECTOR_RESULT`, `FR_IDS`, `AC_IDS`, `API_SURFACE`, `SURFACE_PROVENANCE`, `MATCH_BASIS`, `MATCHED_OPERATIONS`, `SPEC_GAPS` | `requirements/<TICKET-ID>-requirements.md` incl. `# API Surface`, Jira -> In Progress |
 | 1.2 | `qa-requirements-reviewer` — skipped when `review_requirements: false` | `ticket_id`, `requirements_path` | `QA_REQUIREMENTS_REVIEWER_RESULT`, `API_SURFACE_EVIDENCE`, `MISSING_INFORMATION` | five QA sections appended to the same file; the `# Missing Information` bullets are Checkpoint A1's input |
-| 1.3 | `qa-scenario-generator` | `ticket_id`, `requirements_path`, `requirement_ids`, `review_findings`, `approved_values`, `confirm_ui` | `QA_SCENARIO_GENERATOR_RESULT`, `LINT`, `UNAPPROVED_UNKNOWNS`, `BLOCKED_SCENARIOS`, `APPROVED_ASSUMPTIONS`, `LEVELS`, `E2E_JOURNEYS`, `E2E_KEPT`, `E2E_DEMOTED`, `E2E_FOLDED`, `E2E_TESTS_IMPLIED`, `REQUIREMENT_GAPS`, `API_COVERAGE_DECISIONS` | `test-design/<TICKET-ID>-test-design.md`, classified — `Assigned Level:` + `Level Rationale:` (+ `Folds Into:`) per scenario |
+| 1.3 | `qa-scenario-generator` | `ticket_id`, `requirements_path`, `requirement_ids`, `review_findings`, `approved_values`, `confirm_ui` | `QA_SCENARIO_GENERATOR_RESULT`, `LINT`, `UNAPPROVED_UNKNOWNS`, `BLOCKED_SCENARIOS`, `APPROVED_ASSUMPTIONS`, `LEVELS`, `E2E_JOURNEYS`, `E2E_KEPT`, `E2E_DEMOTED`, `REQUIREMENT_GAPS` | `test-design/<TICKET-ID>-test-design.md`, classified — `Assigned Level:` + `Level Rationale:` (+ `Folds Into:`) per scenario |
 | 1.5 | `qa-scenario-reviewer` | `ticket_id`, `test_design_path`, `requirements_path`, `previous_findings` | `Review Status:` | verdict + `[DESIGN-*]` findings |
 | 2.1a | `aqa-api-test-creator` — skipped when `automation.api.status: not_applicable` | `ticket_id`, `test_design_path`, `requirements_path`, `iteration`, `review_findings`, `finding_ids`, `run_tests` | `API_SDET_RESULT` | `tests/api/**`, `.workflow/reports/<TICKET-ID>-api-implementation.md` |
 | 2.1b | `aqa-ui-test-creator` — skipped when `automation.ui.status: not_applicable` | same, plus `explore_app` | `UI_SDET_RESULT` | `tests/ui/**`, `pages/**`, `.workflow/reports/<TICKET-ID>-ui-implementation.md` |
@@ -517,10 +517,14 @@ the generating step is barred from choosing its own scope and from approving its
 the rules live with the routing rather than with the work.
 
 Two consequences that shape this phase's sequence, and are spelled out there: **batching is never a
-review iteration**, and **1.5 runs once, over the whole document**, never over a partial design. A
-batched 1.3 classifies on its last batch, over everything written, for the same reason: the
-minimum-set pass groups scenarios by journey, and a pass that has seen half the design groups half of
-it.
+review iteration**, and **1.5 runs once, over the whole document**, never over a partial design.
+
+**Every 1.3 delegation classifies what the document holds when it finishes** — the first batch, every
+later batch, and every revision. It is not "the last batch classifies": the step is barred from knowing
+which batch is last, and it does not need to. Each run levels whatever is unlevelled and reruns the
+minimum-set pass over the whole document, so the journey grouping is correct for the scenarios that
+exist at that moment and correct again after the next batch arrives. A scenario kept as its own journey
+after batch 1 may be folded after batch 2, which is the pass working rather than churn.
 
 ### Checkpoint A1 — the missing values, in both modes
 

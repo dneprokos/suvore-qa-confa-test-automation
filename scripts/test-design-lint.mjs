@@ -1856,10 +1856,15 @@ function manifestBlock() {
     // Tests, not scenarios — the count each implementing step selects on. A folded scenario keeps its
     // level and stays in `scenarios_by_level`; it simply does not open a second session to assert it.
     e2e_tests_implied: e2eTestsImplied,
-    // Empty until the classification step has run. An unclassified design reports zero scenarios at
-    // every level, which is a true statement about a document nobody has classified — not a design
-    // with no E2E work in it. `counts.unassigned` is what tells the two apart.
-    classified: anyAssignment,
+    // **Every** scenario, not merely one. A gate reading this settles whole streams from
+    // `scenarios_by_level`, and that map omits a block carrying no `Assigned Level:` line — so a
+    // design where one scenario is unclassified would report `classified: true` and a level list with
+    // that scenario silently missing. If the missing one were the only `E2E UI` scenario, the gate
+    // would settle the UI stream `not_applicable` and its work would never be launched or missed.
+    // `anyAssignment` is kept for the emit paths below, which describe a document rather than gate on
+    // it; this field answers "is it safe to count levels from this?" and the honest answer needs all
+    // of them.
+    classified: unassignedBlocks.length === 0 && anyAssignment,
     implemented_levels: implementedLevels,
     scenarios_by_level: byLevel,
     handed_off: handedOffBlocks.map((b) => b.id),
