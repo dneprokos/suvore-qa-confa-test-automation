@@ -85,9 +85,12 @@ produced.
    `automation.<stream>.created_tests`, the state file, the metrics log. Paths only, no summaries of
    their contents.
 2. **Agent run cost** — the verbatim output of `node .claude/hooks/metrics-report.mjs <TICKET-ID>`,
-   run from the project root. One row per run in completion order, so the second and third pass of a
-   review loop appear as their own rows against the same agent, then the `Σ` total. Print what the
-   script returns; do not reformat, re-sum or trim it.
+   run from the project root. One row per run in log order, so the second and third pass of a review
+   loop appear as their own rows against the same agent, then the `Σ` total, then the footnotes that
+   say which rows contributed nothing to it and why. Print what the script returns; do not reformat,
+   re-sum or trim it. `TOKENS:` in the receipt block above is that table's `Σ` tokens — the run's
+   bill — and `AGENT_TIME:` its `Σ` duration; when the table prints a dash for either, the receipt
+   says `unavailable`.
 
 If the metrics log is missing, print `Agent run cost: metrics unavailable (hook not installed for
 this run)` and nothing else under that heading. Never fill the gap with an estimate — see

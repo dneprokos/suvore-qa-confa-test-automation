@@ -307,8 +307,9 @@ Rules that matter when touching `.claude/agents/`:
   script exists for: `.workflow/SCRUM-132.yaml` carried `test_design.last_findings` twice — an
   1800-character routing block, then `null` — and since YAML keeps the last value, an entire review round
   ran on findings nobody could read, with a document that parsed cleanly the whole time. `WS-W20` is the
-  honesty check, flagging a `history` cost figure with no matching record in the metrics log, because a
-  reader cannot tell a correctly transcribed number from an invented one. `WS-E35` is the early half of
+  honesty check, flagging a `history` cost figure that carries no `metrics_seq` pointing at the
+  metrics-log row it was copied from — or one pointing at a row that is missing or belongs to another
+  agent — because a reader cannot tell a correctly transcribed number from an invented one. `WS-E35` is the early half of
   a check the ship step already makes: `passed` and `not_applicable` are the only two stream statuses a
   `phase: ship` or `done` document may carry, so a stream still in flight — or one whose review asked
   for changes nobody made — is caught while the document is being written rather than after the run has
@@ -519,70 +520,72 @@ Rules that matter when touching `.claude/agents/`:
   `Preconditions:` edit, so each was answered by a coverage-gap entry agreeing with the defect and
   leaving it standing. A finding an in-place edit can satisfy is never deferred to a gap entry.
 
-**Run cost is measured from outside the conversation.** No agent can report its own tokens or duration —
-the harness computes them after the subagent has stopped, and the tool result the caller sees carries
-only text. Three hooks on the subagent tool, all of them `.claude/hooks/agent-metrics.mjs` and all
-registered in `.claude/settings.json`, close that gap: `PreToolUse --pre` writes a measured launch record to
-`.workflow/metrics/pending/`, `PostToolUse --post` appends the full cost to
-`.workflow/metrics/<TICKET-ID>.jsonl` and echoes an `AGENT_RUN_METRICS:` line into the transcript right
-after each agent's receipt, and `PostToolUseFailure --failed` records an interrupt or timeout with its
-duration and no token figures. The orchestrator folds the echoed line into `history` and closes the run
-with `node .claude/hooks/metrics-report.mjs <TICKET-ID>`. Contract:
-`.claude/skills/qa-workflow/references/run-cost.md`. No agent file mentions any of this, and none may —
-knowing about the machinery around it is
-the same leak as naming a sibling.
+**Run cost is measured from outside the conversation.** No agent can report its own tokens or duration,
+and the tool result the caller sees carries only text. Three hooks on the subagent tool, all of them
+`.claude/hooks/agent-metrics.mjs` and all registered in `.claude/settings.json`, record each run's
+lifecycle: `PreToolUse --pre` writes a measured launch record to `.workflow/metrics/pending/`,
+`PostToolUse --post` appends the row to `.workflow/metrics/<TICKET-ID>.jsonl` and echoes an
+`AGENT_RUN_METRICS:` line into the transcript, and `PostToolUseFailure --failed` records an interrupt or
+timeout with its duration and no token figures. **The bill itself comes from the subagent's transcript**,
+`~/.claude/projects/<slug>/<session_id>/subagents/agent-<agentId>.jsonl`, which the harness writes for
+every subagent with one `usage` per API call — the input / output / cache-read / cache-write split, the
+cache TTL, the speed and the model on each. `.claude/hooks/lib/transcript-usage.mjs` sums it, once per
+`message.id` because the file writes one line per content block and every block repeats the message's
+usage; `--post` does so on the spot for an agent that ran to completion inside the tool call, and
+`metrics-report.mjs` does it for everything else. The orchestrator folds the echoed line into `history`
+with its `metrics_seq` and closes the run with `node .claude/hooks/metrics-report.mjs <TICKET-ID>`.
+Contract: `.claude/skills/qa-workflow/references/run-cost.md`. No agent file mentions any of this, and
+none may — knowing about the machinery around it is the same leak as naming a sibling.
 
 **Three hooks rather than one, because an interrupt is an event and not an absence.** A `PostToolUse`
 hook cannot fire for a run that never completed, so on its own it cannot tell "no agent ran" from "an
 agent ran and the session was killed underneath it". The pre-record survives that: an unreconciled launch
-is an interrupted run, and `metrics-report.mjs` promotes it into the log exactly once as an `interrupted`
-row carrying a start time and dashes for cost. Records correlate by `tool_use_id`, which all three
+is promoted into the log exactly once — priced from its transcript when one exists, an `interrupted` row
+with a start time and no tokens when it does not. Records correlate by `tool_use_id`, which all three
 payloads carry and which is unique per call, so the two streams launched in parallel never collide even
-when they are the same agent. **Four things stay uncapturable and the reports say so rather than
-guessing**: the tokens an interrupted agent spent, because the harness produces a total only when a
-subagent stops; a kill in the window before the pre-hook writes, because a hook cannot record an event
-that precedes it; the cost of a background run; and the cumulative token spend of any run at all.
+when they are the same agent. **Three things stay unpriced and the report counts each rather than
+guessing**: the tokens an interrupted agent spent, because a partial sum presented as the run's cost is
+a different number wearing its clothes; a kill in the window before the pre-hook writes, because a hook
+cannot record an event that precedes it; and a background run whose session directory is no longer on
+this machine, because the cost existed and is simply not here.
 
-**A bail must never consume the launch record, and a background launch is not a completion.** `--post`
-used to take the pending record and *then* find it had nothing to write, destroying the only evidence the
-run existed — so the report could not reconcile it either and the run left the log entirely. Three
-SCRUM-132 runs were lost exactly that way: an agent launched in the background returns from the tool call
-at once, so `PostToolUse` fires on the **launch** and the response carries `isAsync`, an `outputFile` and
-no cost, while the real completion arrives as a task notification, which is not a tool call and fires no
-hook. The pending record is now taken only when there is a record to write in its place; a background
-launch writes an `async_launch_no_cost` diagnostic, keeps its pending marked `async`, and reaches the
-table as an **`async_uncosted`** row — distinct from `interrupted`, because such a run may have finished
-perfectly and calling it an interrupt would be a false claim.
+**A background launch is a row, not a bail.** An agent launched in the background returns from the tool
+call at once, so `PostToolUse` fires on the **launch** and the response carries `isAsync`, an `agentId`,
+a `resolvedModel`, an `outputFile` and no cost, while the real completion arrives as a task notification,
+which is not a tool call and fires no hook. Two earlier versions got this wrong in turn: the first
+consumed the launch record and lost three SCRUM-132 runs from the log entirely; the second kept the
+record but threw the response away for lacking `usage`, and with it the `agentId` — the one key that
+finds the transcript — so every run of SCRUM-115 reached the table as `async_uncosted` with dashes.
+The launch is now written as a `status: background` row carrying that id, and the report completes it
+from the transcript the first time it runs after the agent has stopped. A sibling `.meta.json` carries
+the `toolUseId`, so rows written before the id was recorded are completed the same way, retroactively.
 
-**`usage` is one message, not the run — so the block is called `end_context`.** `result.usage` describes
-the subagent's *final* message: `usage.iterations` is a single-element array identical to it, and
-`totalTokens` is that one message's figures added up. A record showing 115 tool calls against 1,214
-output tokens is the last turn of an expensive run, not a cheap one. The block is written as
-`end_context` with `scope: "final_turn"`, `tokens` is kept under its old name so one log spans the
-rename, and **`tool_uses` is the honest measure of work** — a true count over the whole run, tracking
-wall time closely. The cumulative spend is not obtainable from outside the conversation and nothing
-estimates it. **The run mode is declared, never inferred**: every delegation prompt carries a `run_mode:`
-line, the pre-hook reads it so an interrupted run keeps the mode it started in, and a prompt without one
-records `undeclared` — which is never read as `first_run`, because the report used to derive a `Run i/N`
-ordinal positionally and read a two-scenario revision identically to a first run. `prompt_chars`
-measures the delegation prompt alone; whatever a step reads on its own lands inside `end_context`.
-`metrics-report.mjs --json` carries a `records` array, one entry per run, so a per-agent question no
-longer means hand-parsing the jsonl.
+**The notification's `subagent_tokens` is not the bill either.** The task notification that announces
+a background completion carries a `<usage>` block, and its `subagent_tokens` tracks the final turn's
+context to within a percent on every run measured — the same number `result.usage` describes for a
+foreground agent (`usage.iterations` is a single-element array identical to it). That block is still
+recorded, as `end_context` with `scope: "final_turn"`, and `--json` carries it; it is not in the table
+and it is never priced as the run. Its one legitimate use is answering "how heavy was this agent's
+prompt". **The run mode and step are declared, never inferred**: every delegation prompt carries a
+`run_mode:` and a `step:` line, the pre-hook reads both so an interrupted run keeps the values it was
+launched with, and a prompt without them records `undeclared` and a dash — never `first_run`, because
+the report used to derive a `Run i/N` ordinal positionally and read a two-scenario revision identically
+to a first run. `prompt_chars` measures the delegation prompt alone; everything a step reads on its own
+is in the bill.
 
-**The report prices what it can and refuses to price the rest.** `.claude/hooks/lib/pricing.mjs` holds
-dated per-model list rates and one function that applies them, and the report prints the result as an
-`End ctx $` column. It is the honest half of a cost report: the rates are public and the arithmetic is
-exact, while the token counts it multiplies are still `end_context`, so **the figure is the price of
-the final message and never the run's bill** — a row of 115 tool calls priced at seven cents is the
-proof of that, not a bargain. Rates are dated rather than flat because a log spans days and prices move
-under it; `claude-sonnet-5`'s introductory rate expires 2026-08-31 and rises 50% the next morning, so a
-single hardcoded pair would go quietly wrong on a log holding rows from either side. Two things the
-record does not state are assumed once and declared on every result and in the footnote: the cache-write
-TTL (5-minute default; the 1-hour tier bills 2x input rather than 1.25x) and standard speed (fast mode
-reprices Opus 5 to $10/$50). **An unknown model is unpriced, not guessed** — no tier inferred from a
-name, no nearest neighbour, no zero — and the footnote counts the rows that went that way, because a
-plausible number is the one failure mode a cost table cannot survive. Pricing the final turn does not
-make the cumulative spend obtainable; that remains the fifth uncapturable thing.
+**The report prices the bill and refuses to price anything else.** `.claude/hooks/lib/pricing.mjs`
+holds dated per-model list rates; `priceBilled` applies them per model to the transcript sum, with the
+5-minute and 1-hour cache-write tokens at their own multipliers and a run at any speed but `standard`
+left unpriced with the reason. Nothing about a priced row is assumed — the earlier `End ctx $` column
+needed two declared assumptions because the final-turn block carried neither the TTL split nor the
+speed, and it is gone. Rates are dated rather than flat because a log spans days and prices move under
+it; `claude-sonnet-5`'s introductory rate expires 2026-08-31 and rises 50% the next morning, so a
+single hardcoded pair would go quietly wrong on a log holding rows from either side. **An unknown model
+is unpriced, not guessed** — no tier inferred from a name, no nearest neighbour, no zero — and the
+footnote counts the rows that went that way, because a plausible number is the one failure mode a cost
+table cannot survive. What `Cost` is, is list price: no plan, batch or volume discount is applied, and
+the footnote says so. Wall clock is the latest session's, first launch to last finish, because a log
+that accumulates across resumes would otherwise print the calendar.
 
 **A hook that fails must say so.** The metrics hook shipped with four silent early returns and an empty
 `catch {}`, and as a result wrote no record at all for its entire life without anything anywhere

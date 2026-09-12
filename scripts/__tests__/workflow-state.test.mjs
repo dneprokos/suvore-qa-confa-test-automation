@@ -230,22 +230,45 @@ test("a cost figure with no metrics record behind it warns WS-W20", () => {
   assert.match(stdout, /qa-requirements-collector: history entry carries a cost figure/);
 });
 
-test("a cost figure the metrics log backs does not warn", () => {
+test("a cost figure naming the metrics row it came from does not warn", () => {
   const path = scratch((text) =>
     text.replace(
       '  - { step: "1.1", agent: qa-requirements-collector, result: OK, at: 2026-08-09,\n      note: "4 FR, 1 AC" }',
-      '  - { step: "1.1", agent: qa-requirements-collector, result: OK, at: 2026-08-09,\n      tokens: 48706, duration_s: 104.9, note: "4 FR, 1 AC" }',
+      '  - { step: "1.1", agent: qa-requirements-collector, result: OK, at: 2026-08-09,\n      tokens: 48706, duration_s: 104.9, metrics_seq: 1, note: "4 FR, 1 AC" }',
     ),
   );
   const metrics = join(dirname(path), "measured.jsonl");
   writeFileSync(
     metrics,
-    `${JSON.stringify({ seq: 1, agent: "qa-requirements-collector", tokens: { total: 48706 } })}\n`,
+    `${JSON.stringify({ seq: 1, agent: "qa-requirements-collector", billed: { total: 48706 } })}\n`,
     "utf8",
   );
   const { status, stdout } = validate(path, "--metrics", metrics);
   assert.equal(status, 0, stdout);
   assert.ok(!stdout.includes("WS-W20"), stdout);
+});
+
+test("a metrics_seq pointing at another agent's row, or at no row, warns WS-W20", () => {
+  const path = scratch((text) =>
+    text.replace(
+      '  - { step: "1.1", agent: qa-requirements-collector, result: OK, at: 2026-08-09,\n      note: "4 FR, 1 AC" }',
+      '  - { step: "1.1", agent: qa-requirements-collector, result: OK, at: 2026-08-09,\n      duration_s: 104.9, metrics_seq: 2, note: "4 FR, 1 AC" }',
+    ),
+  );
+  const metrics = join(dirname(path), "measured.jsonl");
+  // Row 2 belongs to a different agent: the per-agent-count check would have accepted this, because
+  // the collector had "a row". Provenance is a pointer, not a tally.
+  writeFileSync(
+    metrics,
+    `${JSON.stringify({ seq: 1, agent: "qa-requirements-collector" })}\n${JSON.stringify({ seq: 2, agent: "qa-scenario-generator" })}\n`,
+    "utf8",
+  );
+  const wrongAgent = validate(path, "--metrics", metrics);
+  assert.match(wrongAgent.stdout, /metrics_seq 2, but row 2 is a qa-scenario-generator run/);
+
+  writeFileSync(metrics, `${JSON.stringify({ seq: 1, agent: "qa-requirements-collector" })}\n`, "utf8");
+  const noRow = validate(path, "--metrics", metrics);
+  assert.match(noRow.stdout, /metrics_seq 2, and the metrics log has no row 2/);
 });
 
 test("a real state file from an earlier run reports drift as warnings, never a crash", () => {

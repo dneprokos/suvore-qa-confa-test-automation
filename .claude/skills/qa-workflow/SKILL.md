@@ -356,10 +356,10 @@ and then decides per entry. Re-running blind is the wrong default:
 Clear **that entry**, by `--agent` or `--step`, never the list — the sibling of a parallel pair may
 still be running, and its entry is the only thing that will say so if this session dies too.
 
-The cost of an interrupted agent is gone in every one of those cases — the harness computes a token
-total when a subagent stops, and one that never stopped never produced one. The run appears in the
-cost table as an `interrupted` row with a start time and no figures. That is the honest record; see
-`references/run-cost.md`.
+The cost of an interrupted agent is not reported in any of those cases. Its transcript stops where it
+did, and a partial sum presented as the run's cost would be a different number wearing its clothes.
+The run appears in the cost table as an `interrupted` row with a start time, a duration where the
+harness measured one, and no tokens. That is the honest record; see `references/run-cost.md`.
 
 ## Step registry
 
@@ -413,6 +413,11 @@ cost and the log could not tell them apart. Declare it rather than leaving it to
 parameters are present: `previous_findings` usually means a revision, and *usually* is what makes an
 inferred field worse than an absent one. A prompt without the line records as `undeclared`.
 
+**And every prompt carries `step:`, the registry row it is delegating** — `step: 1.3`, `step: 2.1a`.
+The hook cannot know that a reviewer run is step 1.5 rather than a re-review somebody asked for by
+hand, and the cost table's `Step` column is only as honest as the line it was read from. A prompt
+without it prints a dash there, never a guess.
+
 ## Reading a receipt
 
 Two vocabularies exist on disk. Read each for what it is; do not judge an agent by prose.
@@ -442,10 +447,16 @@ code makes a human re-derive it.
 
 ## Run cost — the metrics log
 
-Every agent run costs tokens and wall time, and **no agent can report its own** — the harness computes the
-figures after the subagent has stopped, and three hooks put them where this skill can read them. An
-`AGENT_RUN_METRICS:` line lands in the transcript right after each receipt; treat it as the receipt's last
-field, echo `agent`, `mode`, `duration` and `tool_uses` in the step summary, and copy them into `history`.
+Every agent run costs tokens and wall time, and **no agent can report its own** — three hooks record
+each launch and completion from outside, and the run's bill is summed from the transcript the harness
+writes for every subagent. An `AGENT_RUN_METRICS:` line lands in the transcript right after each
+receipt; treat it as the receipt's last field, echo `step`, `mode`, `duration`, `tokens`, `cost` and
+`tool_uses` in the step summary, and copy them into `history` **together with `metrics_seq`**, the
+line's `seq=` value — that pointer is what `WS-W20` checks. For a **background** agent the line lands at
+the launch with `tokens=unavailable`; when the completion notification arrives, run
+`node .claude/hooks/metrics-report.mjs <TICKET-ID> --last <agent>` and copy from that line instead.
+Never copy the notification's own `<usage>` block: its `subagent_tokens` is the final turn's context,
+not the run's bill.
 
 **Read `references/run-cost.md` before the first delegation of a session**, and again before the terminal
 return — it holds the hook table, the line's format, `metrics-report.mjs`, what the numbers actually
@@ -454,9 +465,9 @@ are the ones that cost something real when forgotten:
 
 * **Never invent, estimate or extrapolate a cost number.** No `AGENT_RUN_METRICS` line means
   `metrics unavailable`; a dash on an interrupted row is the answer, not a gap to fill in.
-* **`end_context` is not spend.** It is the agent's final message — how much context it was carrying when
-  it stopped. The harness exposes no cumulative figure. Report it under that name; `tool_uses` is the
-  honest measure of how much work a run did.
+* **`tokens` and `cost` are the run's bill, and `end_context` is not.** The bill is every API call
+  summed from the transcript; `end_context` is the final message's context and is never reported as
+  spend. `tool_uses` and `api_calls` are the true counts of how much work a run did.
 * **Cost is a report, never a routing input.** Routing reads verdicts only.
 
 ## Routing a finding
@@ -797,8 +808,8 @@ After **every** step, before any further delegation:
 
 1. Persist state.
 2. Print a compact summary: the parsed receipt fields only — result, artifact path, counts, finding ids,
-   and the step's cost as `<mode> / <duration> / <tool_uses> tool calls / <end_context> end context`
-   off the `AGENT_RUN_METRICS` line.
+   and the step's cost as `<mode> / <duration> / <tool_uses> tool calls / <tokens> tokens / <cost>`
+   off the `AGENT_RUN_METRICS` line — `unavailable` printed as such, never filled in.
    Never paste an agent's full output into the transcript. The agents keep their returns short on purpose;
    re-expanding them here throws that away.
 3. Ask for the transition with `AskUserQuestion`. Build the options from the step registry and the receipt:
@@ -920,13 +931,14 @@ matters most.
   onward would need no special-casing is the reason to write the rule down rather than the reason to
   skip it.
 - Report a token count, duration or cost that did not come from an `AGENT_RUN_METRICS` line or from
-  `metrics-report.mjs`, or let any of those numbers influence a routing, iteration or review decision.
-  A dash on an interrupted row is the answer, not a gap to fill in.
-- Describe `end_context` as the run's token spend, or sum it into a figure called a cost. It is the final
-  message, the harness offers nothing cumulative, and the sum of thirteen end-of-run context sizes is not
-  a bill.
-- Launch a step without `run_mode:` in its prompt, or read an `undeclared` mode on a metrics row as
-  `first_run`. An unrecorded mode must look unrecorded.
+  `metrics-report.mjs`, write one into `history` without its `metrics_seq`, or let any of those numbers
+  influence a routing, iteration or review decision. A dash on an interrupted row is the answer, not a
+  gap to fill in.
+- Describe `end_context`, or a task notification's `subagent_tokens`, as the run's token spend, or sum
+  either into a figure called a cost. Both are the final message's context; the bill is the transcript
+  sum the report prints under `Tokens`.
+- Launch a step without `run_mode:` and `step:` in its prompt, or read an `undeclared` mode on a
+  metrics row as `first_run`. An unrecorded mode must look unrecorded.
 - Hand-write, hand-edit or `Edit` the state file. Every change goes through `scripts/workflow-state.mjs`;
   a file some other hand touched is repaired with `normalize`, not with another hand edit.
 - Persist state without running `node scripts/workflow-state.mjs validate <TICKET-ID>` after it, or

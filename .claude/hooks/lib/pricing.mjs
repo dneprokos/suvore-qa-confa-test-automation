@@ -1,13 +1,15 @@
 /**
- * List prices for the models the metrics log records, and the one function that applies them.
+ * List prices for the models the metrics log records, and the functions that apply them.
  *
- * WHAT THIS PRICES, AND WHAT IT DOES NOT. It prices whatever token counts it is handed. The counts in
- * `.workflow/metrics/<TICKET-ID>.jsonl` are `end_context` — the agent's *final message*, not a sum
- * over its run — so the figure this produces for such a record is the price of that one turn. It is a
- * real number about a real message and it is not the run's bill. Every caller must say so; the report
- * heads its column `End ctx $` and footnotes it for exactly that reason. The cumulative token spend of
- * a subagent is not exposed by the harness (see `agent-metrics.mjs`), so no honest run cost can be
- * computed here no matter how good the rate table gets.
+ * WHAT THIS PRICES. Two shapes of token count reach it, and it says which it was handed:
+ *
+ *   - a `billed` block (see `transcript-usage.mjs`) — every API call of a run summed from the
+ *     subagent's transcript, with the cache-write TTL split and the speed read off each call. Priced
+ *     by `priceBilled`, this is the run's list-price bill, and nothing about it is assumed except the
+ *     rate table itself.
+ *   - a final-turn `end_context` block — one message's usage, which is all the harness hands a hook
+ *     directly. Priced by `priceRow` for rows written before the transcript measure existed, and
+ *     named `end_context_usd` so it cannot be mistaken for the run's cost.
  *
  * WHY THE RATES ARE DATED. A log spans days, and prices change under it. `claude-sonnet-5` is on an
  * introductory rate that expires 2026-08-31 and rises 50% the next morning; a single hardcoded pair of
@@ -16,15 +18,16 @@
  * start time is not priced — the alternative is picking a period on the reader's behalf and calling
  * the result a price.
  *
- * WHAT IS ASSUMED, ONCE, AND DECLARED. Cache writes are billed at 1.25x input for the 5-minute TTL and
- * 2x for the 1-hour TTL, and *the metrics record does not say which was used*. This module assumes the
- * 5-minute default, reports that assumption on every result, and never hides it. Cache reads are 0.1x
- * input, which has no such ambiguity. Fast mode reprices Opus 5 to $10/$50 and is likewise not
- * recorded; a fast-mode run is therefore under-priced here, which is the second declared assumption.
+ * WHAT IS ASSUMED, AND WHEN. Cache writes bill at 1.25x input for the 5-minute TTL and 2x for the
+ * 1-hour TTL. A `billed` block carries the split, so nothing is assumed there; only a cache write whose
+ * TTL the transcript did not record falls back to the 5-minute default, and the result counts how many
+ * tokens went that way. A final-turn block carries no split and is priced at the 5-minute rate with the
+ * assumption declared on the result. Speed is likewise read from the transcript: a run at anything but
+ * `standard` is left unpriced, because fast mode reprices the model and this table holds list rates.
  *
  * UNKNOWN MODEL MEANS NO PRICE. Not a guess at a tier from the name, not the nearest neighbour, not
- * zero. `null`, and the caller reports how many rows went unpriced. A model string this table has
- * never seen is exactly the case where a plausible number is worst.
+ * zero. `null`, with the reason, and the caller reports how many rows went unpriced. A model string
+ * this table has never seen is exactly the case where a plausible number is worst.
  */
 
 /** The day this table was last checked against published pricing. Bump it when a rate changes. */
@@ -34,7 +37,7 @@ export const RATES_AS_OF = "2026-08-19";
 export const CACHE_READ_MULTIPLIER = 0.1;
 export const CACHE_WRITE_MULTIPLIER = { "5m": 1.25, "1h": 2 };
 
-/** The TTL assumed when a record does not say — the API default. */
+/** The TTL assumed for a cache write whose TTL was not recorded — the API default. */
 export const ASSUMED_CACHE_TTL = "5m";
 
 /**
@@ -45,6 +48,7 @@ export const ASSUMED_CACHE_TTL = "5m";
  */
 export const RATES = {
   "claude-fable-5": [{ from: null, until: null, input: 10, output: 50 }],
+  "claude-fable-5-1": [{ from: null, until: null, input: 10, output: 50 }],
   "claude-mythos-5": [{ from: null, until: null, input: 10, output: 50 }],
   "claude-opus-5": [{ from: null, until: null, input: 5, output: 25 }],
   "claude-opus-4-8": [{ from: null, until: null, input: 5, output: 25 }],
@@ -89,9 +93,10 @@ export function rateFor(model, at) {
 }
 
 const perToken = (perMillion) => perMillion / 1_000_000;
+const q = (v) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 
 /**
- * Price one bundle of token counts.
+ * Price one bundle of token counts at one model's rate.
  *
  * `tokens` takes `{ input, output, cache_read, cache_creation }`; a missing field is zero, because a
  * record that carries a usage object and omits a class genuinely used none of it. Returns `null` when
@@ -102,7 +107,6 @@ export function priceTokens(tokens, model, at, { cacheTtl = ASSUMED_CACHE_TTL } 
   const rate = rateFor(model, at);
   if (!rate || !tokens) return null;
   const write = CACHE_WRITE_MULTIPLIER[cacheTtl] ?? CACHE_WRITE_MULTIPLIER[ASSUMED_CACHE_TTL];
-  const q = (v) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
   const usd =
     q(tokens.input) * perToken(rate.input) +
     q(tokens.output) * perToken(rate.output) +
@@ -121,10 +125,49 @@ export function priceTokens(tokens, model, at, { cacheTtl = ASSUMED_CACHE_TTL } 
 }
 
 /**
- * Price one metrics record's `end_context` block.
+ * Price a run's `billed` block — the transcript sum, per model, with the TTL split honoured.
  *
- * THE RESULT IS THE PRICE OF THE RECORD'S FINAL MESSAGE. It is named `end_context_usd` everywhere it
- * is stored or printed, and it is never to be presented as what the run cost.
+ * Returns `{ usd, models, rates_as_of, assumed_ttl_tokens }` or `{ usd: null, reason }`. The reasons
+ * are the three honest ways a measured run can still have no price: a model absent from the table, a
+ * speed other than `standard`, or no start date to choose a rate period by. `assumed_ttl_tokens` is the
+ * count of cache-write tokens whose TTL the transcript did not record and which were priced at the
+ * 5-minute rate; zero on every transcript observed so far.
+ */
+export function priceBilled(billed, at) {
+  if (!billed || typeof billed !== "object") return { usd: null, reason: "no_billed_block" };
+  if (billed.speed && billed.speed !== "standard") return { usd: null, reason: `speed:${billed.speed}` };
+  const byModel = billed.by_model && typeof billed.by_model === "object" ? billed.by_model : null;
+  if (!byModel || Object.keys(byModel).length === 0) return { usd: null, reason: "no_model_split" };
+
+  let usd = 0;
+  let assumedTtlTokens = 0;
+  const models = [];
+  for (const [model, t] of Object.entries(byModel)) {
+    const rate = rateFor(model, at);
+    if (!rate) {
+      const known = normalizeModel(model) !== null;
+      return { usd: null, reason: known ? "no_start_date" : `unknown_model:${model}` };
+    }
+    const unknownTtl = q(t.cache_write_unknown_ttl);
+    assumedTtlTokens += unknownTtl;
+    usd +=
+      q(t.input) * perToken(rate.input) +
+      q(t.output) * perToken(rate.output) +
+      q(t.cache_read) * perToken(rate.input * CACHE_READ_MULTIPLIER) +
+      q(t.cache_write_5m) * perToken(rate.input * CACHE_WRITE_MULTIPLIER["5m"]) +
+      q(t.cache_write_1h) * perToken(rate.input * CACHE_WRITE_MULTIPLIER["1h"]) +
+      unknownTtl * perToken(rate.input * CACHE_WRITE_MULTIPLIER[ASSUMED_CACHE_TTL]);
+    models.push(rate.model);
+  }
+  return { usd, models, rates_as_of: RATES_AS_OF, assumed_ttl_tokens: assumedTtlTokens, scope: "run_list_price" };
+}
+
+/**
+ * Price one legacy record's final-turn block.
+ *
+ * THE RESULT IS THE PRICE OF THE RECORD'S FINAL MESSAGE. It exists for rows written before the
+ * transcript measure, is named `end_context_usd` everywhere it is stored or printed, and is never to be
+ * presented as what the run cost.
  */
 export function priceRow(record) {
   const tokens = record?.end_context ?? record?.tokens ?? null;
@@ -132,9 +175,13 @@ export function priceRow(record) {
   return priceTokens(tokens, record?.model ?? null, record?.started_at ?? null);
 }
 
-/** `$0.0721`, or `<$0.0001` for a figure too small to render at that precision without reading as zero. */
+/**
+ * `$7.38` at cent precision once a figure reaches a cent, `$0.0042` below it, `<$0.0001` for a figure
+ * too small to render at all without reading as zero.
+ */
 export function formatUsd(usd) {
   if (typeof usd !== "number" || !Number.isFinite(usd)) return "—";
   if (usd > 0 && usd < 0.0001) return "<$0.0001";
+  if (usd >= 0.01) return `$${usd.toFixed(2)}`;
   return `$${usd.toFixed(4)}`;
 }

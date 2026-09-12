@@ -143,7 +143,7 @@ violations, `2` usage, `3` the file is missing or holds a construct the parser w
 | `WS-E35` | error | `phase: ship` or `done` with a stream that is neither `passed` nor `not_applicable` |
 | `WS-E90` | error | a YAML construct outside the supported subset — reported rather than guessed at |
 | `WS-W10` | warning | a key the schema does not know. `--strict` promotes it |
-| `WS-W20` | warning | a `history` entry carrying a cost figure with no matching record in the metrics log |
+| `WS-W20` | warning | a `history` entry carrying a cost figure without a `metrics_seq` naming the metrics-log row it was copied from, or naming a row that does not exist or belongs to another agent |
 
 `WS-E01` is the check this script exists for. `.workflow/SCRUM-132.yaml` carried
 `test_design.last_findings` twice — an 1800-character routing block, then `null` — and every consumer
@@ -171,7 +171,12 @@ the run was routed on a document that said it was shippable. Here it is caught w
 still the thing being read, before the ship delegation is made.
 
 `WS-W20` is the honesty check. `SKILL.md` forbids inventing a cost figure, and a reader cannot tell a
-correctly transcribed number from an invented one, so the check is on provenance rather than on value.
+correctly transcribed number from an invented one, so the check is on provenance rather than on value:
+a `history` entry that carries `tokens`, `duration_s`, `tool_uses`, `api_calls` or `cost_usd` must
+also carry `metrics_seq`, the `seq` of the metrics-log row it was copied from, and that row's `agent`
+must match. The check used to count rows per agent name instead, which let a duration somebody typed
+in from a task notification pass on the strength of a figureless background-launch row for the same
+agent — a pointer cannot be satisfied by a tally.
 
 ## What this script does not decide
 

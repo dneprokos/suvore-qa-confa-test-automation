@@ -1,5 +1,5 @@
 /**
- * The run mode of a delegation, read off the prompt that launched it.
+ * The run mode and the step of a delegation, read off the prompt that launched it.
  *
  * WHY THIS IS PARSED AND NOT INFERRED. Every writing agent here resolves a mode before it writes —
  * `first_run`, `EXISTS`, `revision`, `regenerate` — and every reviewer switches to `re_review` when it
@@ -64,13 +64,31 @@ export function parseRunMode(prompt) {
   return hit ?? UNRECOGNISED;
 }
 
+// Same anchoring as the mode: a line of its own, list markers and emphasis allowed, value stops at a
+// word boundary. A step id is `1.1`, `2.1a`, `3` — digits, optional dotted digits, optional trailing
+// letter for the two parallel streams.
+const STEP_RE = /^[\s>*_-]*step\s*[:=]\s*["'`]?(\d+(?:\.\d+)?[a-z]?)\b/im;
+
+/**
+ * The workflow step a delegation belongs to, as the caller declared it, or `null`.
+ *
+ * Declared for the same reason the mode is: the hook cannot know that a reviewer run is step 1.5
+ * rather than a re-review somebody asked for by hand, and the report's `Step` column is only as honest
+ * as the line it was read from. A prompt without one prints a dash, never a guess.
+ */
+export function parseStep(prompt) {
+  if (typeof prompt !== "string" || !prompt) return null;
+  const m = prompt.match(STEP_RE);
+  return m ? m[1] : null;
+}
+
 /**
  * How big the delegation prompt was, in characters.
  *
  * Not a token count and not presented as one — it is the one part of an agent's input this hook can
  * measure directly, and it is the part the orchestrator controls. The agent body and every document
- * the agent reads on its own are invisible from here; what shows up in `end_context` is all of them
- * together, and this separates out the share the caller wrote.
+ * the agent reads on its own are invisible from here; the transcript-summed `billed` block is where
+ * they all land, and this separates out the share the caller wrote.
  */
 export function promptChars(prompt) {
   return typeof prompt === "string" ? prompt.length : null;

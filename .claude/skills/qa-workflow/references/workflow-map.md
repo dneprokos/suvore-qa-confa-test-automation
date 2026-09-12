@@ -162,7 +162,7 @@ flowchart LR
     W1["append TICKET in_flight --json …<br/>one --json per step, so a parallel pair is one write"] --> L["launch the step"]
     L --> W2["clear-in-flight TICKET --step …<br/>--agent also works · never clears the whole list"]
     W2 --> PARSE["parse the receipt"]
-    PARSE --> W3["persist the rest · fold in AGENT_RUN_METRICS"]
+    PARSE --> W3["persist the rest · fold in AGENT_RUN_METRICS with its metrics_seq<br/>background agent: metrics-report --last first"]
     W3 --> Q{{"manual: ask for the transition<br/>auto: route on the normalized outcome"}}
 ```
 

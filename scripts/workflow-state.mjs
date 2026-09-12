@@ -751,26 +751,48 @@ function crossChecks(root, report, metricsRecords) {
     );
   }
 
-  // WS-W20 — cost figures no metrics record backs. `SKILL.md` forbids inventing one, and a reader
-  // cannot tell a correctly transcribed number from an invented one, so the check is on provenance.
+  // WS-W20 — cost figures with no provenance. `SKILL.md` forbids inventing one, and a reader cannot
+  // tell a correctly transcribed number from an invented one, so a `history` entry that carries a
+  // cost has to name the metrics-log row it was copied from: `metrics_seq: <seq>`, whose `agent`
+  // must match. The earlier form of this check counted rows per agent name and let the nth claim
+  // for an agent pass on the strength of any nth row — a figureless background launch counted as
+  // backing for a duration somebody typed in from a notification.
   const history = lookup(root, ["history"]);
   if (history?.kind === "seq" && metricsRecords !== null) {
-    const recorded = new Map();
+    const bySeq = new Map();
     for (const record of metricsRecords) {
-      recorded.set(record.agent, (recorded.get(record.agent) ?? 0) + 1);
+      if (typeof record?.seq === "number") bySeq.set(record.seq, record);
     }
-    const claimed = new Map();
+    const CLAIM = /\b(tokens|duration_s|tool_uses|api_calls|cost_usd):\s*[\d$]/;
     for (const item of history.items) {
-      if (!/\btokens:\s*\d/.test(item.raw) && !/\bduration_s:\s*[\d.]/.test(item.raw)) continue;
+      if (!CLAIM.test(item.raw)) continue;
       const agent = item.raw.match(/\bagent:\s*([A-Za-z0-9_-]+)/)?.[1] ?? "unknown";
-      const seen = (claimed.get(agent) ?? 0) + 1;
-      claimed.set(agent, seen);
-      if (seen > (recorded.get(agent) ?? 0)) {
+      const seqMatch = item.raw.match(/\bmetrics_seq:\s*(\d+)/);
+      if (!seqMatch) {
         report.warn(
           "WS-W20",
           agent,
-          `history entry carries a cost figure with no matching record in the metrics log. ` +
-            `A cost nobody measured cannot be told apart from one somebody estimated`,
+          `history entry carries a cost figure without a metrics_seq naming the metrics-log row it was ` +
+            `copied from. A cost nobody measured cannot be told apart from one somebody estimated`,
+          item.line,
+        );
+        continue;
+      }
+      const seq = Number(seqMatch[1]);
+      const row = bySeq.get(seq);
+      if (!row) {
+        report.warn(
+          "WS-W20",
+          agent,
+          `history entry carries a cost figure with metrics_seq ${seq}, and the metrics log has no row ${seq}`,
+          item.line,
+        );
+      } else if (row.agent && row.agent !== agent) {
+        report.warn(
+          "WS-W20",
+          agent,
+          `history entry carries a cost figure with metrics_seq ${seq}, but row ${seq} is a ${row.agent} ` +
+            `run, not a ${agent} run`,
           item.line,
         );
       }
