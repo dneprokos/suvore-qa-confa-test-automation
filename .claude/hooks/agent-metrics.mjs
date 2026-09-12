@@ -2,13 +2,13 @@
 /**
  * The subagent lifecycle hook — one script, three modes.
  *
- * Claude Code records the cost of every subagent run in the tool result the harness writes to the
- * session transcript — `totalTokens`, `usage`, `totalDurationMs`, `totalToolUseCount`, `toolStats`.
- * That object never reaches the model: an agent cannot measure itself, and the caller only ever sees
- * the agent's text. This hook closes that gap from the outside.
+ * An agent cannot measure itself, and the caller only ever sees the agent's text. This hook records
+ * every subagent run from the outside, and the report reads each run's real cost off the transcript
+ * the harness writes for it.
  *
  *   --pre     PreToolUse         records that a run was launched, with a measured start time
- *   --post    PostToolUse        records what it cost, and clears the launch record
+ *   --post    PostToolUse        records the completion — or, for a background agent, the launch —
+ *                                and sums the run's bill from its transcript when that is on disk
  *   --failed  PostToolUseFailure records that it was interrupted or failed, and clears the same
  *
  * WHY THREE. A `PostToolUse` hook cannot fire for a run that never completed, so on its own it
@@ -21,20 +21,24 @@
  * is unique per tool call. Two streams launched in parallel therefore never collide, whether or not
  * they happen to be different agents.
  *
- * WHAT IS STILL NOT CAPTURED, and no hook design can capture:
- *   - the tokens an interrupted agent spent. The harness computes `totalTokens` when the subagent
- *     stops; one that never stops never produces one. The report says `unavailable` rather than a
- *     plausible figure.
+ * WHERE THE COST COMES FROM. Not from the tool response. `result.usage` describes the subagent's
+ * *final* message — `usage.iterations` is a single-element array identical to it — so a record
+ * showing 115 tool calls against 1,214 output tokens is the last turn of an expensive run, not a cheap
+ * one. That block is still kept, as `end_context`, because it is what the harness hands over directly.
+ * The run's actual bill is summed from the agent's own transcript under `~/.claude/projects/`, one
+ * `usage` per API call with the cache split and the model on each — see `lib/transcript-usage.mjs`.
+ * For an agent that ran to completion inside the tool call, this hook sums it right here; for a
+ * background agent the transcript is still being written when the post hook fires, so the row is
+ * written as `status: background` with the `agentId` the launch response carries, and
+ * `metrics-report.mjs` finishes it from the transcript later.
+ *
+ * WHAT IS STILL NOT CAPTURED, and the report says so rather than guessing:
+ *   - the tokens an interrupted agent spent. The transcript stops where the agent did, and a partial
+ *     sum presented as the run's cost would be a different number wearing its clothes. An interrupted
+ *     row carries its duration and nothing else.
  *   - a kill in the window between the launch and this hook writing its pre-record. Milliseconds
  *     wide, and unrecoverable by construction: a hook cannot record an event that precedes it.
- *   - THE RUN'S CUMULATIVE TOKEN SPEND. `result.usage` is one message's usage, not a sum over the
- *     run: `usage.iterations` is a single-element array identical to it, and `result.totalTokens`
- *     equals that one message's four figures added up. A record showing 115 tool calls against 1,214
- *     output tokens is not a cheap agent, it is the last turn of an expensive one. So the block is
- *     named `end_context` — what the agent was carrying when it stopped — and the honest measure of
- *     how much work a run did is `tool_uses`, which is a true count over the whole run. Calling the
- *     old `tokens` block a cost is what made a 208-second reclassify of two scenarios look like a
- *     bargain. See `metrics-report.mjs`, which prints both and labels them apart.
+ *   - a run whose session directory is no longer on this machine. The cost existed; it is not here.
  *
  * NEVER FAILS A TOOL CALL. Every path exits 0. But silence is no longer one of the paths: every
  * early return writes a line to `.workflow/metrics/_diagnostics.jsonl` saying which one it was. The
@@ -51,6 +55,7 @@
 
 import { appendFileSync, mkdirSync, readFileSync, readdirSync, existsSync, writeFileSync, unlinkSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   resolveProjectDir,
   metricsDir,
@@ -60,7 +65,9 @@ import {
   diagnosticsFile,
 } from "./lib/paths.mjs";
 import { isSubagentTool, looksLikeSubagentLaunch } from "./lib/subagent-tools.mjs";
-import { parseRunMode, promptChars } from "./lib/run-mode.mjs";
+import { parseRunMode, parseStep, promptChars } from "./lib/run-mode.mjs";
+import { billedForRun } from "./lib/transcript-usage.mjs";
+import { priceBilled, formatUsd } from "./lib/pricing.mjs";
 import { LIVE_STATUSES } from "../../scripts/workflow-state.mjs";
 
 const TICKET_RE = /\b([A-Z][A-Z0-9]+-\d+)\b/;
@@ -120,7 +127,7 @@ function resolveResult(payload) {
 /**
  * A response object under any of the same keys, cost or no cost. `resolveResult` deliberately accepts
  * only a *costed* result; this is how the post hook can still tell "the harness sent nothing" from
- * "the harness sent something that has no cost in it yet", which are different events.
+ * "the harness sent a launch acknowledgement", which are different events.
  */
 function anyResponse(payload) {
   for (const c of [payload?.tool_response, payload?.toolUseResult, payload?.tool_result]) {
@@ -132,16 +139,16 @@ function anyResponse(payload) {
 /**
  * A background launch, not a finished run.
  *
- * An agent started with `run_in_background` returns from the tool call immediately, so `PostToolUse`
- * fires on the *launch* and the response carries `isAsync`, an `outputFile` and no cost at all — the
- * agent is still running. The real completion arrives later as a task notification, which is not a
- * tool call and fires no hook.
+ * An agent started in the background returns from the tool call immediately, so `PostToolUse` fires
+ * on the *launch* and the response carries `isAsync`, an `agentId`, a `resolvedModel`, an `outputFile`
+ * and no cost at all — the agent is still running. The real completion arrives later as a task
+ * notification, which is not a tool call and fires no hook.
  *
- * This cost three whole runs on SCRUM-132 and left `no_result` as the only trace. Two things were
- * wrong and both are fixed: the bail did not distinguish this from a missing payload, and — the part
- * that actually destroyed the record — the launch record had already been consumed by the time the
- * bail ran, so nothing was left for the report to reconcile. An async launch now keeps its pending
- * record, and the report surfaces it as an uncosted run rather than as nothing at all.
+ * This cost three whole runs on SCRUM-132 and then every run of SCRUM-115, in two stages. First the
+ * bail consumed the launch record, so the run left the log entirely. Then the launch record was kept
+ * but the response was thrown away because it carried no `usage` — and the `agentId` on it was the one
+ * thing that would have let the report find the transcript and price the run. The launch is recorded
+ * now as a row of its own, carrying that id, and the report completes it.
  */
 function isAsyncLaunch(response) {
   return Boolean(response && response.isAsync === true);
@@ -217,7 +224,7 @@ function agentName(payload, result) {
  *
  * `tool_input.prompt` is what the caller sent and is present on all three payloads; the result object
  * echoes it back as `result.prompt`, which is the fallback for a post that arrives without its input.
- * Either one is the same text, so whichever is present answers both the mode and the size question.
+ * Either one is the same text, so whichever is present answers the mode, the step and the size.
  */
 function launchPrompt(payload, result = null) {
   const fromInput = payload?.tool_input?.prompt;
@@ -245,25 +252,6 @@ function takePending(projectDir, toolUseId) {
   }
 }
 
-/**
- * Flag a launch record as a background run whose cost the post hook could not see.
- *
- * The record stays where it is — the point is that it survives — and gains a marker so the report can
- * call it what it is instead of filing it under `interrupted`, which would be a different and false
- * claim about a run that may well have finished perfectly.
- */
-function markPendingAsync(projectDir, toolUseId) {
-  if (!toolUseId) return;
-  const file = pendingFile(projectDir, toolUseId);
-  if (!existsSync(file)) return;
-  try {
-    const pending = JSON.parse(readFileSync(file, "utf8"));
-    writeFileSync(file, JSON.stringify({ ...pending, async: true }), "utf8");
-  } catch {
-    /* an unreadable pending record is reconciled as an interrupt, which is the safer of the two */
-  }
-}
-
 function appendRecord(projectDir, ticket, record) {
   const file = metricsFile(projectDir, ticket);
   mkdirSync(metricsDir(projectDir), { recursive: true });
@@ -274,6 +262,27 @@ function appendRecord(projectDir, ticket, record) {
 function emit(line) {
   process.stdout.write(
     JSON.stringify({ hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: line } }),
+  );
+}
+
+/**
+ * The one line the orchestrator reads. Same shape from every mode and from the report's `--last`, so
+ * the label that lands in `history` is the label the log carries. `tokens=` and `cost=` are the run's
+ * bill from the transcript, or `unavailable` — never the final-turn figure under a friendlier name.
+ */
+export function metricsLine(record, ticket) {
+  const billed = record.billed ?? null;
+  const price = billed ? priceBilled(billed, record.started_at) : null;
+  const dur = typeof record.duration_ms === "number" ? `${(record.duration_ms / 1000).toFixed(1)}s` : "unavailable";
+  return (
+    `AGENT_RUN_METRICS: seq=${record.seq} ticket=${ticket} agent=${record.agent} ` +
+    `step=${record.step ?? "—"} mode=${record.run_mode} status=${record.status} ` +
+    `model=${billed?.model ?? record.model ?? "unavailable"} duration=${dur} ` +
+    `tokens=${billed ? billed.total : "unavailable"} ` +
+    `cost=${price?.usd != null ? formatUsd(price.usd) : "unavailable"} ` +
+    `api_calls=${billed ? billed.api_calls : "unavailable"} ` +
+    `tool_uses=${record.tool_uses ?? "unavailable"} ` +
+    `prompt_chars=${record.prompt_chars ?? "unavailable"} log=.workflow/metrics/${ticket}.jsonl`
   );
 }
 
@@ -298,8 +307,9 @@ function runPre(payload, projectDir) {
       ticket_source: source,
       agent: agentName(payload, null),
       description: payload?.tool_input?.description ?? "",
-      // Read at launch, so an interrupted run is still recorded with the mode it was launched in —
-      // which is the run you most want to know the mode of.
+      // Read at launch, so an interrupted run is still recorded with the mode and step it was launched
+      // in — which is the run you most want to know those of.
+      step: parseStep(prompt),
       run_mode: parseRunMode(prompt),
       prompt_chars: promptChars(prompt),
       started_at: new Date().toISOString(),
@@ -308,6 +318,58 @@ function runPre(payload, projectDir) {
     "utf8",
   );
   // No stdout: a launch is not news, and PreToolUse output would land ahead of the agent's own.
+}
+
+/** The fields every row shares, taken from the launch record when there is one. */
+function head(payload, projectDir, pending, result) {
+  const { ticket, source } = pending
+    ? { ticket: pending.ticket, source: pending.ticket_source }
+    : resolveTicket(payload, projectDir);
+  const prompt = pending ? null : launchPrompt(payload, result);
+  return {
+    ticket,
+    ticket_source: source,
+    tool_use_id: payload?.tool_use_id ?? null,
+    agent: pending?.agent ?? agentName(payload, result),
+    description: payload?.tool_input?.description ?? pending?.description ?? "",
+    step: pending?.step ?? parseStep(prompt),
+    run_mode: pending?.run_mode ?? parseRunMode(prompt),
+    prompt_chars: pending?.prompt_chars ?? promptChars(prompt),
+  };
+}
+
+/**
+ * A background agent has just been launched. Nothing has been spent yet, but the response names the
+ * agent, and that name is the key to its transcript — so the row is written now, marked `background`,
+ * and the report fills in the bill once the agent has stopped.
+ */
+function runBackgroundLaunch(payload, response, projectDir) {
+  const toolUseId = payload?.tool_use_id;
+  const pending = takePending(projectDir, toolUseId);
+  const startedAt = pending?.started_at ?? new Date().toISOString();
+  const record = {
+    ...head(payload, projectDir, pending, response),
+    status: "background",
+    model: response.resolvedModel ?? null,
+    agent_id: response.agentId ?? null,
+    output_file: response.outputFile ?? null,
+    started_at: startedAt,
+    started_at_measured: Boolean(pending?.started_at),
+    finished_at: null,
+    duration_ms: null,
+    end_context: null,
+    // Filled by `metrics-report.mjs` from the transcript once the agent has stopped. `null` here is
+    // "not yet", which the report can tell from "never" by the agent id beside it.
+    billed: null,
+    tool_uses: null,
+    session_id: payload?.session_id ?? null,
+  };
+  appendRecord(projectDir, record.ticket, record);
+  if (record.ticket === UNASSIGNED) {
+    bail(projectDir, "ticket_unresolved", payload, { mode: "post", agent: record.agent });
+  }
+  record.seq = countLines(metricsFile(projectDir, record.ticket));
+  emit(metricsLine(record, record.ticket));
 }
 
 function runPost(payload, projectDir) {
@@ -319,9 +381,11 @@ function runPost(payload, projectDir) {
   // report say a run had happened — the launch vanished along with the cost.
   if (!result) {
     const response = anyResponse(payload);
-    const async = isAsyncLaunch(response);
-    if (async) markPendingAsync(projectDir, toolUseId);
-    bail(projectDir, async ? "async_launch_no_cost" : "no_result", payload, {
+    if (isAsyncLaunch(response)) {
+      runBackgroundLaunch(payload, response, projectDir);
+      return;
+    }
+    bail(projectDir, "no_result", payload, {
       mode: "post",
       had_pending: existsSync(pendingFile(projectDir, toolUseId ?? "")),
       response_status: response?.status ?? null,
@@ -330,47 +394,34 @@ function runPost(payload, projectDir) {
   }
 
   const pending = takePending(projectDir, toolUseId);
-
   const usage = result.usage ?? {};
   const durationMs = result.totalDurationMs ?? payload?.duration_ms ?? 0;
   const finishedAt = new Date();
-  const { ticket, source } = pending
-    ? { ticket: pending.ticket, source: pending.ticket_source }
-    : resolveTicket(payload, projectDir);
-
-  // The launch record already read both; re-read only when there is none, so a post that arrives
-  // without its pre still carries them.
-  const prompt = pending ? null : launchPrompt(payload, result);
-  const runMode = pending?.run_mode ?? parseRunMode(prompt);
-  const chars = pending?.prompt_chars ?? promptChars(prompt);
 
   // `usage.iterations` has been a single-element array in every payload observed, which is the
   // evidence that `usage` describes one message rather than the run. Recording its length means a
   // harness that starts returning the whole run shows up as a number greater than 1 instead of
-  // silently changing what every figure below means.
+  // silently changing what the block below means.
   const usageMessages = Array.isArray(usage.iterations) ? usage.iterations.length : null;
 
   // Measured at launch when the pre-hook ran; derived from the duration only as a fallback. The
   // derived form silently excludes queueing and the caller's own turn, so it understates elapsed time.
   const startedAt = pending?.started_at ?? new Date(finishedAt.getTime() - durationMs).toISOString();
 
+  // The agent has stopped, so its transcript is complete: sum the bill now rather than at report time.
+  const sessionId = payload?.session_id ?? null;
+  const billed = billedForRun({ sessionId, agentId: result.agentId ?? null, toolUseId });
+
   const record = {
-    ticket,
-    ticket_source: source,
-    tool_use_id: toolUseId ?? null,
-    agent: agentName(payload, result),
-    description: payload?.tool_input?.description ?? "",
-    run_mode: runMode,
-    prompt_chars: chars,
+    ...head(payload, projectDir, pending, result),
     status: result.status ?? "unknown",
-    model: result.resolvedModel ?? null,
+    model: result.resolvedModel ?? billed?.model ?? null,
+    agent_id: result.agentId ?? billed?.agent_id ?? null,
     started_at: startedAt,
     started_at_measured: Boolean(pending?.started_at),
     finished_at: finishedAt.toISOString(),
     duration_ms: durationMs,
-    // NOT the run's cost. These are the final message's figures — see the header. `end_context.total`
-    // is how much context this agent was carrying when it stopped, which is the right number for
-    // "how heavy is this agent's prompt" and the wrong one for "what did this run spend".
+    // What the harness handed over: the final message's figures, kept under the name that says so.
     end_context: {
       total: result.totalTokens ?? 0,
       input: usage.input_tokens ?? 0,
@@ -380,59 +431,31 @@ function runPost(payload, projectDir) {
       scope: "final_turn",
       messages: usageMessages,
     },
-    // Retained under its old name so records written before this change and records written after it
-    // read the same way to every existing consumer. Same object; the honest name is above.
-    tokens: {
-      total: result.totalTokens ?? 0,
-      input: usage.input_tokens ?? 0,
-      output: usage.output_tokens ?? 0,
-      cache_read: usage.cache_read_input_tokens ?? 0,
-      cache_creation: usage.cache_creation_input_tokens ?? 0,
-    },
-    tool_uses: result.totalToolUseCount ?? 0,
+    // The run's bill, summed from the transcript. `null` when the transcript is not on this machine,
+    // and the report says so — never a figure derived from `end_context` in its place.
+    billed,
+    tool_uses: result.totalToolUseCount ?? billed?.tool_uses ?? 0,
     tool_stats: result.toolStats ?? {},
-    agent_id: result.agentId ?? null,
-    session_id: payload?.session_id ?? null,
+    session_id: sessionId,
   };
 
-  appendRecord(projectDir, ticket, record);
-  if (ticket === UNASSIGNED) {
+  appendRecord(projectDir, record.ticket, record);
+  if (record.ticket === UNASSIGNED) {
     bail(projectDir, "ticket_unresolved", payload, { mode: "post", agent: record.agent });
   }
-
-  const t = record.tokens;
-  const seq = countLines(metricsFile(projectDir, ticket));
-  // `end_context=` rather than `tokens_total=`: the orchestrator folds this line into `history`
-  // verbatim, so the label it reads is the label that ends up in the state file.
-  emit(
-    `AGENT_RUN_METRICS: seq=${seq} ticket=${ticket} agent=${record.agent} ` +
-      `mode=${record.run_mode} status=${record.status} model=${record.model} ` +
-      `duration=${(durationMs / 1000).toFixed(1)}s ` +
-      `end_context=${t.total} in=${t.input} out=${t.output} cache_read=${t.cache_read} ` +
-      `cache_write=${t.cache_creation} tool_uses=${record.tool_uses} ` +
-      `prompt_chars=${record.prompt_chars ?? "unavailable"} log=.workflow/metrics/${ticket}.jsonl`,
-  );
+  record.seq = countLines(metricsFile(projectDir, record.ticket));
+  emit(metricsLine(record, record.ticket));
 }
 
 function runFailed(payload, projectDir) {
   const toolUseId = payload?.tool_use_id;
   const pending = takePending(projectDir, toolUseId);
-  const { ticket, source } = pending
-    ? { ticket: pending.ticket, source: pending.ticket_source }
-    : resolveTicket(payload, projectDir);
-
   const durationMs = payload?.duration_ms ?? null;
   const finishedAt = new Date();
   const status = payload?.is_interrupt ? "interrupted" : payload?.is_timeout ? "timed_out" : "failed";
 
   const record = {
-    ticket,
-    ticket_source: source,
-    tool_use_id: toolUseId ?? null,
-    agent: pending?.agent ?? agentName(payload, null),
-    description: payload?.tool_input?.description ?? pending?.description ?? "",
-    run_mode: pending?.run_mode ?? parseRunMode(launchPrompt(payload)),
-    prompt_chars: pending?.prompt_chars ?? promptChars(launchPrompt(payload)),
+    ...head(payload, projectDir, pending, null),
     status,
     model: null,
     started_at:
@@ -441,23 +464,18 @@ function runFailed(payload, projectDir) {
     started_at_measured: Boolean(pending?.started_at),
     finished_at: finishedAt.toISOString(),
     duration_ms: durationMs,
-    // An agent that never stopped never produced a token count. Recording zero would read as free.
+    // An agent that never stopped has no bill on record. Recording zero would read as free.
     end_context: null,
-    tokens: null,
+    billed: null,
     tool_uses: null,
     error: payload?.error ?? null,
     error_type: payload?.error_type ?? null,
     session_id: payload?.session_id ?? null,
   };
 
-  appendRecord(projectDir, ticket, record);
-  const seq = countLines(metricsFile(projectDir, ticket));
-  emit(
-    `AGENT_RUN_METRICS: seq=${seq} ticket=${ticket} agent=${record.agent} ` +
-      `mode=${record.run_mode} status=${status} ` +
-      `duration=${durationMs === null ? "unavailable" : `${(durationMs / 1000).toFixed(1)}s`} ` +
-      `end_context=unavailable log=.workflow/metrics/${ticket}.jsonl`,
-  );
+  appendRecord(projectDir, record.ticket, record);
+  record.seq = countLines(metricsFile(projectDir, record.ticket));
+  emit(metricsLine(record, record.ticket));
 }
 
 function main() {
@@ -497,14 +515,19 @@ function main() {
   else runPost(payload, projectDir);
 }
 
-try {
-  main();
-} catch (err) {
-  // Metrics are never worth failing a run over — but a throw that leaves no trace is how this
-  // script spent its entire life believing it worked.
-  bail(resolveProjectDir(null), "threw", null, {
-    message: String(err?.message ?? err),
-    stack: String(err?.stack ?? "").split("\n").slice(0, 3).join(" | "),
-  });
+// Importable for `metricsLine`; runs as the hook only when invoked directly.
+const invokedDirectly =
+  Boolean(process.argv[1]) && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+if (invokedDirectly) {
+  try {
+    main();
+  } catch (err) {
+    // Metrics are never worth failing a run over — but a throw that leaves no trace is how this
+    // script spent its entire life believing it worked.
+    bail(resolveProjectDir(null), "threw", null, {
+      message: String(err?.message ?? err),
+      stack: String(err?.stack ?? "").split("\n").slice(0, 3).join(" | "),
+    });
+  }
+  process.exit(0);
 }
-process.exit(0);
