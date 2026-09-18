@@ -1,0 +1,2516 @@
+{
+  "config": {
+    "configFile": "/work/playwright.config.ts",
+    "rootDir": "/work/tests",
+    "forbidOnly": true,
+    "fullyParallel": true,
+    "workers": 8,
+    "retries": 2,
+    "shard": null,
+    "reporter": [
+      [
+        "json",
+        {
+          "outputFile": "playwright-report.json"
+        }
+      ],
+      [
+        "html"
+      ]
+    ],
+    "metadata": {
+      "ci": true,
+      "branch": "feature/order-schema-v2",
+      "commit": "a3f91c4",
+      "pr": 2841,
+      "runId": "gh-run-1180294773",
+      "runAttempt": 1
+    },
+    "projects": [
+      {
+        "outputDir": "/work/test-results",
+        "name": "chromium",
+        "testDir": "/work/tests",
+        "timeout": 30000,
+        "retries": 2
+      }
+    ],
+    "version": "1.54.0"
+  },
+  "suites": [
+    {
+      "title": "e2e/checkout.spec.ts",
+      "file": "e2e/checkout.spec.ts",
+      "line": 0,
+      "column": 0,
+      "specs": [
+        {
+          "title": "completes purchase with saved card",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 2,
+                  "parallelIndex": 2,
+                  "status": "failed",
+                  "duration": 6630,
+                  "errors": [
+                    {
+                      "message": "TypeError: Cannot read properties of undefined (reading 'id')\n\n   at CheckoutPage.submitOrder (src/pages/checkout.page.ts:118:34)\n\n  116 |   async submitOrder(order) {\n  117 |     const customer = order.customer_id;\n> 118 |     return this.api.post(`/orders/${customer.id}`, order);\n      |                                     ^\n  119 |   }"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:41:12.492000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-2-0/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-2-0/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "TypeError: Cannot read properties of undefined (reading 'id')\n\n   at CheckoutPage.submitOrder (src/pages/checkout.page.ts:118:34)\n\n  116 |   async submitOrder(order) {\n  117 |     const customer = order.customer_id;\n> 118 |     return this.api.post(`/orders/${customer.id}`, order);\n      |                                     ^\n  119 |   }",
+                    "stack": "TypeError: Cannot read properties of undefined (reading 'id')\n    at CheckoutPage.submitOrder (/work/src/pages/checkout.page.ts:118:34)\n    at /work/tests/e2e/checkout.spec.ts:24:11"
+                  }
+                },
+                {
+                  "workerIndex": 2,
+                  "parallelIndex": 2,
+                  "status": "failed",
+                  "duration": 6168,
+                  "errors": [
+                    {
+                      "message": "TypeError: Cannot read properties of undefined (reading 'id')\n\n   at CheckoutPage.submitOrder (src/pages/checkout.page.ts:118:34)\n\n  116 |   async submitOrder(order) {\n  117 |     const customer = order.customer_id;\n> 118 |     return this.api.post(`/orders/${customer.id}`, order);\n      |                                     ^\n  119 |   }"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 1,
+                  "startTime": "2026-09-14T08:41:13.063000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-2-1/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-2-1/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "TypeError: Cannot read properties of undefined (reading 'id')\n\n   at CheckoutPage.submitOrder (src/pages/checkout.page.ts:118:34)\n\n  116 |   async submitOrder(order) {\n  117 |     const customer = order.customer_id;\n> 118 |     return this.api.post(`/orders/${customer.id}`, order);\n      |                                     ^\n  119 |   }",
+                    "stack": "TypeError: Cannot read properties of undefined (reading 'id')\n    at CheckoutPage.submitOrder (/work/src/pages/checkout.page.ts:118:34)\n    at /work/tests/e2e/checkout.spec.ts:24:11"
+                  }
+                },
+                {
+                  "workerIndex": 2,
+                  "parallelIndex": 2,
+                  "status": "failed",
+                  "duration": 5546,
+                  "errors": [
+                    {
+                      "message": "TypeError: Cannot read properties of undefined (reading 'id')\n\n   at CheckoutPage.submitOrder (src/pages/checkout.page.ts:118:34)\n\n  116 |   async submitOrder(order) {\n  117 |     const customer = order.customer_id;\n> 118 |     return this.api.post(`/orders/${customer.id}`, order);\n      |                                     ^\n  119 |   }"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 2,
+                  "startTime": "2026-09-14T08:41:13.716000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-2-2/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-2-2/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "TypeError: Cannot read properties of undefined (reading 'id')\n\n   at CheckoutPage.submitOrder (src/pages/checkout.page.ts:118:34)\n\n  116 |   async submitOrder(order) {\n  117 |     const customer = order.customer_id;\n> 118 |     return this.api.post(`/orders/${customer.id}`, order);\n      |                                     ^\n  119 |   }",
+                    "stack": "TypeError: Cannot read properties of undefined (reading 'id')\n    at CheckoutPage.submitOrder (/work/src/pages/checkout.page.ts:118:34)\n    at /work/tests/e2e/checkout.spec.ts:24:11"
+                  }
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "e2e/checkout.spec.ts:24",
+          "file": "e2e/checkout.spec.ts",
+          "line": 24,
+          "column": 5
+        },
+        {
+          "title": "applies discount code at checkout",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 3,
+                  "parallelIndex": 3,
+                  "status": "failed",
+                  "duration": 5174,
+                  "errors": [
+                    {
+                      "message": "TypeError: Cannot read properties of undefined (reading 'id')\n\n   at CheckoutPage.submitOrder (src/pages/checkout.page.ts:118:34)\n\n  116 |   async submitOrder(order) {\n  117 |     const customer = order.customer_id;\n> 118 |     return this.api.post(`/orders/${customer.id}`, order);\n      |                                     ^\n  119 |   }"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:41:16.157000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-3-0/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-3-0/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "TypeError: Cannot read properties of undefined (reading 'id')\n\n   at CheckoutPage.submitOrder (src/pages/checkout.page.ts:118:34)\n\n  116 |   async submitOrder(order) {\n  117 |     const customer = order.customer_id;\n> 118 |     return this.api.post(`/orders/${customer.id}`, order);\n      |                                     ^\n  119 |   }",
+                    "stack": "TypeError: Cannot read properties of undefined (reading 'id')\n    at CheckoutPage.submitOrder (/work/src/pages/checkout.page.ts:118:34)\n    at /work/tests/e2e/checkout.spec.ts:41:11"
+                  }
+                },
+                {
+                  "workerIndex": 3,
+                  "parallelIndex": 3,
+                  "status": "failed",
+                  "duration": 5146,
+                  "errors": [
+                    {
+                      "message": "TypeError: Cannot read properties of undefined (reading 'id')\n\n   at CheckoutPage.submitOrder (src/pages/checkout.page.ts:118:34)\n\n  116 |   async submitOrder(order) {\n  117 |     const customer = order.customer_id;\n> 118 |     return this.api.post(`/orders/${customer.id}`, order);\n      |                                     ^\n  119 |   }"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 1,
+                  "startTime": "2026-09-14T08:41:17.569000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-3-1/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-3-1/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "TypeError: Cannot read properties of undefined (reading 'id')\n\n   at CheckoutPage.submitOrder (src/pages/checkout.page.ts:118:34)\n\n  116 |   async submitOrder(order) {\n  117 |     const customer = order.customer_id;\n> 118 |     return this.api.post(`/orders/${customer.id}`, order);\n      |                                     ^\n  119 |   }",
+                    "stack": "TypeError: Cannot read properties of undefined (reading 'id')\n    at CheckoutPage.submitOrder (/work/src/pages/checkout.page.ts:118:34)\n    at /work/tests/e2e/checkout.spec.ts:41:11"
+                  }
+                },
+                {
+                  "workerIndex": 3,
+                  "parallelIndex": 3,
+                  "status": "failed",
+                  "duration": 6494,
+                  "errors": [
+                    {
+                      "message": "TypeError: Cannot read properties of undefined (reading 'id')\n\n   at CheckoutPage.submitOrder (src/pages/checkout.page.ts:118:34)\n\n  116 |   async submitOrder(order) {\n  117 |     const customer = order.customer_id;\n> 118 |     return this.api.post(`/orders/${customer.id}`, order);\n      |                                     ^\n  119 |   }"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 2,
+                  "startTime": "2026-09-14T08:41:18.164000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-3-2/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-3-2/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "TypeError: Cannot read properties of undefined (reading 'id')\n\n   at CheckoutPage.submitOrder (src/pages/checkout.page.ts:118:34)\n\n  116 |   async submitOrder(order) {\n  117 |     const customer = order.customer_id;\n> 118 |     return this.api.post(`/orders/${customer.id}`, order);\n      |                                     ^\n  119 |   }",
+                    "stack": "TypeError: Cannot read properties of undefined (reading 'id')\n    at CheckoutPage.submitOrder (/work/src/pages/checkout.page.ts:118:34)\n    at /work/tests/e2e/checkout.spec.ts:41:11"
+                  }
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "e2e/checkout.spec.ts:41",
+          "file": "e2e/checkout.spec.ts",
+          "line": 41,
+          "column": 5
+        },
+        {
+          "title": "sends order confirmation email",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 4,
+                  "parallelIndex": 0,
+                  "status": "failed",
+                  "duration": 4583,
+                  "errors": [
+                    {
+                      "message": "TypeError: Cannot read properties of undefined (reading 'id')\n\n   at CheckoutPage.submitOrder (src/pages/checkout.page.ts:118:34)\n\n  116 |   async submitOrder(order) {\n  117 |     const customer = order.customer_id;\n> 118 |     return this.api.post(`/orders/${customer.id}`, order);\n      |                                     ^\n  119 |   }"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:41:19.234000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-4-0/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-4-0/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "TypeError: Cannot read properties of undefined (reading 'id')\n\n   at CheckoutPage.submitOrder (src/pages/checkout.page.ts:118:34)\n\n  116 |   async submitOrder(order) {\n  117 |     const customer = order.customer_id;\n> 118 |     return this.api.post(`/orders/${customer.id}`, order);\n      |                                     ^\n  119 |   }",
+                    "stack": "TypeError: Cannot read properties of undefined (reading 'id')\n    at CheckoutPage.submitOrder (/work/src/pages/checkout.page.ts:118:34)\n    at /work/tests/e2e/checkout.spec.ts:67:11"
+                  }
+                },
+                {
+                  "workerIndex": 4,
+                  "parallelIndex": 0,
+                  "status": "failed",
+                  "duration": 4196,
+                  "errors": [
+                    {
+                      "message": "TypeError: Cannot read properties of undefined (reading 'id')\n\n   at CheckoutPage.submitOrder (src/pages/checkout.page.ts:118:34)\n\n  116 |   async submitOrder(order) {\n  117 |     const customer = order.customer_id;\n> 118 |     return this.api.post(`/orders/${customer.id}`, order);\n      |                                     ^\n  119 |   }"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 1,
+                  "startTime": "2026-09-14T08:41:20.418000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-4-1/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-4-1/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "TypeError: Cannot read properties of undefined (reading 'id')\n\n   at CheckoutPage.submitOrder (src/pages/checkout.page.ts:118:34)\n\n  116 |   async submitOrder(order) {\n  117 |     const customer = order.customer_id;\n> 118 |     return this.api.post(`/orders/${customer.id}`, order);\n      |                                     ^\n  119 |   }",
+                    "stack": "TypeError: Cannot read properties of undefined (reading 'id')\n    at CheckoutPage.submitOrder (/work/src/pages/checkout.page.ts:118:34)\n    at /work/tests/e2e/checkout.spec.ts:67:11"
+                  }
+                },
+                {
+                  "workerIndex": 4,
+                  "parallelIndex": 0,
+                  "status": "failed",
+                  "duration": 6498,
+                  "errors": [
+                    {
+                      "message": "TypeError: Cannot read properties of undefined (reading 'id')\n\n   at CheckoutPage.submitOrder (src/pages/checkout.page.ts:118:34)\n\n  116 |   async submitOrder(order) {\n  117 |     const customer = order.customer_id;\n> 118 |     return this.api.post(`/orders/${customer.id}`, order);\n      |                                     ^\n  119 |   }"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 2,
+                  "startTime": "2026-09-14T08:41:21.685000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-4-2/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-4-2/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "TypeError: Cannot read properties of undefined (reading 'id')\n\n   at CheckoutPage.submitOrder (src/pages/checkout.page.ts:118:34)\n\n  116 |   async submitOrder(order) {\n  117 |     const customer = order.customer_id;\n> 118 |     return this.api.post(`/orders/${customer.id}`, order);\n      |                                     ^\n  119 |   }",
+                    "stack": "TypeError: Cannot read properties of undefined (reading 'id')\n    at CheckoutPage.submitOrder (/work/src/pages/checkout.page.ts:118:34)\n    at /work/tests/e2e/checkout.spec.ts:67:11"
+                  }
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "e2e/checkout.spec.ts:67",
+          "file": "e2e/checkout.spec.ts",
+          "line": 67,
+          "column": 5
+        },
+        {
+          "title": "shows empty cart message",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 2,
+                  "parallelIndex": 2,
+                  "status": "passed",
+                  "duration": 2363,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:41:23.793000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e2e/checkout.spec.ts:12",
+          "file": "e2e/checkout.spec.ts",
+          "line": 12,
+          "column": 5
+        },
+        {
+          "title": "validates postal code format",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 2,
+                  "parallelIndex": 2,
+                  "status": "passed",
+                  "duration": 1564,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:41:26.264000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e2e/checkout.spec.ts:88",
+          "file": "e2e/checkout.spec.ts",
+          "line": 88,
+          "column": 5
+        }
+      ]
+    },
+    {
+      "title": "e2e/cart.spec.ts",
+      "file": "e2e/cart.spec.ts",
+      "line": 0,
+      "column": 0,
+      "specs": [
+        {
+          "title": "adds item to cart",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "failed",
+                  "duration": 7799,
+                  "errors": [
+                    {
+                      "message": "Error: duplicate key value violates unique constraint \"users_email_key\"\n  Key (email)=(qa.fixture@example.com) already exists.\n\n   at seedUser (tests/fixtures/db.ts:47:11)"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:41:27.319000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-0-0/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-0-0/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "Error: duplicate key value violates unique constraint \"users_email_key\"\n  Key (email)=(qa.fixture@example.com) already exists.\n\n   at seedUser (tests/fixtures/db.ts:47:11)",
+                    "stack": "error: duplicate key value violates unique constraint \"users_email_key\"\n    at /work/tests/fixtures/db.ts:47:11"
+                  }
+                },
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 2772,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 1,
+                  "startTime": "2026-09-14T08:41:29.480000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "flaky"
+            }
+          ],
+          "id": "e2e/cart.spec.ts:15",
+          "file": "e2e/cart.spec.ts",
+          "line": 15,
+          "column": 5
+        },
+        {
+          "title": "updates quantity",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 1,
+                  "parallelIndex": 1,
+                  "status": "failed",
+                  "duration": 5887,
+                  "errors": [
+                    {
+                      "message": "Error: expect(received).toHaveCount(expected)\n\nExpected: 3\nReceived: 7\n\n  Locator: getByRole('row')\n  Timeout 5000ms exceeded."
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:41:30.644000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-1-0/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-1-0/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "Error: expect(received).toHaveCount(expected)\n\nExpected: 3\nReceived: 7\n\n  Locator: getByRole('row')\n  Timeout 5000ms exceeded.",
+                    "stack": "Error: expect(received).toHaveCount(expected)\n    at /work/tests/e2e/orders.spec.ts"
+                  }
+                },
+                {
+                  "workerIndex": 1,
+                  "parallelIndex": 1,
+                  "status": "passed",
+                  "duration": 1553,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 1,
+                  "startTime": "2026-09-14T08:41:32.637000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "flaky"
+            }
+          ],
+          "id": "e2e/cart.spec.ts:29",
+          "file": "e2e/cart.spec.ts",
+          "line": 29,
+          "column": 5
+        },
+        {
+          "title": "removes last item",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 2,
+                  "parallelIndex": 2,
+                  "status": "failed",
+                  "duration": 5536,
+                  "errors": [
+                    {
+                      "message": "Error: deadlock detected\n  DETAIL: Process 4417 waits for ShareLock on transaction 88213.\n  HINT: See server log for query details.\n\n   at resetFixtures (tests/fixtures/db.ts:81:9)"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:41:33.041000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-2-0/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-2-0/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "Error: deadlock detected\n  DETAIL: Process 4417 waits for ShareLock on transaction 88213.\n  HINT: See server log for query details.\n\n   at resetFixtures (tests/fixtures/db.ts:81:9)",
+                    "stack": "error: deadlock detected\n    at /work/tests/fixtures/db.ts:81:9"
+                  }
+                },
+                {
+                  "workerIndex": 2,
+                  "parallelIndex": 2,
+                  "status": "passed",
+                  "duration": 2604,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 1,
+                  "startTime": "2026-09-14T08:41:34.977000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "flaky"
+            }
+          ],
+          "id": "e2e/cart.spec.ts:44",
+          "file": "e2e/cart.spec.ts",
+          "line": 44,
+          "column": 5
+        },
+        {
+          "title": "persists cart across reload",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 3,
+                  "parallelIndex": 3,
+                  "status": "failed",
+                  "duration": 7638,
+                  "errors": [
+                    {
+                      "message": "Error: duplicate key value violates unique constraint \"users_email_key\"\n  Key (email)=(qa.fixture@example.com) already exists.\n\n   at seedUser (tests/fixtures/db.ts:47:11)"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:41:36.108000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-3-0/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-3-0/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "Error: duplicate key value violates unique constraint \"users_email_key\"\n  Key (email)=(qa.fixture@example.com) already exists.\n\n   at seedUser (tests/fixtures/db.ts:47:11)",
+                    "stack": "error: duplicate key value violates unique constraint \"users_email_key\"\n    at /work/tests/fixtures/db.ts:47:11"
+                  }
+                },
+                {
+                  "workerIndex": 3,
+                  "parallelIndex": 3,
+                  "status": "passed",
+                  "duration": 2440,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 1,
+                  "startTime": "2026-09-14T08:41:38.707000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "flaky"
+            }
+          ],
+          "id": "e2e/cart.spec.ts:58",
+          "file": "e2e/cart.spec.ts",
+          "line": 58,
+          "column": 5
+        },
+        {
+          "title": "renders page shell",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1117,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:41:39.371000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e2e/cart.spec.ts:8",
+          "file": "e2e/cart.spec.ts",
+          "line": 8,
+          "column": 5
+        }
+      ]
+    },
+    {
+      "title": "e2e/orders.spec.ts",
+      "file": "e2e/orders.spec.ts",
+      "line": 0,
+      "column": 0,
+      "specs": [
+        {
+          "title": "lists orders newest first",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 4,
+                  "parallelIndex": 0,
+                  "status": "failed",
+                  "duration": 6538,
+                  "errors": [
+                    {
+                      "message": "Error: expect(received).toHaveCount(expected)\n\nExpected: 3\nReceived: 7\n\n  Locator: getByRole('row')\n  Timeout 5000ms exceeded."
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:41:40.092000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-4-0/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-4-0/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "Error: expect(received).toHaveCount(expected)\n\nExpected: 3\nReceived: 7\n\n  Locator: getByRole('row')\n  Timeout 5000ms exceeded.",
+                    "stack": "Error: expect(received).toHaveCount(expected)\n    at /work/tests/e2e/orders.spec.ts"
+                  }
+                },
+                {
+                  "workerIndex": 4,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1518,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 1,
+                  "startTime": "2026-09-14T08:41:42.494000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "flaky"
+            }
+          ],
+          "id": "e2e/orders.spec.ts:19",
+          "file": "e2e/orders.spec.ts",
+          "line": 19,
+          "column": 5
+        },
+        {
+          "title": "filters by status",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 5,
+                  "parallelIndex": 1,
+                  "status": "failed",
+                  "duration": 6835,
+                  "errors": [
+                    {
+                      "message": "Error: deadlock detected\n  DETAIL: Process 4417 waits for ShareLock on transaction 88213.\n  HINT: See server log for query details.\n\n   at resetFixtures (tests/fixtures/db.ts:81:9)"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:41:44.730000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-5-0/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-5-0/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "Error: deadlock detected\n  DETAIL: Process 4417 waits for ShareLock on transaction 88213.\n  HINT: See server log for query details.\n\n   at resetFixtures (tests/fixtures/db.ts:81:9)",
+                    "stack": "error: deadlock detected\n    at /work/tests/fixtures/db.ts:81:9"
+                  }
+                },
+                {
+                  "workerIndex": 5,
+                  "parallelIndex": 1,
+                  "status": "passed",
+                  "duration": 2455,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 1,
+                  "startTime": "2026-09-14T08:41:47.035000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "flaky"
+            }
+          ],
+          "id": "e2e/orders.spec.ts:33",
+          "file": "e2e/orders.spec.ts",
+          "line": 33,
+          "column": 5
+        },
+        {
+          "title": "opens order detail",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 6,
+                  "parallelIndex": 2,
+                  "status": "failed",
+                  "duration": 6601,
+                  "errors": [
+                    {
+                      "message": "Error: duplicate key value violates unique constraint \"users_email_key\"\n  Key (email)=(qa.fixture@example.com) already exists.\n\n   at seedUser (tests/fixtures/db.ts:47:11)"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:41:49.434000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-6-0/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-6-0/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "Error: duplicate key value violates unique constraint \"users_email_key\"\n  Key (email)=(qa.fixture@example.com) already exists.\n\n   at seedUser (tests/fixtures/db.ts:47:11)",
+                    "stack": "error: duplicate key value violates unique constraint \"users_email_key\"\n    at /work/tests/fixtures/db.ts:47:11"
+                  }
+                },
+                {
+                  "workerIndex": 6,
+                  "parallelIndex": 2,
+                  "status": "passed",
+                  "duration": 1465,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 1,
+                  "startTime": "2026-09-14T08:41:51.234000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "flaky"
+            }
+          ],
+          "id": "e2e/orders.spec.ts:50",
+          "file": "e2e/orders.spec.ts",
+          "line": 50,
+          "column": 5
+        },
+        {
+          "title": "paginates past 25 orders",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 7,
+                  "parallelIndex": 3,
+                  "status": "failed",
+                  "duration": 8120,
+                  "errors": [
+                    {
+                      "message": "Error: expect(received).toHaveCount(expected)\n\nExpected: 3\nReceived: 7\n\n  Locator: getByRole('row')\n  Timeout 5000ms exceeded."
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:41:51.644000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-7-0/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-7-0/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "Error: expect(received).toHaveCount(expected)\n\nExpected: 3\nReceived: 7\n\n  Locator: getByRole('row')\n  Timeout 5000ms exceeded.",
+                    "stack": "Error: expect(received).toHaveCount(expected)\n    at /work/tests/e2e/orders.spec.ts"
+                  }
+                },
+                {
+                  "workerIndex": 7,
+                  "parallelIndex": 3,
+                  "status": "passed",
+                  "duration": 2380,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 1,
+                  "startTime": "2026-09-14T08:41:52.114000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "flaky"
+            }
+          ],
+          "id": "e2e/orders.spec.ts:71",
+          "file": "e2e/orders.spec.ts",
+          "line": 71,
+          "column": 5
+        },
+        {
+          "title": "renders page shell",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 1,
+                  "parallelIndex": 1,
+                  "status": "passed",
+                  "duration": 2548,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:41:52.829000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e2e/orders.spec.ts:8",
+          "file": "e2e/orders.spec.ts",
+          "line": 8,
+          "column": 5
+        }
+      ]
+    },
+    {
+      "title": "e2e/profile.spec.ts",
+      "file": "e2e/profile.spec.ts",
+      "line": 0,
+      "column": 0,
+      "specs": [
+        {
+          "title": "updates display name",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "failed",
+                  "duration": 8197,
+                  "errors": [
+                    {
+                      "message": "Error: deadlock detected\n  DETAIL: Process 4417 waits for ShareLock on transaction 88213.\n  HINT: See server log for query details.\n\n   at resetFixtures (tests/fixtures/db.ts:81:9)"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:41:54.179000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-0-0/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-0-0/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "Error: deadlock detected\n  DETAIL: Process 4417 waits for ShareLock on transaction 88213.\n  HINT: See server log for query details.\n\n   at resetFixtures (tests/fixtures/db.ts:81:9)",
+                    "stack": "error: deadlock detected\n    at /work/tests/fixtures/db.ts:81:9"
+                  }
+                },
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 2936,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 1,
+                  "startTime": "2026-09-14T08:41:54.826000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "flaky"
+            }
+          ],
+          "id": "e2e/profile.spec.ts:14",
+          "file": "e2e/profile.spec.ts",
+          "line": 14,
+          "column": 5
+        },
+        {
+          "title": "changes notification prefs",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 1,
+                  "parallelIndex": 1,
+                  "status": "failed",
+                  "duration": 9048,
+                  "errors": [
+                    {
+                      "message": "Error: duplicate key value violates unique constraint \"users_email_key\"\n  Key (email)=(qa.fixture@example.com) already exists.\n\n   at seedUser (tests/fixtures/db.ts:47:11)"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:41:56.897000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-1-0/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-1-0/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "Error: duplicate key value violates unique constraint \"users_email_key\"\n  Key (email)=(qa.fixture@example.com) already exists.\n\n   at seedUser (tests/fixtures/db.ts:47:11)",
+                    "stack": "error: duplicate key value violates unique constraint \"users_email_key\"\n    at /work/tests/fixtures/db.ts:47:11"
+                  }
+                },
+                {
+                  "workerIndex": 1,
+                  "parallelIndex": 1,
+                  "status": "passed",
+                  "duration": 2706,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 1,
+                  "startTime": "2026-09-14T08:41:59.081000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "flaky"
+            }
+          ],
+          "id": "e2e/profile.spec.ts:27",
+          "file": "e2e/profile.spec.ts",
+          "line": 27,
+          "column": 5
+        },
+        {
+          "title": "uploads avatar",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 2,
+                  "parallelIndex": 2,
+                  "status": "failed",
+                  "duration": 6946,
+                  "errors": [
+                    {
+                      "message": "Error: expect(received).toHaveCount(expected)\n\nExpected: 3\nReceived: 7\n\n  Locator: getByRole('row')\n  Timeout 5000ms exceeded."
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:42:01.603000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-2-0/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-2-0/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "Error: expect(received).toHaveCount(expected)\n\nExpected: 3\nReceived: 7\n\n  Locator: getByRole('row')\n  Timeout 5000ms exceeded.",
+                    "stack": "Error: expect(received).toHaveCount(expected)\n    at /work/tests/e2e/orders.spec.ts"
+                  }
+                },
+                {
+                  "workerIndex": 2,
+                  "parallelIndex": 2,
+                  "status": "passed",
+                  "duration": 2520,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 1,
+                  "startTime": "2026-09-14T08:42:02.569000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "flaky"
+            }
+          ],
+          "id": "e2e/profile.spec.ts:40",
+          "file": "e2e/profile.spec.ts",
+          "line": 40,
+          "column": 5
+        },
+        {
+          "title": "deactivates account",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 3,
+                  "parallelIndex": 3,
+                  "status": "failed",
+                  "duration": 6903,
+                  "errors": [
+                    {
+                      "message": "Error: deadlock detected\n  DETAIL: Process 4417 waits for ShareLock on transaction 88213.\n  HINT: See server log for query details.\n\n   at resetFixtures (tests/fixtures/db.ts:81:9)"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:42:03.657000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-3-0/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-3-0/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "Error: deadlock detected\n  DETAIL: Process 4417 waits for ShareLock on transaction 88213.\n  HINT: See server log for query details.\n\n   at resetFixtures (tests/fixtures/db.ts:81:9)",
+                    "stack": "error: deadlock detected\n    at /work/tests/fixtures/db.ts:81:9"
+                  }
+                },
+                {
+                  "workerIndex": 3,
+                  "parallelIndex": 3,
+                  "status": "passed",
+                  "duration": 1337,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 1,
+                  "startTime": "2026-09-14T08:42:05.221000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "flaky"
+            }
+          ],
+          "id": "e2e/profile.spec.ts:62",
+          "file": "e2e/profile.spec.ts",
+          "line": 62,
+          "column": 5
+        },
+        {
+          "title": "renders page shell",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 2,
+                  "parallelIndex": 2,
+                  "status": "passed",
+                  "duration": 1337,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:42:06.573000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e2e/profile.spec.ts:8",
+          "file": "e2e/profile.spec.ts",
+          "line": 8,
+          "column": 5
+        }
+      ]
+    },
+    {
+      "title": "e2e/admin.spec.ts",
+      "file": "e2e/admin.spec.ts",
+      "line": 0,
+      "column": 0,
+      "specs": [
+        {
+          "title": "admin can suspend a user",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 7,
+                  "parallelIndex": 3,
+                  "status": "failed",
+                  "duration": 30001,
+                  "errors": [
+                    {
+                      "message": "Error: beforeAll hook timeout of 30000ms exceeded.\n\n  connect ETIMEDOUT 10.42.7.19:8443\n   at loginAsAdmin (tests/fixtures/auth.ts:22:18)\n   at /work/tests/e2e/admin.spec.ts:9:3"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:42:07.488000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-7-0/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-7-0/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "Error: beforeAll hook timeout of 30000ms exceeded.\n\n  connect ETIMEDOUT 10.42.7.19:8443\n   at loginAsAdmin (tests/fixtures/auth.ts:22:18)\n   at /work/tests/e2e/admin.spec.ts:9:3",
+                    "stack": "Error: connect ETIMEDOUT 10.42.7.19:8443\n    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1595:16)\n    at loginAsAdmin (/work/tests/fixtures/auth.ts:22:18)"
+                  }
+                },
+                {
+                  "workerIndex": 7,
+                  "parallelIndex": 3,
+                  "status": "failed",
+                  "duration": 30001,
+                  "errors": [
+                    {
+                      "message": "Error: beforeAll hook timeout of 30000ms exceeded.\n\n  connect ETIMEDOUT 10.42.7.19:8443\n   at loginAsAdmin (tests/fixtures/auth.ts:22:18)\n   at /work/tests/e2e/admin.spec.ts:9:3"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 1,
+                  "startTime": "2026-09-14T08:42:09.503000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-7-1/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-7-1/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "Error: beforeAll hook timeout of 30000ms exceeded.\n\n  connect ETIMEDOUT 10.42.7.19:8443\n   at loginAsAdmin (tests/fixtures/auth.ts:22:18)\n   at /work/tests/e2e/admin.spec.ts:9:3",
+                    "stack": "Error: connect ETIMEDOUT 10.42.7.19:8443\n    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1595:16)\n    at loginAsAdmin (/work/tests/fixtures/auth.ts:22:18)"
+                  }
+                },
+                {
+                  "workerIndex": 7,
+                  "parallelIndex": 3,
+                  "status": "failed",
+                  "duration": 30001,
+                  "errors": [
+                    {
+                      "message": "Error: beforeAll hook timeout of 30000ms exceeded.\n\n  connect ETIMEDOUT 10.42.7.19:8443\n   at loginAsAdmin (tests/fixtures/auth.ts:22:18)\n   at /work/tests/e2e/admin.spec.ts:9:3"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 2,
+                  "startTime": "2026-09-14T08:42:11.846000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-7-2/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-7-2/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "Error: beforeAll hook timeout of 30000ms exceeded.\n\n  connect ETIMEDOUT 10.42.7.19:8443\n   at loginAsAdmin (tests/fixtures/auth.ts:22:18)\n   at /work/tests/e2e/admin.spec.ts:9:3",
+                    "stack": "Error: connect ETIMEDOUT 10.42.7.19:8443\n    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1595:16)\n    at loginAsAdmin (/work/tests/fixtures/auth.ts:22:18)"
+                  }
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "e2e/admin.spec.ts:14",
+          "file": "e2e/admin.spec.ts",
+          "line": 14,
+          "column": 5
+        },
+        {
+          "title": "admin can export audit log",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 7,
+                  "parallelIndex": 3,
+                  "status": "failed",
+                  "duration": 30001,
+                  "errors": [
+                    {
+                      "message": "Error: beforeAll hook timeout of 30000ms exceeded.\n\n  connect ETIMEDOUT 10.42.7.19:8443\n   at loginAsAdmin (tests/fixtures/auth.ts:22:18)\n   at /work/tests/e2e/admin.spec.ts:9:3"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:42:13.220000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-7-0/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-7-0/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "Error: beforeAll hook timeout of 30000ms exceeded.\n\n  connect ETIMEDOUT 10.42.7.19:8443\n   at loginAsAdmin (tests/fixtures/auth.ts:22:18)\n   at /work/tests/e2e/admin.spec.ts:9:3",
+                    "stack": "Error: connect ETIMEDOUT 10.42.7.19:8443\n    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1595:16)\n    at loginAsAdmin (/work/tests/fixtures/auth.ts:22:18)"
+                  }
+                },
+                {
+                  "workerIndex": 7,
+                  "parallelIndex": 3,
+                  "status": "failed",
+                  "duration": 30001,
+                  "errors": [
+                    {
+                      "message": "Error: beforeAll hook timeout of 30000ms exceeded.\n\n  connect ETIMEDOUT 10.42.7.19:8443\n   at loginAsAdmin (tests/fixtures/auth.ts:22:18)\n   at /work/tests/e2e/admin.spec.ts:9:3"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 1,
+                  "startTime": "2026-09-14T08:42:14.280000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-7-1/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-7-1/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "Error: beforeAll hook timeout of 30000ms exceeded.\n\n  connect ETIMEDOUT 10.42.7.19:8443\n   at loginAsAdmin (tests/fixtures/auth.ts:22:18)\n   at /work/tests/e2e/admin.spec.ts:9:3",
+                    "stack": "Error: connect ETIMEDOUT 10.42.7.19:8443\n    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1595:16)\n    at loginAsAdmin (/work/tests/fixtures/auth.ts:22:18)"
+                  }
+                },
+                {
+                  "workerIndex": 7,
+                  "parallelIndex": 3,
+                  "status": "failed",
+                  "duration": 30001,
+                  "errors": [
+                    {
+                      "message": "Error: beforeAll hook timeout of 30000ms exceeded.\n\n  connect ETIMEDOUT 10.42.7.19:8443\n   at loginAsAdmin (tests/fixtures/auth.ts:22:18)\n   at /work/tests/e2e/admin.spec.ts:9:3"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 2,
+                  "startTime": "2026-09-14T08:42:15.215000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-7-2/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-7-2/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "Error: beforeAll hook timeout of 30000ms exceeded.\n\n  connect ETIMEDOUT 10.42.7.19:8443\n   at loginAsAdmin (tests/fixtures/auth.ts:22:18)\n   at /work/tests/e2e/admin.spec.ts:9:3",
+                    "stack": "Error: connect ETIMEDOUT 10.42.7.19:8443\n    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1595:16)\n    at loginAsAdmin (/work/tests/fixtures/auth.ts:22:18)"
+                  }
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "e2e/admin.spec.ts:31",
+          "file": "e2e/admin.spec.ts",
+          "line": 31,
+          "column": 5
+        },
+        {
+          "title": "admin sees role matrix",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 7,
+                  "parallelIndex": 3,
+                  "status": "failed",
+                  "duration": 30001,
+                  "errors": [
+                    {
+                      "message": "Error: beforeAll hook timeout of 30000ms exceeded.\n\n  connect ETIMEDOUT 10.42.7.19:8443\n   at loginAsAdmin (tests/fixtures/auth.ts:22:18)\n   at /work/tests/e2e/admin.spec.ts:9:3"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:42:15.985000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-7-0/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-7-0/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "Error: beforeAll hook timeout of 30000ms exceeded.\n\n  connect ETIMEDOUT 10.42.7.19:8443\n   at loginAsAdmin (tests/fixtures/auth.ts:22:18)\n   at /work/tests/e2e/admin.spec.ts:9:3",
+                    "stack": "Error: connect ETIMEDOUT 10.42.7.19:8443\n    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1595:16)\n    at loginAsAdmin (/work/tests/fixtures/auth.ts:22:18)"
+                  }
+                },
+                {
+                  "workerIndex": 7,
+                  "parallelIndex": 3,
+                  "status": "failed",
+                  "duration": 30001,
+                  "errors": [
+                    {
+                      "message": "Error: beforeAll hook timeout of 30000ms exceeded.\n\n  connect ETIMEDOUT 10.42.7.19:8443\n   at loginAsAdmin (tests/fixtures/auth.ts:22:18)\n   at /work/tests/e2e/admin.spec.ts:9:3"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 1,
+                  "startTime": "2026-09-14T08:42:16.804000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-7-1/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-7-1/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "Error: beforeAll hook timeout of 30000ms exceeded.\n\n  connect ETIMEDOUT 10.42.7.19:8443\n   at loginAsAdmin (tests/fixtures/auth.ts:22:18)\n   at /work/tests/e2e/admin.spec.ts:9:3",
+                    "stack": "Error: connect ETIMEDOUT 10.42.7.19:8443\n    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1595:16)\n    at loginAsAdmin (/work/tests/fixtures/auth.ts:22:18)"
+                  }
+                },
+                {
+                  "workerIndex": 7,
+                  "parallelIndex": 3,
+                  "status": "failed",
+                  "duration": 30001,
+                  "errors": [
+                    {
+                      "message": "Error: beforeAll hook timeout of 30000ms exceeded.\n\n  connect ETIMEDOUT 10.42.7.19:8443\n   at loginAsAdmin (tests/fixtures/auth.ts:22:18)\n   at /work/tests/e2e/admin.spec.ts:9:3"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 2,
+                  "startTime": "2026-09-14T08:42:18.777000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-7-2/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-7-2/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "Error: beforeAll hook timeout of 30000ms exceeded.\n\n  connect ETIMEDOUT 10.42.7.19:8443\n   at loginAsAdmin (tests/fixtures/auth.ts:22:18)\n   at /work/tests/e2e/admin.spec.ts:9:3",
+                    "stack": "Error: connect ETIMEDOUT 10.42.7.19:8443\n    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1595:16)\n    at loginAsAdmin (/work/tests/fixtures/auth.ts:22:18)"
+                  }
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "e2e/admin.spec.ts:48",
+          "file": "e2e/admin.spec.ts",
+          "line": 48,
+          "column": 5
+        },
+        {
+          "title": "admin bulk-assigns permissions",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 7,
+                  "parallelIndex": 3,
+                  "status": "failed",
+                  "duration": 30001,
+                  "errors": [
+                    {
+                      "message": "Error: beforeAll hook timeout of 30000ms exceeded.\n\n  connect ETIMEDOUT 10.42.7.19:8443\n   at loginAsAdmin (tests/fixtures/auth.ts:22:18)\n   at /work/tests/e2e/admin.spec.ts:9:3"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:42:21.367000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-7-0/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-7-0/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "Error: beforeAll hook timeout of 30000ms exceeded.\n\n  connect ETIMEDOUT 10.42.7.19:8443\n   at loginAsAdmin (tests/fixtures/auth.ts:22:18)\n   at /work/tests/e2e/admin.spec.ts:9:3",
+                    "stack": "Error: connect ETIMEDOUT 10.42.7.19:8443\n    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1595:16)\n    at loginAsAdmin (/work/tests/fixtures/auth.ts:22:18)"
+                  }
+                },
+                {
+                  "workerIndex": 7,
+                  "parallelIndex": 3,
+                  "status": "failed",
+                  "duration": 30001,
+                  "errors": [
+                    {
+                      "message": "Error: beforeAll hook timeout of 30000ms exceeded.\n\n  connect ETIMEDOUT 10.42.7.19:8443\n   at loginAsAdmin (tests/fixtures/auth.ts:22:18)\n   at /work/tests/e2e/admin.spec.ts:9:3"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 1,
+                  "startTime": "2026-09-14T08:42:23.449000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-7-1/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-7-1/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "Error: beforeAll hook timeout of 30000ms exceeded.\n\n  connect ETIMEDOUT 10.42.7.19:8443\n   at loginAsAdmin (tests/fixtures/auth.ts:22:18)\n   at /work/tests/e2e/admin.spec.ts:9:3",
+                    "stack": "Error: connect ETIMEDOUT 10.42.7.19:8443\n    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1595:16)\n    at loginAsAdmin (/work/tests/fixtures/auth.ts:22:18)"
+                  }
+                },
+                {
+                  "workerIndex": 7,
+                  "parallelIndex": 3,
+                  "status": "failed",
+                  "duration": 30001,
+                  "errors": [
+                    {
+                      "message": "Error: beforeAll hook timeout of 30000ms exceeded.\n\n  connect ETIMEDOUT 10.42.7.19:8443\n   at loginAsAdmin (tests/fixtures/auth.ts:22:18)\n   at /work/tests/e2e/admin.spec.ts:9:3"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 2,
+                  "startTime": "2026-09-14T08:42:24.143000Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "test-results/failed-7-2/test-failed-1.png"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "test-results/failed-7-2/trace.zip"
+                    }
+                  ],
+                  "error": {
+                    "message": "Error: beforeAll hook timeout of 30000ms exceeded.\n\n  connect ETIMEDOUT 10.42.7.19:8443\n   at loginAsAdmin (tests/fixtures/auth.ts:22:18)\n   at /work/tests/e2e/admin.spec.ts:9:3",
+                    "stack": "Error: connect ETIMEDOUT 10.42.7.19:8443\n    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1595:16)\n    at loginAsAdmin (/work/tests/fixtures/auth.ts:22:18)"
+                  }
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "e2e/admin.spec.ts:66",
+          "file": "e2e/admin.spec.ts",
+          "line": 66,
+          "column": 5
+        }
+      ]
+    },
+    {
+      "title": "e2e/auth.spec.ts",
+      "file": "e2e/auth.spec.ts",
+      "line": 0,
+      "column": 0,
+      "specs": [
+        {
+          "title": "logs in with valid credentials",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1332,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:42:24.828000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e2e/auth.spec.ts:10",
+          "file": "e2e/auth.spec.ts",
+          "line": 10,
+          "column": 5
+        },
+        {
+          "title": "rejects wrong password",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 1,
+                  "parallelIndex": 1,
+                  "status": "passed",
+                  "duration": 2268,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:42:25.592000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e2e/auth.spec.ts:23",
+          "file": "e2e/auth.spec.ts",
+          "line": 23,
+          "column": 5
+        },
+        {
+          "title": "locks after 5 attempts",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 2,
+                  "parallelIndex": 2,
+                  "status": "passed",
+                  "duration": 3027,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:42:27.816000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e2e/auth.spec.ts:36",
+          "file": "e2e/auth.spec.ts",
+          "line": 36,
+          "column": 5
+        },
+        {
+          "title": "resets password by email",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 3,
+                  "parallelIndex": 3,
+                  "status": "passed",
+                  "duration": 926,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:42:28.227000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e2e/auth.spec.ts:49",
+          "file": "e2e/auth.spec.ts",
+          "line": 49,
+          "column": 5
+        },
+        {
+          "title": "honours remember-me",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 4,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 3341,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:42:29.290000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e2e/auth.spec.ts:62",
+          "file": "e2e/auth.spec.ts",
+          "line": 62,
+          "column": 5
+        }
+      ]
+    },
+    {
+      "title": "e2e/search.spec.ts",
+      "file": "e2e/search.spec.ts",
+      "line": 0,
+      "column": 0,
+      "specs": [
+        {
+          "title": "returns results for exact match",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1518,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:42:30.611000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e2e/search.spec.ts:10",
+          "file": "e2e/search.spec.ts",
+          "line": 10,
+          "column": 5
+        },
+        {
+          "title": "handles empty query",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 1,
+                  "parallelIndex": 1,
+                  "status": "passed",
+                  "duration": 1490,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:42:33.142000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e2e/search.spec.ts:23",
+          "file": "e2e/search.spec.ts",
+          "line": 23,
+          "column": 5
+        },
+        {
+          "title": "paginates results",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 2,
+                  "parallelIndex": 2,
+                  "status": "passed",
+                  "duration": 3329,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:42:34.147000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e2e/search.spec.ts:36",
+          "file": "e2e/search.spec.ts",
+          "line": 36,
+          "column": 5
+        },
+        {
+          "title": "filters by category",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 3,
+                  "parallelIndex": 3,
+                  "status": "passed",
+                  "duration": 3160,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:42:35.611000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e2e/search.spec.ts:49",
+          "file": "e2e/search.spec.ts",
+          "line": 49,
+          "column": 5
+        },
+        {
+          "title": "shows no-results state",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 4,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 2791,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:42:37.189000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e2e/search.spec.ts:62",
+          "file": "e2e/search.spec.ts",
+          "line": 62,
+          "column": 5
+        },
+        {
+          "title": "escapes special characters",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 5,
+                  "parallelIndex": 1,
+                  "status": "passed",
+                  "duration": 3220,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:42:37.779000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e2e/search.spec.ts:75",
+          "file": "e2e/search.spec.ts",
+          "line": 75,
+          "column": 5
+        }
+      ]
+    },
+    {
+      "title": "api/health.spec.ts",
+      "file": "api/health.spec.ts",
+      "line": 0,
+      "column": 0,
+      "specs": [
+        {
+          "title": "GET /health returns 200",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 2733,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:42:40.030000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "api/health.spec.ts:10",
+          "file": "api/health.spec.ts",
+          "line": 10,
+          "column": 5
+        },
+        {
+          "title": "GET /ready returns 200",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 1,
+                  "parallelIndex": 1,
+                  "status": "passed",
+                  "duration": 844,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:42:42.059000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "api/health.spec.ts:23",
+          "file": "api/health.spec.ts",
+          "line": 23,
+          "column": 5
+        },
+        {
+          "title": "GET /metrics exposes counters",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 2,
+                  "parallelIndex": 2,
+                  "status": "passed",
+                  "duration": 3019,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:42:42.831000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "api/health.spec.ts:36",
+          "file": "api/health.spec.ts",
+          "line": 36,
+          "column": 5
+        }
+      ]
+    },
+    {
+      "title": "e2e/i18n.spec.ts",
+      "file": "e2e/i18n.spec.ts",
+      "line": 0,
+      "column": 0,
+      "specs": [
+        {
+          "title": "switches to Polish",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1580,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:42:44.494000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e2e/i18n.spec.ts:10",
+          "file": "e2e/i18n.spec.ts",
+          "line": 10,
+          "column": 5
+        },
+        {
+          "title": "switches to Ukrainian",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 1,
+                  "parallelIndex": 1,
+                  "status": "passed",
+                  "duration": 3346,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:42:46.317000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e2e/i18n.spec.ts:23",
+          "file": "e2e/i18n.spec.ts",
+          "line": 23,
+          "column": 5
+        },
+        {
+          "title": "formats dates per locale",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 2,
+                  "parallelIndex": 2,
+                  "status": "passed",
+                  "duration": 2744,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:42:47.958000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e2e/i18n.spec.ts:36",
+          "file": "e2e/i18n.spec.ts",
+          "line": 36,
+          "column": 5
+        },
+        {
+          "title": "falls back to English",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 3,
+                  "parallelIndex": 3,
+                  "status": "passed",
+                  "duration": 596,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-14T08:42:48.567000Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e2e/i18n.spec.ts:49",
+          "file": "e2e/i18n.spec.ts",
+          "line": 49,
+          "column": 5
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-09-14T08:41:12Z",
+    "duration": 412778,
+    "expected": 23,
+    "skipped": 0,
+    "unexpected": 7,
+    "flaky": 12
+  }
+}
