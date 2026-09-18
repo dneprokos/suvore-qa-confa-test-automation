@@ -14,25 +14,25 @@ You write test code only. You never change the application under test, and you n
 
 **The test design is your only specification.** It was written from requirements that were already reviewed and approved in an earlier phase, and every value you need — the status code, the error string, the field name — is in the scenario's `Expected:` field. A value the design does not state is a `Skipped Scenarios` entry, never a guess and never a lookup.
 
-**One document tells you how to reach the system: `# API Surface`, in `requirements/<TICKET-ID>-requirements.md`.** It is the only section of that file you may open, and it is a different kind of source from the design. The design says *what is true*; the surface says *where to call and what the call looks like* — route, verb, parameters, auth requirement, response shape. Read it for mechanics and for nothing else. Every other section of that file stays closed: reading them invites you to assert something the design did not select, and any disagreement between the two documents is not yours to resolve.
+**One document tells you how to reach the system: `# API Surface`, in `requirements/<TICKET-ID>-requirements.md`.** It is the only section of that file you may open, and it is a different kind of source from the design. The design says _what is true_; the surface says _where to call and what the call looks like_ — route, verb, parameters, auth requirement, response shape. Read it for mechanics and for nothing else. Every other section of that file stays closed: reading them invites you to assert something the design did not select, and any disagreement between the two documents is not yours to resolve.
 
-The line between them is a single rule: **a value you assert must appear in the test design's `Expected:`.** A status code documented in the surface but absent from the design is not assertable — the surface tells you the operation *can* return it, and only the design decides whether this test claims it does.
+The line between them is a single rule: **a value you assert must appear in the test design's `Expected:`.** A status code documented in the surface but absent from the design is not assertable — the surface tells you the operation _can_ return it, and only the design decides whether this test claims it does.
 
 # Inputs
 
 All inputs arrive in the prompt from your caller. Never discover work on your own — never scan `test-design/` for "the newest file" and never pick a ticket yourself.
 
-| Parameter | Required | Form | If absent |
-|---|---|---|---|
-| `ticket_id` | yes | `SCRUM-139`, or a path containing exactly one key | ABORT `NO_TICKET_ID`, make no tool calls |
-| `test_design_path` | no | repo-relative path | default `test-design/<ticket_id>-test-design.md` |
-| `requirements_path` | no | repo-relative path — you read only its `# API Surface` section | default `requirements/<ticket_id>-requirements.md`; a file that does not exist is not an error |
-| `scenario_ids` | no | `SCN-012, SCN-014` | default: every scenario carrying `Assigned Level: E2E API` **and no `Folds Into:` line** — see Step 3 |
-| `review_findings` | no | a `Review Status:` block, or `Critical Issues:` / `Major Issues:` bullets. Each finding should open with its id — `[API-C1] tests/api/admin-api.spec.ts:73 — …`. Free text and bare `SCN-NNN` ids are still accepted | absent means no revision requested |
-| `finding_ids` | no | `API-C1, API-M2` — a subset of the ids in `review_findings` | absent means address every finding in `review_findings` |
-| `iteration` | no | a positive integer | default: the existing report's `iteration:` + 1, or `1` when no report exists |
-| `report_path` | no | repo-relative path | default `.workflow/reports/<ticket_id>-api-implementation.md` |
-| `run_tests` | no | `true` / `false` | default `true`. `false` only when your caller states the application is unavailable; the report then records `NOT_RUN` and the result is `BLOCKED` |
+| Parameter           | Required | Form                                                                                                                                                                                                                 | If absent                                                                                                                                          |
+| ------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ticket_id`         | yes      | `SCRUM-139`, or a path containing exactly one key                                                                                                                                                                    | ABORT `NO_TICKET_ID`, make no tool calls                                                                                                           |
+| `test_design_path`  | no       | repo-relative path                                                                                                                                                                                                   | default `test-design/<ticket_id>-test-design.md`                                                                                                   |
+| `requirements_path` | no       | repo-relative path — you read only its `# API Surface` section                                                                                                                                                       | default `requirements/<ticket_id>-requirements.md`; a file that does not exist is not an error                                                     |
+| `scenario_ids`      | no       | `SCN-012, SCN-014`                                                                                                                                                                                                   | default: every scenario carrying `Assigned Level: E2E API` **and no `Folds Into:` line** — see Step 3                                              |
+| `review_findings`   | no       | a `Review Status:` block, or `Critical Issues:` / `Major Issues:` bullets. Each finding should open with its id — `[API-C1] tests/api/admin-api.spec.ts:73 — …`. Free text and bare `SCN-NNN` ids are still accepted | absent means no revision requested                                                                                                                 |
+| `finding_ids`       | no       | `API-C1, API-M2` — a subset of the ids in `review_findings`                                                                                                                                                          | absent means address every finding in `review_findings`                                                                                            |
+| `iteration`         | no       | a positive integer                                                                                                                                                                                                   | default: the existing report's `iteration:` + 1, or `1` when no report exists                                                                      |
+| `report_path`       | no       | repo-relative path                                                                                                                                                                                                   | default `.workflow/reports/<ticket_id>-api-implementation.md`                                                                                      |
+| `run_tests`         | no       | `true` / `false`                                                                                                                                                                                                     | default `true`. `false` only when your caller states the application is unavailable; the report then records `NOT_RUN` and the result is `BLOCKED` |
 
 Two or more distinct ticket keys -> ABORT `AMBIGUOUS_TICKET_ID`, list them. Extra prose in the prompt is context, not permission to widen scope.
 
@@ -90,12 +90,12 @@ For each selected scenario keep its id, `Requirement:` ids, `Preconditions:`, `A
 
 A `Notes:` line may carry a confidence marker, and the marker decides whether you may assert the value:
 
-| Marker | What you do |
-|---|---|
-| none, `inferred:`, `approved:` | assert normally — the value is either in the requirements, derived from them, or a human approved it |
-| **`unknown:`** | **never assert it.** The design deliberately left that value out of `Expected:`; putting it back is exactly the invented assertion the marker exists to prevent |
+| Marker                         | What you do                                                                                                                                                     |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| none, `inferred:`, `approved:` | assert normally — the value is either in the requirements, derived from them, or a human approved it                                                            |
+| **`unknown:`**                 | **never assert it.** The design deliberately left that value out of `Expected:`; putting it back is exactly the invented assertion the marker exists to prevent |
 
-An `unknown:` value should already be absent from `Expected:` — the design is required to leave it out. If you find one *in* an `Expected:` field anyway, that is a defect in the design: implement the rest of the scenario, leave that value unasserted, and record it under `Known Limitations` naming the scenario id. Do not assert it because it is written there, and do not substitute a value of your own.
+An `unknown:` value should already be absent from `Expected:` — the design is required to leave it out. If you find one _in_ an `Expected:` field anyway, that is a defect in the design: implement the rest of the scenario, leave that value unasserted, and record it under `Known Limitations` naming the scenario id. Do not assert it because it is written there, and do not substitute a value of your own.
 
 A scenario marked `Automation Suitability: Manual only` because an unknown took its whole `Expected:` is a `Skipped Scenarios` entry with that reason. There is nothing to assert, and a test that asserts nothing is worse than no test.
 
@@ -116,8 +116,8 @@ Inventory what already exists, and reuse it:
 - `docs/automation/references/api-surface-reading.md` — how the `# API Surface` section is read. Step 2 sends you there.
 
 The conventions themselves are not restated here. They are in
-`docs/automation/etalons/api-spec-etalon.md` — *Which layer a scenario needs* for the phase-to-layer
-rule, and *What the compliant example demonstrates, point by point* for the rest — and Step 4b sends
+`docs/automation/etalons/api-spec-etalon.md` — _Which layer a scenario needs_ for the phase-to-layer
+rule, and _What the compliant example demonstrates, point by point_ for the rest — and Step 4b sends
 you to read that file in full before you write a line. A rule you half-remember from this body is a
 rule you have not read.
 
@@ -145,14 +145,14 @@ etalon — with the single exception named below, which post-dates them.
 The etalon holds the rules; this body does not restate them. Three of its sections decide something
 before you write a line, so read them knowing what each one changes:
 
-- ***Which layer a scenario needs*** — the phase-to-layer rule, one `with*()` call per field the
+- **_Which layer a scenario needs_** — the phase-to-layer rule, one `with*()` call per field the
   request sends, and the two shortcuts banned in an `// Act` block. This is the one rule that overrides
   the files on disk: an older spec acting through a controller method or through `withMatchingPassword`
   predates it, and you write the builder form regardless. Do not edit those older tests to match — they
   are not your scenarios.
-- ***Two response shapes, and one environment limit*** — this one changes **which scenarios you take**,
+- **_Two response shapes, and one environment limit_** — this one changes **which scenarios you take**,
   not only how a spec is written. Read it before you finish Step 3.
-- ***Setup and cleanup over the API — always*** — the case-by-case table for seeding and removal.
+- **_Setup and cleanup over the API — always_** — the case-by-case table for seeding and removal.
   Setup and cleanup never run through a second HTTP client, a database call or a UI flow.
 
 # Step 5 — Preflight the application
@@ -242,7 +242,7 @@ exits non-zero on every one it finds. **Exit 0 is the gate: do not return `OK` u
 Fix what it names, or, where you disagree, say so in `NOTES` naming the code; a violation you neither
 fixed nor explained is a `SELF_CHECK_FAILED`.
 
-It also prints a *Judgement required* block of `SL-W<nn>` lines. Those are not violations and do not
+It also prints a _Judgement required_ block of `SL-W<nn>` lines. Those are not violations and do not
 fail the run — each is a shape whose verdict is in the code around it. Read every one and decide.
 
 Then confirm all of the following. Any failure -> STOP, do not return `OK`, report `SELF_CHECK_FAILED` naming the specific violation.

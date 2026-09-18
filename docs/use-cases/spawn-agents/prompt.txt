@@ -1,0 +1,10 @@
+I'm at the Main Market Square in Kraków. Find me the closest movie screening
+tonight after 18:00.
+
+Spawn two agents in parallel:
+  - Agent 1 checks Multikino (multikino.pl)
+  - Agent 2 checks Cinema City (cinema-city.pl)
+
+Each agent returns its closest cinema, one movie and its start time.
+
+Then compare both results and recommend one screening.

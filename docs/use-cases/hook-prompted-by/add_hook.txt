@@ -1,0 +1,11 @@
+"Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 5,
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/prompted-by.mjs\""
+          }
+        ]
+      }
+    ]
