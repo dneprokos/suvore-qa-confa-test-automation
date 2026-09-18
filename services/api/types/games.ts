@@ -53,3 +53,18 @@ export type GameErrorResponse = {
   message: string;
   errors?: { msg: string; path?: string }[];
 };
+
+/**
+ * `GET /api/games/{id}`'s 200 body (# API Surface documents no schema for
+ * it). Confirmed against a live response for SCRUM-115: wrapped in `game`,
+ * unlike `ListGamesResponse`'s flat array, and `createdBy` is the creator's
+ * `{ _id, email }` (or `null` when none is recorded), not a bare e-mail
+ * string - the list/create shapes above carry no `createdBy` at all.
+ */
+export type GameDetailResponse = {
+  game: Game & {
+    createdBy: { _id: string; email: string } | null;
+    createdAt: string;
+    updatedAt: string;
+  };
+};

@@ -17,8 +17,30 @@ export class GameTestData {
   // driftable literal.
   static readonly DEFAULT_GENRE = "Action";
   static readonly DEFAULT_PLATFORM = "PC";
+  /**
+   * A second, distinct valid platform value - used where a scenario needs a
+   * platforms array of two or more entries (SCRUM-115 SCN-001). Confirmed
+   * against `# API Surface`'s documented `POST /api/games` platforms enum.
+   */
+  static readonly DEFAULT_SECOND_PLATFORM = "PlayStation";
   static readonly DEFAULT_RELEASE_YEAR = "1990";
   static readonly DEFAULT_HAS_MULTIPLAYER = true;
+
+  /** Calendar month names, index 0 = January - backs `formattedReleaseDate` below. */
+  private static readonly MONTH_NAMES = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ];
 
   // A conservatively large batch - well past any plausible public-listing page
   // size - used to seed a catalogue that exceeds it without needing the exact
@@ -51,6 +73,13 @@ export class GameTestData {
 
   /** A term that matches every name once interpolated into a regex unescaped. */
   static readonly REGEX_WILDCARD_SEARCH_TERM = ".*";
+
+  /**
+   * A `GET /api/games/<id>` path id that is not a valid Mongo ObjectId
+   * shape - the requirements' own example for the malformed-id case
+   * (FR-05.17 / SCRUM-115 SCN-009).
+   */
+  static readonly MALFORMED_GAME_ID = "not-an-id";
 
   /**
    * A token unique to one test run and free of regex metacharacters, so a
@@ -95,6 +124,19 @@ export class GameTestData {
     return this.createSearchSeedPayload(nameToken, {
       description: `Seeded by the API automation suite. ${descriptionToken}`,
     });
+  }
+
+  /**
+   * Formats an ISO `YYYY-MM-DD` release date per the detail page's stated
+   * `<Month> <D>, <YYYY>` pattern (SCRUM-115 SCN-001/SCN-011's `Expected:`),
+   * so a spec asserts the Released field against the exact value it sent
+   * instead of re-typing the pattern. Parses the parts directly rather than
+   * through `Date`, so no local timezone can shift the day across a UTC
+   * midnight boundary.
+   */
+  static formattedReleaseDate(releaseDate: string): string {
+    const [year, month, day] = releaseDate.split("-").map(Number);
+    return `${this.MONTH_NAMES[month - 1]} ${day}, ${year}`;
   }
 
   static uniqueGameName(): string {

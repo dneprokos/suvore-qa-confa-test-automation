@@ -5,6 +5,7 @@ import {
   CreateGameRequest,
   CreateGameResponse,
   DeleteGameResponse,
+  GameDetailResponse,
   GameErrorResponse,
   ListGamesResponse,
 } from "@services/api/types/games";
@@ -17,6 +18,9 @@ export type DeleteGameApiResult = ApiResult<
 >;
 export type ListGamesApiResult = ApiResult<
   ListGamesResponse | GameErrorResponse
+>;
+export type GetGameApiResult = ApiResult<
+  GameDetailResponse | GameErrorResponse
 >;
 
 /**
@@ -166,6 +170,15 @@ export class GamesRequestBuilder {
     });
 
     return toApiResult<ListGamesResponse | GameErrorResponse>(response);
+  }
+
+  /** GET /api/games/{id} - no auth required (# API Surface). */
+  async sendGetGame(id: string): Promise<GetGameApiResult> {
+    const response = await this.request.get(Endpoints.games.byId(id), {
+      headers: this.headers,
+    });
+
+    return toApiResult<GameDetailResponse | GameErrorResponse>(response);
   }
 
   // #endregion
