@@ -1,0 +1,11 @@
+[
+  { "query": "Improve the README for this repo", "should_trigger": true },
+  { "query": "our README is a mess, can you rewrite it with proper setup steps?", "should_trigger": true },
+  { "query": "add a couple of badges to the readme", "should_trigger": true },
+  { "query": "generate a README.md for this little CLI", "should_trigger": true },
+  { "query": "write a CHANGELOG entry for the 1.4.0 release", "should_trigger": false },
+  { "query": "draft release notes for v2", "should_trigger": false },
+  { "query": "generate API reference docs from the TypeScript types", "should_trigger": false },
+  { "query": "set up a GitHub Actions workflow that runs the tests", "should_trigger": false },
+  { "query": "add JSDoc comments to services/api", "should_trigger": false }
+]

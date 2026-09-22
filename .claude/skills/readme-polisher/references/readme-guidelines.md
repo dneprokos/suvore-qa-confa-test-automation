@@ -17,7 +17,7 @@ A practical order for most repositories is:
 1. **Title + summary** — what the project is and why it exists
 2. **Badges** — only if they communicate something real
 3. **Overview** — a short description of the project or problem space
-4. **Getting Started** — install and run instructions
+4. **Getting Started** — prerequisites, install, configuration, run
 5. **Usage or examples** — the most common workflow
 6. **Project Map** — useful when the repo has several folders or packages
 7. **Contributing** — include only when contributions are welcome
@@ -44,6 +44,9 @@ Focus on installation, a minimal example, and public entry points.
 
 ### App or service
 Explain configuration, environment variables, and how to launch it locally.
+List configuration variables by name, from `.env.example` or the config
+schema. Say which are required, and say where the real values go
+(for example "copy `.env.example` to `.env`"). Never include a secret value.
 
 ### Small utility or script
 Keep the README compact. A short overview and one usage block may be enough.

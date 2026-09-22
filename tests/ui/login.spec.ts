@@ -3,6 +3,7 @@ import { Config } from "@framework/configuration/config";
 import { AuthTestData } from "@utils/test-data/auth-test-data";
 
 test.describe("Login feature", () => {
+  // SCN-004
   test("Login as owner - Should be able to login with valid credentials", async ({
     page,
     loginPage,
@@ -23,6 +24,7 @@ test.describe("Login feature", () => {
     await expect(homePage.navigation).toContainText("Admin");
   });
 
+  // SCN-005
   test("Login as owner - Should display error message with invalid credentials", async ({
     page,
     loginPage,

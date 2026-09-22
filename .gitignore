@@ -58,3 +58,6 @@ Thumbs.db
 # means a second machine refiles every bug the first machine filed.
 /.slack-triage/runs/
 /.slack-triage/*.bak
+
+# readme-polisher eval fixture: fake canary credentials, deliberately committed
+!.claude/skills/readme-polisher/evals/files/node-service/.env
