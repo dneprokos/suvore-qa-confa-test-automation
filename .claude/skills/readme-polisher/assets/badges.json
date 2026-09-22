@@ -11,6 +11,9 @@
   "rules": [
     "Use only badges backed by confirmed repo metadata.",
     "Prefer a small, consistent set over a crowded badge row.",
-    "Skip package badges if the project is not published."
+    "Skip package badges if the project is not published.",
+    "Take {{OWNER}}/{{REPO}} only from the scan's github field, and only when github.isGitRoot is true.",
+    "Skip GitHub badges for private repositories: shields.io cannot read them.",
+    "Skip the npm badge when package.json has \"private\": true."
   ]
 }

@@ -1,6 +1,6 @@
 # README Polisher
 
-A GitHub Copilot skill for drafting or refreshing project `README.md` files from real repository evidence.
+A skill (Claude Code, also usable from Copilot/Cursor skill folders) for drafting or refreshing project `README.md` files from real repository evidence.
 
 ## What it does
 
@@ -13,7 +13,7 @@ A GitHub Copilot skill for drafting or refreshing project `README.md` files from
 ## Folder Layout
 
 ```text
-.github/skills/readme-polisher/
+<skills-dir>/readme-polisher/          # e.g. .claude/skills/
 ├── SKILL.md
 ├── README.md
 ├── assets/
@@ -21,7 +21,9 @@ A GitHub Copilot skill for drafting or refreshing project `README.md` files from
 │   ├── diagram-ideas.md
 │   └── readme-template.md
 ├── evals/
-│   └── evals.json
+│   ├── evals.json
+│   ├── trigger-evals.json   # should/should-not trigger queries for the description
+│   └── files/               # fixture repositories the evals run against
 ├── references/
 │   └── readme-guidelines.md
 └── scripts/
@@ -36,6 +38,6 @@ Improve the README for this project using the readme-polisher skill. Inspect the
 
 ## Notes
 
-- The bundled scan script is PowerShell-based, which makes it convenient on Windows.
+- The bundled scan script runs on PowerShell 7 (`pwsh`) or Windows PowerShell 5.1. It skips git-ignored files, reads the GitHub owner/repo from `origin`, and reads only variable names from `.env.example`.
 - The template is meant to be adapted, not pasted blindly.
-- The evals file gives a lightweight checklist for judging output quality.
+- `evals/evals.json` follows the skill-creator schema. Each eval points at a fixture repo under `evals/files/`.

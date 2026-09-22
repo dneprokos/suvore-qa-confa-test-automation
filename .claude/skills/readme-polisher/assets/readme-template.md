@@ -24,6 +24,16 @@
 {{INSTALL_COMMANDS}}
 ```
 
+### Configuration
+
+{{CONFIG_SOURCE}}
+
+| Variable | Required | Purpose |
+|---|---|---|
+{{CONFIG_ROWS}}
+
+<!-- Names only. Never paste a value from .env; default values from .env.example are fine only for non-secret keys. -->
+
 ### Run
 
 ```bash

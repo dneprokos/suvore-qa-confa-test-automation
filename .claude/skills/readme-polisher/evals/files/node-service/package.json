@@ -1,0 +1,14 @@
+{
+  "name": "order-webhook-relay",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Receives shop order webhooks and forwards them to the fulfilment API.",
+  "main": "src/server.js",
+  "license": "ISC",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "migrate": "node src/migrate.js",
+    "test": "node --test"
+  }
+}

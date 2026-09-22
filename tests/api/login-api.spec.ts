@@ -5,6 +5,7 @@ import { ResponsePatterns } from "@utils/response-patterns";
 import { AuthTestData } from "@utils/test-data/auth-test-data";
 
 test.describe("POST /api/auth/login", () => {
+  // SCN-001
   test("Login as owner - Should be able to login with valid credentials", async ({
     api,
   }) => {
@@ -39,6 +40,7 @@ test.describe("POST /api/auth/login", () => {
     expect(body.user.createdAt).toMatch(ResponsePatterns.ISO_DATE);
   });
 
+  // SCN-002
   test("Login as owner - Should reject invalid credentials", async ({ api }) => {
     // Arrange
     const userEmail = Config.OWNER_EMAIL;
@@ -59,6 +61,7 @@ test.describe("POST /api/auth/login", () => {
     expect(result.body).not.toHaveProperty("token");
   });
 
+  // SCN-003
   test("Login - Should reject a request without a password", async ({
     api,
   }) => {
