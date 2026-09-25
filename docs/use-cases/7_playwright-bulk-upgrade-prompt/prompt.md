@@ -1,3 +1,6 @@
+# Playwright bulk upgrade — one pull request per repository
+
+```text
 Goal: bring every one of my GitHub repositories that uses Playwright up to the
 latest stable Playwright version, one pull request per repository.
 
@@ -61,3 +64,4 @@ Step 4 - Report
   List every pull request link. Then list the skipped repositories and why
   each was skipped: already up to date, open PR exists, fork or archived,
   or not an npm project.
+```

@@ -1,3 +1,8 @@
+# Hook — run `prompted-by.mjs` when Claude stops
+
+Entry for the `hooks` object in a Claude Code settings file:
+
+```json
 "Stop": [
       {
         "hooks": [
@@ -9,3 +14,4 @@
         ]
       }
     ]
+```
