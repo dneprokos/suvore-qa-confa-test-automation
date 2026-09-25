@@ -1,3 +1,8 @@
+# Build a sub-agent — flaky-test-hunter
+
+Agent definition, saved as `.claude/agents/flaky-test-hunter.md`:
+
+```markdown
 ---
 name: flaky-test-hunter
 description: Triages a failed CI run. Groups failures by root cause rather than by
@@ -43,3 +48,4 @@ INVESTIGATE if you cannot classify a group with confidence.
 
 No preamble, no summary paragraph, no per-test listing. If you are guessing at a
 root cause, say so inline: "(low confidence)".
+```

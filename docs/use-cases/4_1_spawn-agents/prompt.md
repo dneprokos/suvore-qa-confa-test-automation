@@ -1,3 +1,6 @@
+# Spawn agents in parallel — closest movie screening
+
+```text
 I'm at the Main Market Square in Kraków. Find me the closest movie screening
 tonight after 18:00.
 
@@ -8,3 +11,4 @@ Spawn two agents in parallel:
 Each agent returns its closest cinema, one movie and its start time.
 
 Then compare both results and recommend one screening.
+```

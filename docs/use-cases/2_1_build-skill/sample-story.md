@@ -1,10 +1,11 @@
-Story: Owner adds a new admin
+# Story: Owner adds a new admin
 
 As the portal owner
 I want to add a new admin account
 So that someone else can help me manage the game catalogue
 
-Acceptance criteria:
+## Acceptance criteria
+
 1. The owner can create an admin by entering an email, a password and a password confirmation.
 2. An admin with an email that already exists cannot be created.
 3. The password must be at least 8 characters long.
