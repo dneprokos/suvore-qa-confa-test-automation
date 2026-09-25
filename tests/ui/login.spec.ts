@@ -18,10 +18,10 @@ test.describe("Login feature", () => {
 
     // Assert
     await expect(page).toHaveURL("/");
-    await expect(homePage.navigation).toContainText(userEmail);
-    await expect(homePage.logoutButton).toBeVisible();
-    await expect(homePage.navigation).toContainText("Owner");
-    await expect(homePage.navigation).toContainText("Admin");
+    await expect.soft(homePage.navigation).toContainText(userEmail);
+    await expect.soft(homePage.logoutButton).toBeVisible();
+    await expect.soft(homePage.navigation).toContainText("Owner");
+    await expect.soft(homePage.navigation).toContainText("Admin");
   });
 
   // SCN-005

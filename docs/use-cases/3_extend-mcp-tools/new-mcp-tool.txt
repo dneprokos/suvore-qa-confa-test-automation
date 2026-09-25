@@ -1,0 +1,105 @@
+# Fields for neighbor records returned by /borders/{code}.
+BORDER_FIELDS = ",".join([
+    "names.common",
+    "capitals",
+    "population",
+    "flag",
+    "codes",
+])
+
+
+@mcp.tool()
+def get_country_borders(country_name: str) -> str:
+    """Get the countries that share a land border with the given country.
+
+    Args:
+        country_name: The name of the country to look up (e.g., 'Ukraine', 'Canada')
+
+    Returns:
+        A formatted list of neighboring countries with their capital, population and
+        flag, or a note that the country has no land borders.
+    """
+    if not country_name or not country_name.strip():
+        return "Error: country_name parameter is required"
+
+    api_key = os.getenv("RESTCOUNTRIES_API_KEY", "").strip() or DEMO_API_KEY
+    headers = {"Authorization": f"Bearer {api_key}"}
+
+    try:
+        with httpx.Client(timeout=REQUEST_TIMEOUT, follow_redirects=True) as client:
+            # /borders needs an alpha-3 code, and answers an unknown code with an
+            # empty list, so resolve the name first to tell "island" from "typo".
+            lookup = client.get(
+                f"{API_BASE}/name",
+                params={"q": country_name.strip(), "response_fields": "names,codes,flag"},
+                headers=headers,
+            )
+            try:
+                lookup_payload = lookup.json()
+            except ValueError:
+                return f"Error: Unexpected non-JSON response (HTTP {lookup.status_code})"
+
+            if lookup.status_code != 200:
+                return _error_for_status(lookup.status_code, lookup_payload)
+
+            matches = lookup_payload.get("data", {}).get("objects", [])
+            if not matches:
+                return f"Error: Country '{country_name}' not found"
+
+            country = _best_match(matches, country_name)
+            name = country.get("names", {}).get("common", country_name)
+            alpha_3 = (country.get("codes") or {}).get("alpha_3")
+            if not alpha_3:
+                return f"Error: No country code available for '{name}'"
+
+            response = client.get(
+                f"{API_BASE}/borders/{alpha_3}",
+                params={"response_fields": BORDER_FIELDS},
+                headers=headers,
+            )
+            try:
+                payload = response.json()
+            except ValueError:
+                return f"Error: Unexpected non-JSON response (HTTP {response.status_code})"
+
+            if response.status_code != 200:
+                return _error_for_status(response.status_code, payload)
+
+            neighbors = payload.get("data", {}).get("objects", [])
+
+    except httpx.HTTPError as e:
+        return f"Error fetching country data: {str(e)}"
+    except Exception as e:
+        return f"Unexpected error: {str(e)}"
+
+    emoji = (country.get("flag") or {}).get("emoji", "")
+    heading = f"{name} {emoji}".strip()
+
+    if not neighbors:
+        return f"{heading} has no land borders."
+
+    noun = "country" if len(neighbors) == 1 else "countries"
+    lines = [f"{heading} borders {len(neighbors)} {noun}:"]
+    for neighbor in sorted(neighbors, key=lambda n: n.get("names", {}).get("common", "")):
+        neighbor_name = neighbor.get("names", {}).get("common", "N/A")
+        neighbor_emoji = (neighbor.get("flag") or {}).get("emoji", "")
+        details = []
+        capitals = [
+            capital.get("name") for capital in neighbor.get("capitals") or []
+            if isinstance(capital, dict) and capital.get("name")
+        ]
+        if capitals:
+            details.append(f"capital {', '.join(capitals)}")
+        if (population := neighbor.get("population")) is not None:
+            details.append(f"population {population:,}")
+        suffix = f" ({'; '.join(details)})" if details else ""
+        label = " ".join(part for part in (neighbor_emoji, neighbor_name) if part)
+        lines.append(f"- {label}{suffix}")
+
+    if api_key == DEMO_API_KEY:
+        lines.append(
+            "\nWarning: no RESTCOUNTRIES_API_KEY is set, so this used the public demo key, "
+            "which returns a fixed sample country and ignores the search term. "
+            "Set RESTCOUNTRIES_API_KEY in .env to get real results.")
+
+    return "\n".join(lines)
