@@ -48,6 +48,22 @@ over user. An organisation can also push a managed policy that overrides all thr
 | `ask` | Always asks first, even if a broader rule would allow it. |
 | `deny` | Never runs. `deny` beats `ask`, and `ask` beats `allow`. |
 
+### Where they apply — each list in each mode
+
+`Shift+Tab` cycles Normal → Auto-accept edits → Plan. Bypass permissions joins the cycle only if the
+session started with `--dangerously-skip-permissions`. The same three lists behave differently in each:
+
+| | **Plan** | **Auto** | **Manual** | **Bypass** |
+|---|---|---|---|---|
+| **allow** | No effect. Nothing is written in plan mode. | Skips the classifier. Runs silently. | No prompt for matching tools. | Redundant. Everything runs anyway. |
+| **ask** | Nothing to prompt. Plan mode only reads. | Forces a prompt, even in auto-accept. | Same as default. You confirm each call. | Ignored. Nothing prompts. |
+| **deny** | Blocked. | Blocked. | Blocked. | Still blocked. |
+
+Deny beats allow. `.git` and `.claude` are never auto-approved outside bypass.
+
+Show it live: add `"Bash(git push:*)"` to `ask` and `"Read(.env)"` to `deny`, then try both in each mode.
+The push prompts in auto-accept mode too. The `.env` read is refused in every mode, bypass included.
+
 A rule is a tool name, optionally narrowed in brackets: a command prefix for `Bash`, a path pattern for
 `Read`/`Edit`/`Write`, a domain for `WebFetch` (`WebFetch(domain:playwright.dev)`), or the full
 `mcp__<server>__<tool>` name for an MCP tool.

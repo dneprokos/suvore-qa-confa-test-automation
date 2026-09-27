@@ -66,7 +66,8 @@ nothing changed.
 | Plan | Read-only. Proposes, changes nothing. | Anything larger than one file. |
 | Bypass permissions | No prompts at all. Only with `--dangerously-skip-permissions`. | A sandbox or container, never your laptop. |
 
-`deny` rules and `PreToolUse` hooks still apply in every mode, bypass included. See `1_settings` and
+`deny` rules and `PreToolUse` hooks still apply in every mode, bypass included. How `allow`, `ask` and
+`deny` behave in each mode is the table in `1_settings/settings.md` ("Where they apply"). See also
 `5_1_hook-guardrail`.
 
 ## What to point at
