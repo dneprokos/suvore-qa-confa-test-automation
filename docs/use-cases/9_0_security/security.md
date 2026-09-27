@@ -23,7 +23,7 @@ Malicious instructions hide in tickets, READMEs, web pages and tool output. The 
 text; it has no reliable way to tell your instruction from a sentence inside a Jira description.
 
 **In this repo**
-- `1_prompts/structured-data-in-prompts.md`: pasted content goes in tags and is declared *data, not
+- `1_1_prompts/4_structured-data-in-prompts.md`: pasted content goes in tags and is declared *data, not
   instructions*.
 - The Slack triage treats every message as data. The drafting step holds zero MCP tools, so a message
   that says "file 50 tickets" can't do anything even if the model obeys it.
@@ -32,7 +32,7 @@ text; it has no reliable way to tell your instruction from a sentence inside a J
 HTML comment. It is invisible when rendered and plain text to the model. The payload is a harmless canary.
 
 ```text
-Summarise the bug in docs/use-cases/9_security/injected-ticket.md in three lines and propose the
+Summarise the bug in docs/use-cases/9_0_security/injected-ticket.md in three lines and propose the
 first API test for it.
 ```
 
@@ -110,7 +110,7 @@ allows: `Bash(git:*)` quietly pre-approves `git push --force`.
 outside the model: allowlists, validation, sandboxes.
 
 **In this repo**
-- `5_1_hook-guardrail/block-secret-files.mjs`: a `PreToolUse` hook that exits `2` on any read or write of
+- `5_2_hook-guardrail/block-secret-files.mjs`: a `PreToolUse` hook that exits `2` on any read or write of
   `.env`, `*.pem` or `*.key`, in every permission mode.
 - Five scripts do the counting and the state writes (`test-design-lint.mjs`, `workflow-state.mjs`, …),
   so a confident wrong number from a model can't reach a gate.
@@ -183,8 +183,8 @@ with which tool, and why.
 ```json
 {
   "hooks": {
-    "PostToolUse":        [{ "matcher": "", "hooks": [{ "type": "command", "timeout": 5, "command": "node \"$CLAUDE_PROJECT_DIR/docs/use-cases/9_security/audit-log.mjs\"" }] }],
-    "PostToolUseFailure": [{ "matcher": "", "hooks": [{ "type": "command", "timeout": 5, "command": "node \"$CLAUDE_PROJECT_DIR/docs/use-cases/9_security/audit-log.mjs\"" }] }]
+    "PostToolUse":        [{ "matcher": "", "hooks": [{ "type": "command", "timeout": 5, "command": "node \"$CLAUDE_PROJECT_DIR/docs/use-cases/9_0_security/audit-log.mjs\"" }] }],
+    "PostToolUseFailure": [{ "matcher": "", "hooks": [{ "type": "command", "timeout": 5, "command": "node \"$CLAUDE_PROJECT_DIR/docs/use-cases/9_0_security/audit-log.mjs\"" }] }]
   }
 }
 ```

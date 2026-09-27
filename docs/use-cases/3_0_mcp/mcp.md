@@ -12,7 +12,7 @@ M clients × N tools becomes M + N.
 Claude Code (host)
 ├── client ──stdio──► slack-mcp-server       local process, started by Claude Code
 ├── client ──sse────► mcp.atlassian.com      remote, OAuth sign-in through /mcp
-└── client ──stdio──► countries-mcp          your own FastMCP server (3_extend-mcp-tools)
+└── client ──stdio──► countries-mcp          your own FastMCP server (3_1_extend-mcp-tools)
 
 1 initialize  → agree on capabilities
 2 discover    → list tools, resources, prompts
@@ -104,6 +104,6 @@ The MCP tools cost **no context until they are called**. They are loaded on dema
 - **A server is code you run.** Read the source of a community server before you connect it. The
   catalogues are `github.com/modelcontextprotocol/servers`, `modelcontextprotocol.io` and `smithery.ai`.
 - **Tool results are untrusted input.** A Jira description or a Slack message can carry instructions.
-  See `9_security`.
-- Next: `3_extend-mcp-tools` adds a tool to your own FastMCP server, and `3_mcp_and_skill` combines a
+  See `9_0_security`.
+- Next: `3_1_extend-mcp-tools` adds a tool to your own FastMCP server, and `3_2_mcp-and-skill` combines a
   server with a skill.

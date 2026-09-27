@@ -1,4 +1,4 @@
-# Use case 7 — Slack bug triage: from a chat message to a Jira ticket
+# Use case 8.6 — Slack bug triage: from a chat message to a Jira ticket
 
 **Idea to land with the audience:** people report bugs in Slack, not in Jira. One command reads the
 `#bug-reports` channel, turns each new message into a bug draft, asks Jira whether it already exists, and

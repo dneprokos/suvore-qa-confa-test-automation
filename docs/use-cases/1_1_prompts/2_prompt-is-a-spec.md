@@ -87,5 +87,5 @@ A table: line · rule broken · why it matters · suggested fix. Then one line: 
 > The four parts are the same whether the reader is a model or a person. The difference is that a
 > person asks when something is missing, and the model guesses.
 
-See also: `direct-vs-indirect-prompts.md` (say it as an instruction), `code-examples-in-prompts.md`
-(show the shape), `structured-data-in-prompts.md` (separate instructions from data).
+See also: `3_direct-vs-indirect-prompts.md` (say it as an instruction), `5_code-examples-in-prompts.md`
+(show the shape), `4_structured-data-in-prompts.md` (separate instructions from data).

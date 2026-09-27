@@ -26,7 +26,7 @@ commit, push and open a PR. Show me the phase summary table at the end.
 /git-workflow-orchestrator use orchestrator script with -DryRun:
 branch docs/use-cases-git-orchestrator,
 commit message "docs(use-cases): add git workflow orchestrator demo",
-stage only docs/use-cases/2_2_git-workflow-orchestrator/prompt.md
+stage only docs/use-cases/2_3_git-workflow-orchestrator/prompt.md
 ```
 
 ```text

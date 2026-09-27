@@ -1,6 +1,6 @@
 # Hook guardrail — block every read or write of a secret file
 
-`5_hook-prompted-by` shows a hook that *reacts* (`Stop`, cosmetic, always exit 0). This one *blocks*:
+`5_1_hook-prompted-by` shows a hook that *reacts* (`Stop`, cosmetic, always exit 0). This one *blocks*:
 a `PreToolUse` hook that cancels any tool call touching `.env`, `.env.*`, `*.pem` or `*.key`, whatever
 the prompt said and whichever mode the session is in. `.env.example` stays readable.
 
@@ -28,7 +28,7 @@ give it to the whole team:
           {
             "type": "command",
             "timeout": 5,
-            "command": "node \"$CLAUDE_PROJECT_DIR/docs/use-cases/5_1_hook-guardrail/block-secret-files.mjs\""
+            "command": "node \"$CLAUDE_PROJECT_DIR/docs/use-cases/5_2_hook-guardrail/block-secret-files.mjs\""
           }
         ]
       }
@@ -44,11 +44,11 @@ Check with `/hooks` that it is listed under `PreToolUse`.
 A hook is plain code: test it like code before trusting it with a session.
 
 ```powershell
-'{"tool_name":"Bash","tool_input":{"command":"cat .env"}}' | node docs/use-cases/5_1_hook-guardrail/block-secret-files.mjs; $LASTEXITCODE
+'{"tool_name":"Bash","tool_input":{"command":"cat .env"}}' | node docs/use-cases/5_2_hook-guardrail/block-secret-files.mjs; $LASTEXITCODE
 # Blocked by block-secret-files.mjs: Bash touches a secret file (cat .env). ...
 # 2
 
-'{"tool_name":"Bash","tool_input":{"command":"npm run test:api"}}' | node docs/use-cases/5_1_hook-guardrail/block-secret-files.mjs; $LASTEXITCODE
+'{"tool_name":"Bash","tool_input":{"command":"npm run test:api"}}' | node docs/use-cases/5_2_hook-guardrail/block-secret-files.mjs; $LASTEXITCODE
 # 0
 ```
 
@@ -77,4 +77,4 @@ permission prompts are gone. The hook still fires.
 - **The matcher narrows it.** It never runs for `Agent`, `WebFetch` or MCP calls, so it costs nothing there.
 - **Exit 2 is the contract.** Exit 1 would only print a warning and let the read through.
 - **It is a sieve, not a vault.** `node -e "…readFileSync('.e'+'nv')"` walks past a regex. Pair it with
-  `deny` rules in `permissions` and keep real secrets out of the repo. See `9_security`.
+  `deny` rules in `permissions` and keep real secrets out of the repo. See `9_0_security`.

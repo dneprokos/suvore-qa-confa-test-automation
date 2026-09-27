@@ -92,4 +92,4 @@ claude --plugin-dir ./plugins/slack-bug-triage               # try it without in
 
 A plugin runs with your permissions, hooks included. Install only from marketplaces you trust, and read
 its hooks before you enable it. The full walkthrough is in
-[`6_plugin-marketplace`](../6_plugin-marketplace/create-and-install-plugin.md).
+[`6_1_plugin-marketplace`](../6_1_plugin-marketplace/create-and-install-plugin.md).
