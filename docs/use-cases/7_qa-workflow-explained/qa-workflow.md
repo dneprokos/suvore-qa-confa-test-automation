@@ -9,6 +9,11 @@ One command takes a Jira ticket all the way to a pull request with tests:
 
 ## The idea in one picture
 
+![QA workflow — general concept schema](qa_workflow.png)
+
+*General concept schema: phases, checkpoints and review loops at a glance. The step list below is the
+exact flow.*
+
 ```text
              Jira ticket
                   │

@@ -10,6 +10,11 @@ Slack message ──► draft ──► duplicate search in SCRUM ──► file
                                                       └─► "already tracked" ─┴─► threaded reply + emoji
 ```
 
+![Slack bug triage — general concept schema](slack-bug-triage.png)
+
+*General concept schema: batched read-only barriers, the per-message loop and the ledger. Exact
+commands and flags are in the steps below.*
+
 Demo time: ~10 minutes (2 prep, 1 dry run, 5 real run, 2 show-and-tell).
 
 ---
