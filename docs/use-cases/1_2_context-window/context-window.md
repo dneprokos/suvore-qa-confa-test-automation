@@ -39,6 +39,25 @@ noticeably more than English), and every tokenizer splits text differently.
 | **Free space** | What is left for the rest of the task. | — |
 | **Autocompact buffer** | A reserve kept free so Claude Code can summarise the conversation when the window fills up, instead of failing. | Claude Code. |
 
+## When each category enters the window
+
+Some parts are loaded once, at session start, and then paid on every call. Others arrive only when
+they're needed. That's the difference between a fixed cost and a cost you control.
+
+| Category | Loaded at session start | Loaded later, on demand |
+|---|---|---|
+| **System prompt** | Always, in full. | — |
+| **System tools** | Definitions of the core tools. | Rarely-used tools: only when the model looks them up. |
+| **MCP tools** | Only the tool names. | The full definition when the model first needs that tool. Its **result** lands in Messages when it's called. |
+| **Custom agents** | Name + description of each agent. | The agent's body: when it is spawned, and in **its own** window, not yours. |
+| **Memory files** | `~/.claude/CLAUDE.md` and the project `CLAUDE.md`, in full. | A `CLAUDE.md` in a subfolder: when Claude reads files in that folder. |
+| **Skills** | Name + description of each skill. | `SKILL.md` body: when you type `/skill-name` or the model picks it. `references/`: only when the skill reads them. `scripts/`: run outside the window. Only their output comes in. |
+| **Messages** | Empty. | Every prompt, answer and tool result, as it happens. |
+| **Autocompact buffer** | Reserved from the start. | Used when the window fills up: the conversation is replaced by a summary. |
+
+Rule of thumb: **session start = fixed tax on every call, on demand = pay only when used.** Anything that is
+needed only sometimes belongs in the second column.
+
 **Read the screenshot:** the memory file (this repo's `CLAUDE.md`, 24.5k) costs more than every tool
 definition combined, and it's paid on every call in every session. That's why the house rules for tests
 moved out of it into the etalons, which are read only when needed.
