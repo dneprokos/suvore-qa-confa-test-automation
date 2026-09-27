@@ -33,7 +33,7 @@ What goes wrong:
 
 ### ✅ Description + example (use this)
 
-````text
+```text
 Add a test to tests/api/admin-api.spec.ts for SCN-012:
 "Owner deletes an existing admin → 200, and the admin is no longer listed."
 
@@ -78,7 +78,7 @@ test("Create admin - Should create an admin with a valid email", async ({
   });
 });
 </example>
-````
+```
 
 What the model can now produce without guessing:
 
@@ -175,26 +175,26 @@ Do not change the expected values. Run the file with --repeat-each=5 and report 
 
 ## Checklist for a prompt with a code example
 
-| Element | Without it | With it |
-|---|---|---|
-| **The example** | Model invents the style | Model copies a real, working shape |
-| **Source** | "like the other tests" | `file="tests/api/admin-api.spec.ts"` or an exact path + section |
-| **What to copy** | Everything, including test data | A listed pattern: imports, phases, builder, cleanup |
-| **What to change** | Model decides | Endpoint, title, assertions — named |
-| **What not to copy** | Example-only strings leak into new code | "Do not copy the create message" |
-| **Counter-example** | Rule is abstract | `<bad>` block shows the exact shape to avoid |
-| **Done criteria** | Code that looks right | The command that must pass |
+| Element              | Without it                              | With it                                                         |
+| -------------------- | --------------------------------------- | --------------------------------------------------------------- |
+| **The example**      | Model invents the style                 | Model copies a real, working shape                              |
+| **Source**           | "like the other tests"                  | `file="tests/api/admin-api.spec.ts"` or an exact path + section |
+| **What to copy**     | Everything, including test data         | A listed pattern: imports, phases, builder, cleanup             |
+| **What to change**   | Model decides                           | Endpoint, title, assertions — named                             |
+| **What not to copy** | Example-only strings leak into new code | "Do not copy the create message"                                |
+| **Counter-example**  | Rule is abstract                        | `<bad>` block shows the exact shape to avoid                    |
+| **Done criteria**    | Code that looks right                   | The command that must pass                                      |
 
 ## Rules of thumb
 
-| Do | Don't |
-|---|---|
-| Use one short example that already follows the current rules | Paste an old file that breaks them — the model copies the bugs too |
-| Keep the example the same size as the expected output | Paste 500 lines to show a 20-line pattern |
-| Wrap the example in a tag with its path: `<example file="…">` | Drop code into the prompt with no marker where it ends |
-| Say which values are example-only | Let a hardcoded email or message travel into the new test |
-| Prefer a path to a maintained file for a large pattern | Paste a copy that goes out of date next week |
-| Pair a `<good>` with a `<bad>` when the rule is subtle | Describe the anti-pattern only in words |
+| Do                                                            | Don't                                                              |
+| ------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Use one short example that already follows the current rules  | Paste an old file that breaks them — the model copies the bugs too |
+| Keep the example the same size as the expected output         | Paste 500 lines to show a 20-line pattern                          |
+| Wrap the example in a tag with its path: `<example file="…">` | Drop code into the prompt with no marker where it ends             |
+| Say which values are example-only                             | Let a hardcoded email or message travel into the new test          |
+| Prefer a path to a maintained file for a large pattern        | Paste a copy that goes out of date next week                       |
+| Pair a `<good>` with a `<bad>` when the rule is subtle        | Describe the anti-pattern only in words                            |
 
 > The model imitates what it sees more reliably than what it is told. Choose the example
 > as carefully as the instruction: it is the part of the prompt that gets copied.
