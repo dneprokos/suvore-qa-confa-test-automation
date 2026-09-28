@@ -103,13 +103,31 @@ end of run              ──► node .claude/hooks/metrics-report.mjs SCRUM-13
 - **Price = tokens × the model's list price**, with cache reads and writes at their own rates.
 - **Unknown stays unknown.** An interrupted run or an unknown model is left unpriced and counted, never guessed.
 
+### Use case: one sub-agent run, step by step
+
+1. **Orchestrator launches a sub-agent**, e.g. the scenario generator for `SCRUM-139`.
+2. **`PreToolUse` hook fires** → runs `agent-metrics.mjs --pre` → saves "started at 10:00, SCRUM-139, step 1.3".
+3. **Sub-agent works.** Claude Code writes its transcript: one line per API call with token counts.
+4. **`PostToolUse` hook fires** → runs `agent-metrics.mjs --post` → reads that transcript and adds up
+   the tokens.
+5. **Same script prices it** with `pricing.mjs`: tokens × the model's price per million.
+6. **One row is appended** to `.workflow/metrics/SCRUM-139.jsonl`, and a line is shown to the orchestrator:
+
+   ```text
+   AGENT_RUN_METRICS: ticket=SCRUM-139 step=1.3 duration=109s tokens=260000 cost=$0.64
+   ```
+
+7. **Repeat for every sub-agent.** At the end, `metrics-report.mjs SCRUM-139` turns all rows into one
+   cost table.
+
 Result: a per-step table (which agent, how long, how many tokens, how much) for every ticket.
 
 ## How I built it
 
 1. **Drew the vision first.** On paper: the steps from ticket to pull request, and who does what.
    No code before the picture was clear.
-2. **Brainstormed it with `grill-me`.** Claude asked me one question at a time until the gaps showed:
+2. **Brainstormed it with `grill-me`** (Matt Pocock's skill). Claude asked me round after round of
+   questions, each with a recommended answer, until no decision was left open and the gaps showed:
    who approves, what happens when a review fails, where state lives, when a human must decide.
 3. **Planned it as separate components.** Each agent, script and hook was its own item with its own
    done-condition, built and tested one at a time before it joined the chain.
