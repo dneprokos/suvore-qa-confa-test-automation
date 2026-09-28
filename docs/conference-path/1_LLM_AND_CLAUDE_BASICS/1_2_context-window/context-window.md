@@ -32,17 +32,20 @@ noticeably more than English), and every tokenizer splits text differently.
 
 ## What each category means
 
-| Category | What it is | Who controls it |
-|---|---|---|
-| **System prompt** | Claude Code's own instructions: identity, tone, how to use tools, safety rules. | Anthropic. Changes with releases. |
-| **System tools** | The definitions of `Read`, `Edit`, `Bash`, `Grep`, `Agent`… The model has to read *how* to call a tool before it can call it. | Claude Code. Rarely-used tools are deferred and loaded on demand. |
-| **MCP tools** | The tools of your MCP servers. Here: 99 tools, **0 tokens**, because they are loaded on demand, only when needed. | You, through `/mcp` and `.mcp.json`. |
-| **Custom agents** | One short line per sub-agent: its name and description, so the model knows whom it can delegate to. The agent's full body is **not** here. It loads only in the agent's own window. | You, `.claude/agents/`. |
-| **Memory files** | `CLAUDE.md` files, loaded in full at the start of every session. | You. The biggest lever you have. |
-| **Skills** | Only each skill's name and description. The body loads when the skill fires. | You, `.claude/skills/`, plugins. |
-| **Messages** | The conversation: your prompts, the model's answers, and every tool result (every file read, every test log). This grows fastest. | The work itself. |
-| **Free space** | What is left for the rest of the task. | — |
-| **Autocompact buffer** | A reserve kept free so Claude Code can summarise the conversation when the window fills up, instead of failing. | Claude Code. |
+The rows are in the order the window is assembled: each request is built top to bottom, from the system
+prompt down to your latest message.
+
+| # | Category | What it is | When it enters the window |
+|---|---|---|---|
+| 1 | **System prompt** | Claude Code's own instructions: identity, tone, how to use tools, safety rules. | First. At session start, in full, and re-sent on every call. |
+| 2 | **System tools** | The definitions of `Read`, `Edit`, `Bash`, `Grep`, `Agent`… The model has to read *how* to call a tool before it can call it. | Right after the system prompt, at session start. Rarely-used tools are deferred: only their names are listed, the definition loads when the model looks it up. |
+| 3 | **MCP tools** | The tools of your MCP servers. Here: 99 tools, **0 tokens**, because they are loaded on demand, only when needed. | At session start, names only. The full definition when the model first needs that tool; its result lands in Messages. |
+| 4 | **Custom agents** | One short line per sub-agent: its name and description, so the model knows whom it can delegate to. The agent's full body is **not** here. It loads only in the agent's own window. | At session start, name + description. The body only when the agent is spawned, and in its own window. |
+| 5 | **Memory files** | `CLAUDE.md` files, loaded in full at the start of every session. The biggest lever you have. | At session start, before your first prompt: `~/.claude/CLAUDE.md`, then the project `CLAUDE.md`. A subfolder `CLAUDE.md` when Claude reads files there. |
+| 6 | **Skills** | Only each skill's name and description. The body loads when the skill fires. | At session start, name + description. `SKILL.md` body when `/skill-name` is typed or the model picks it. |
+| 7 | **Messages** | The conversation: your prompts, the model's answers, and every tool result (every file read, every test log). This grows fastest. | From your first prompt on, appended turn by turn. |
+| 8 | **Free space** | What is left for the rest of the task. | — Shrinks as Messages grow. |
+| 9 | **Autocompact buffer** | A reserve kept free so Claude Code can summarise the conversation when the window fills up, instead of failing. | Reserved from session start. Used when the window fills: Messages are replaced by a summary. |
 
 ## When each category enters the window
 
