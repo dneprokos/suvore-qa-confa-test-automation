@@ -4,8 +4,6 @@
 
 ![NOT DETERMINISTIC](slides/12-not-deterministic.png)
 
-![NOT DETERMINISTIC](slides/13-not-deterministic.png)
-
 ![LLM HALLUCINATION](slides/14-llm-hallucination.png)
 
 ![LIVE: HOW THE MODEL BEHAVES](../1_2_context-window/slides/18-live-how-the-model-behaves.png)
