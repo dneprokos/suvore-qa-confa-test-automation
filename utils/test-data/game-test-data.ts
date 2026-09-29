@@ -34,6 +34,19 @@ export class GameTestData {
   static readonly FULL_CATALOGUE_PAGE_SIZE = 1000;
 
   /**
+   * A release instant well away from midnight in UTC and in any browser zone
+   * (12:00 UTC), so the displayed calendar day is the same everywhere
+   * (SCRUM-115 SCN-001; the near-midnight case is a requirement gap).
+   */
+  static readonly MIDDAY_RELEASE_DATE = "1986-10-16T12:00:00.000Z";
+
+  /** How the detail page shows MIDDAY_RELEASE_DATE (FR-05.16 format, SCN-017). */
+  static readonly MIDDAY_RELEASE_DISPLAY = "October 16, 1986";
+
+  /** A game id that is not a well-formed object id (SCRUM-115 SCN-007). */
+  static readonly MALFORMED_GAME_ID = "not-an-id";
+
+  /**
    * A search term no catalogue game can match - hardcoded rather than read
    * back from the API, since proving a name is absent needs no request:
    * every seeded and shipped game name is a real title or carries the

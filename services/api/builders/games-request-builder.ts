@@ -8,6 +8,7 @@ import {
   GameErrorResponse,
   ListGamesResponse,
 } from "@services/api/types/games";
+import { GameDetailResponse } from "@services/api/types/game-detail";
 
 export type CreateGameApiResult = ApiResult<
   CreateGameResponse | GameErrorResponse
@@ -15,6 +16,7 @@ export type CreateGameApiResult = ApiResult<
 export type DeleteGameApiResult = ApiResult<
   DeleteGameResponse | GameErrorResponse
 >;
+export type GetGameApiResult = ApiResult<GameDetailResponse | GameErrorResponse>;
 export type ListGamesApiResult = ApiResult<
   ListGamesResponse | GameErrorResponse
 >;
@@ -166,6 +168,15 @@ export class GamesRequestBuilder {
     });
 
     return toApiResult<ListGamesResponse | GameErrorResponse>(response);
+  }
+
+  /** GET /api/games/{id} - public, so `withBearerToken` is optional. */
+  async sendGetGame(id: string): Promise<GetGameApiResult> {
+    const response = await this.request.get(Endpoints.games.byId(id), {
+      headers: this.headers,
+    });
+
+    return toApiResult<GameDetailResponse | GameErrorResponse>(response);
   }
 
   // #endregion
