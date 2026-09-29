@@ -6,7 +6,7 @@
 
 ![LLM HALLUCINATION](slides/14-llm-hallucination.png)
 
-![LIVE: HOW THE MODEL BEHAVES](../1_2_context-window/slides/18-live-how-the-model-behaves.png)
+![LIVE: HOW THE MODEL BEHAVES](../1_3_context-window/slides/18-live-how-the-model-behaves.png)
 
 Two properties of every model, shown in under three minutes. Neither is a bug you can fix with a better
 prompt. Both are why the workflow in this repo asserts against files and scripts rather than the

@@ -2,7 +2,7 @@
 
 ## Slides
 
-![LIVE: CLAUDE CODE SETUP](../1_3_commands/slides/19-live-claude-code-setup.png)
+![LIVE: CLAUDE CODE SETUP](../1_4_commands/slides/19-live-claude-code-setup.png)
 
 
 Two things to set up before the first real task: a `CLAUDE.md` so every session starts already knowing
@@ -72,7 +72,7 @@ nothing changed.
 | Bypass permissions | No prompts at all. Only with `--dangerously-skip-permissions`. | A sandbox or container, never your laptop. |
 
 `deny` rules and `PreToolUse` hooks still apply in every mode, bypass included. How `allow`, `ask` and
-`deny` behave in each mode is the table in `1_5_settings/settings.md` ("Where they apply"). See also
+`deny` behave in each mode is the table in `1_6_settings/settings.md` ("Where they apply"). See also
 `5_2_hook-guardrail`.
 
 ## What to point at
