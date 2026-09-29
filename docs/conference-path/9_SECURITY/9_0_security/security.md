@@ -29,7 +29,7 @@ Malicious instructions hide in tickets, READMEs, web pages and tool output. The 
 text; it has no reliable way to tell your instruction from a sentence inside a Jira description.
 
 **In this repo**
-- `1_1_prompts/2_prompt-is-a-spec.md` (Structured data in prompts): pasted content goes in tags and is declared *data, not
+- `1_7_prompts/2_prompt-is-a-spec.md` (Structured data in prompts): pasted content goes in tags and is declared *data, not
   instructions*.
 - The Slack triage treats every message as data. The drafting step holds zero MCP tools, so a message
   that says "file 50 tickets" can't do anything even if the model obeys it.

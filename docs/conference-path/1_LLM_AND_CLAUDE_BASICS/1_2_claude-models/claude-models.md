@@ -27,7 +27,7 @@ row is the Opus 5 rate). Prices change, so check the official pricing page befor
 | Start-up | `claude --model sonnet` | The whole session |
 | Settings | `"model": "sonnet"` in `settings.json` | Every session in this project or for this user |
 | Sub-agent | `model: haiku` in the agent's front matter | Only that agent, in its own context window |
-| Effort | The effort setting (see [non-determinism](../1_1_prompts/1_non-determinism-and-hallucination.md)) | How hard the same model thinks |
+| Effort | The effort setting (see [non-determinism](../1_7_prompts/1_non-determinism-and-hallucination.md)) | How hard the same model thinks |
 
 The per-agent setting is the one that matters most for automation. Each step of a workflow can run on
 a different model.
@@ -68,4 +68,4 @@ most.
 - **Change the model before you rewrite the prompt five times.** Sometimes the task is too hard for the
   model, not badly described.
 - **The model is not the only cost.** Context size and the number of calls matter as much — see
-  [the context window](../1_2_context-window/context-window.md).
+  [the context window](../1_3_context-window/context-window.md).
