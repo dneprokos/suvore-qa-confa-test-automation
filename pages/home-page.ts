@@ -39,6 +39,29 @@ export class HomePage {
     return this.page.getByRole("heading", { level: 3, name, exact: true });
   }
 
+  /** The whole card for one game: the link that wraps its heading (FR-05.14). */
+  cardFor(name: string): Locator {
+    return this.page.getByRole("link").filter({ has: this.headingFor(name) });
+  }
+
+  /**
+   * Left-clicks the game's name text on its card and returns the
+   * GET /api/games/<id> response the detail page fires. `id` is what the
+   * card's link points at, so the wait cannot resolve against another game.
+   */
+  async openCardByName(name: string, id: string): Promise<Response> {
+    const [response] = await Promise.all([
+      this.page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === Endpoints.games.byId(id) &&
+          response.request().method() === "GET",
+      ),
+      this.headingFor(name).click(),
+    ]);
+
+    return response;
+  }
+
   /**
    * Types `term` into the search box and returns the GET /api/games response
    * the listing fires for it. Filling the box is the whole action - the
